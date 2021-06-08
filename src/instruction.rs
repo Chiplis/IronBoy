@@ -1,4 +1,5 @@
 use crate::register::{Bit, ConditionCode, ByteRegister, SpecialRegister};
+use Instruction::*;
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
@@ -111,6 +112,25 @@ pub enum Instruction {
     SCF,
     STOP,
 }
+
+impl Instruction {
+    pub fn bytes(&self) -> u16 {
+        match self {
+
+            ADC_A_N8(_) | ADD_A_N8(_) | AND_A_N8(_) | CP_A_N8(_) | OR_A_N8(_) | SBC_A_N8(_) |
+            SUB_A_N8(_) | XOR_A_N8(_) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
+            SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(_) | SWAP_HL(_) | RL_R8(_) | RL_HL(_) | RLC_R8(_) |
+            RLC_HL(_) | RR_R8(_) | RR_HL(_) | RRC_R8(_) | RRC_HL(_) | SLA_R8(_) | SLA_HL(_) | SRA_R8(_) |
+            SRA_HL(_) | SRL_R8(_) | SRL_HL(_) | LD_R8_N8(..) | LD_HL_N8(..) | JR_E8(_) | JR_CC_E8(..) |
+            LDH_A_N8(_) | LDH_N8_A(_) | ADD_SP_E8(_) | LD_HL_SP_E8(_) => 2,
+
+            LD_N16_A(_) | LD_A_N16(_) | LD_R16_N16(..) | CALL_N16(_) | CALL_CC_N16(..) |
+            JP_N16(_) | JP_CC_N16(..) | LD_SP_N16(_) | LD_N16_SP(_) => 3,
+            _ => 1
+        }
+    }
+}
+
 
 #[derive(Copy, Clone, Debug)]
 pub enum RstVec {
