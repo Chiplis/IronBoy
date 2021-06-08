@@ -1,0 +1,6 @@
+/target
+/.idea
+*.gb
+*.iml
+*.swp
+*.out
