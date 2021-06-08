@@ -1,8 +1,9 @@
 use crate::Instruction;
 use crate::instruction_fetcher::Gameboy;
-use crate::register::{ByteRegister, FlagRegister, ProgramCounter, StackPointer, RegisterId, ConditionCode};
+use crate::register::{ByteRegister, FlagRegister, ProgramCounter, RegisterId, ConditionCode};
 use std::collections::HashMap;
 use crate::instruction::Instruction::*;
+use crate::register::SpecialRegister::StackPointer;
 
 pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameboy {
     gb.pc.0 += match instruction {
@@ -46,8 +47,8 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             1
         }
         DEC_HL(n) => {
-            let r = gb.ram[n as usize];
-            gb.ram[n as usize] -= 1;
+            let r = gb.memory[n];
+            gb.memory[n] -= 1;
             1
         }
         INC_R8(ByteRegister(_, id)) => {
@@ -58,8 +59,8 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             1
         }
         INC_HL(n) => {
-            let r = gb.ram[n as usize];
-            gb.ram[n as usize] += 1;
+            let r = gb.memory[n];
+            gb.memory[n] += 1;
             1
         }
         OR_A_R8(ByteRegister(n, _)) | OR_A_HL(n) | OR_A_N8(n) => {
@@ -112,9 +113,9 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             match instruction {
                 BIT_U3_R8(bit, ByteRegister(n, _)) | BIT_U3_HL(bit, n) => gb.f.z = n & bit.0 == 0,
                 RES_U3_R8(bit, ByteRegister(_, id)) => gb.get_register(id).0 &= bit.0,
-                RES_U3_HL(bit, n) => gb.ram[n as usize] &= bit.0,
+                RES_U3_HL(bit, n) => gb.memory[n] &= bit.0,
                 SET_U3_R8(bit, ByteRegister(_, id)) => gb.get_register(id).0 |= bit.0,
-                SET_U3_HL(bit, n) => gb.ram[n as usize] |= bit.0,
+                SET_U3_HL(bit, n) => gb.memory[n] |= bit.0,
                 _ => panic!()
             };
             2
@@ -136,7 +137,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             let value: &mut u8 = match instruction {
                 RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => &mut gb.get_register(r.1).0,
                 RLA | RRA | RLCA | RRCA => &mut gb.a.0,
-                RR_HL(n) | RL_HL(n) | RRC_HL(n) | RLC_HL(n) => &mut gb.ram[n as usize],
+                RR_HL(n) | RL_HL(n) | RRC_HL(n) | RLC_HL(n) => &mut gb.memory[n],
                 _ => panic!(),
             };
             let n = *value;
@@ -161,7 +162,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
         SRA_R8(_) | SLA_R8(_) |
         SRL_R8(_) | SRL_HL(_) => {
             let value: &mut u8 = match instruction {
-                SRA_HL(n) | SLA_HL(n) => &mut gb.ram[n as usize],
+                SRA_HL(n) | SLA_HL(n) => &mut gb.memory[n],
                 SLA_R8(r) | SRA_R8(r) => &mut gb.get_register(r.1).0,
                 _ => panic!(),
             };
@@ -192,78 +193,78 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             3
         }
         LD_HL_R8(a, b) => {
-            gb.ram[a as usize] = b.0;
+            gb.memory[a] = b.0;
             1
         }
         LD_HL_N8(a, b) => {
-            gb.ram[a as usize] = b;
+            gb.memory[a] = b;
             2
         }
         LD_R8_HL(a, b) => {
-            gb.get_register(a.1).0 = gb.ram[b as usize];
+            gb.get_register(a.1).0 = b;
             1
         }
         LD_R16_A(b) => {
-            gb.ram[b.value() as usize] = gb.a.0;
+            gb.memory[b.value()] = gb.a.0;
             1
         }
         LD_N16_A(n) => {
-            gb.ram[n as usize] = gb.a.0;
+            gb.memory[n] = gb.a.0;
             3
         }
         LDH_N8_A(n) => {
-            gb.ram[0xFF00 + n as usize] = gb.a.0;
+            gb.memory[0xFF00 + n as u16] = gb.a.0;
             2
         }
         LDH_C_A => {
-            gb.ram[0xFF00 + gb.c.0 as usize] = gb.a.0;
+            gb.memory[0xFF00 + gb.c.0 as u16] = gb.a.0;
             1
         }
         LD_A_R16(n) => {
-            gb.a.0 = gb.ram[n.value() as usize];
+            gb.a.0 = gb.memory[n];
             1
         }
         LD_A_N16(n) => {
-            gb.a.0 = gb.ram[n as usize];
+            gb.a.0 = gb.memory[n];
             3
         }
         LDH_A_N8(n) => {
-            gb.a.0 = gb.ram[0xFF00 + n as usize];
+            gb.a.0 = gb.memory[0xFF00 + n as u16];
             2
         }
         LDH_A_C => {
-            gb.a.0 = gb.ram[(0xFF00 + gb.c.0 as u16) as usize];
+            gb.a.0 = gb.memory[gb.c];
             1
         }
         LD_HLD_A(n) => {
-            gb.ram[n as usize] = gb.a.0;
+            gb.memory[n] = gb.a.0;
             gb.set_word_register(n.wrapping_sub(1), gb.hl());
             1
         }
         LD_HLI_A(n) => {
-            gb.ram[n as usize] = gb.a.0;
+            gb.memory[n] = gb.a.0;
             gb.set_word_register(n.wrapping_add(1), gb.hl());
             1
         }
         LD_A_HLD(n) => {
-            gb.a.0 = gb.ram[n as usize];
+            gb.a.0 = gb.memory[n];
             gb.set_word_register(n.wrapping_sub(1), gb.hl());
             1
         }
         LD_A_HLI(n) => {
-            gb.a.0 = gb.ram[n as usize];
+            gb.a.0 = gb.memory[n];
             gb.set_word_register(n.wrapping_add(1), gb.hl());
             1
         }
         CALL_N16(n) => {
-            gb.sp.0 -= 1;
-            gb.ram[gb.sp.0 as usize] = gb.pc.0 as u8 + 3;
+            gb.sp = StackPointer(gb.sp.value() - 1);
+            gb.memory[gb.sp] = gb.pc.0 as u8 + 3;
             gb.pc.0 = n;
             0
         }
         CALL_CC_N16(cc, n) => if gb.cc_flag(cc) {
-            gb.sp.0 -= 1;
-            gb.ram[gb.sp.0 as usize] = gb.pc.0 as u8 + 3;
+            gb.sp = StackPointer(gb.sp.value() - 1);
+            gb.memory[gb.sp] = gb.pc.0 as u8 + 3;
             gb.pc.0 = n;
             0
         } else {

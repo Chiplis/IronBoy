@@ -1,13 +1,16 @@
 use instruction::Instruction;
 
 use crate::instruction_fetcher::{fetch_instruction, Gameboy};
-use crate::register::{FlagRegister, ProgramCounter, RegisterId, ByteRegister, StackPointer};
+use crate::register::{FlagRegister, ProgramCounter, RegisterId, ByteRegister};
 use std::{thread, time, env};
+use crate::memory_map::MemoryMap;
+use crate::register::SpecialRegister::StackPointer;
 
 mod instruction_fetcher;
 mod instruction;
 mod register;
 mod instruction_executor;
+mod memory_map;
 
 fn execute(gameboy: Gameboy, instruction: Instruction) -> Gameboy {
     match instruction {
@@ -29,7 +32,7 @@ fn main() {
         f: FlagRegister{z: true, n: false, h: true, c: true},
         sp: StackPointer(0xFFFE),
         pc: ProgramCounter(0x0100),
-        ram: [0; 0x10000],
+        memory: MemoryMap::new(),
         vram: [0; 2 * 8 * 1024],
         rom: std::fs::read(rom).unwrap(),
     };

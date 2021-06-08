@@ -1,7 +1,9 @@
 use crate::Instruction;
-use crate::register::{Bit, SpecialRegister, RegisterId, FlagRegister, ProgramCounter, ByteRegister, StackPointer, ConditionCode};
+use crate::register::{Bit, SpecialRegister, RegisterId, FlagRegister, ProgramCounter, ByteRegister, ConditionCode};
 use crate::instruction::Instruction::*;
 use crate::instruction::RstVec;
+use crate::memory_map::MemoryMap;
+use crate::register::SpecialRegister::StackPointer;
 
 enum RegisterOperand {
     Special(SpecialRegister),
@@ -19,8 +21,8 @@ pub struct Gameboy {
     pub l: ByteRegister,
     pub f: FlagRegister,
     pub pc: ProgramCounter,
-    pub sp: StackPointer,
-    pub ram: [u8; 0x10000],
+    pub sp: SpecialRegister,
+    pub memory: MemoryMap,
     pub vram: [u8; 2 * 8 * 1024],
     pub rom: Vec<u8>,
 }
@@ -51,6 +53,7 @@ impl Gameboy {
                 self.get_register(a.1).0 = hi;
                 self.get_register(b.1).0 = lo;
             }
+            SpecialRegister::StackPointer(_) => self.sp = StackPointer(value)
         };
     }
 
@@ -166,8 +169,8 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
                     RegisterOperand::Simple(reg) => SRL_R8(reg),
                 },
                 0x40..=0x7F => match r[bit_idx] {
-                    RegisterOperand::Special(_) => BIT_U3_HL(Bit(set[bit]), gameboy.ram[gameboy.hl().value() as usize]),
-                    RegisterOperand::Simple(reg) => BIT_U3_R8(Bit(set[bit]), reg),
+                    RegisterOperand::Special(_) => BIT_U3_HL(Bit(set[bit]), gameboy.memory[gameboy.hl()]),
+                    RegisterOperand::Simple(reg) => BIT_U3_R8(Bit(set[bit]), reg)
                 },
 
                 0x80..=0xBF => match r[bit_idx] {
@@ -190,37 +193,37 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
         0x2E => LD_R8_N8(gameboy.l, rom[pc+1]),
 
         0x78..=0x7F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.a, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.a, gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.a, reg),
         },
 
         0x40..=0x47 => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.b, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.b, gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.b, reg),
         },
 
         0x48..=0x4F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.c, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.c, gameboy.memory[gameboy.hl().value()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.c, reg),
         },
 
         0x50..=0x57 => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.d, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.d, gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.d, reg),
         },
 
         0x58..=0x5F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.e, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.e, gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.e, reg),
         },
 
         0x60..=0x67 => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.h, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.h, gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.h, reg),
         },
 
         0x68..=0x6F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.l, gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => LD_R8_HL(gameboy.l, gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.l, reg),
         },
 
@@ -230,42 +233,42 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
         },
 
         0x80..=0x87 => match r[r_idx] {
-            RegisterOperand::Special(_) => ADD_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => ADD_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => ADD_A_R8(reg),
         },
 
         0x88..=0x8F => match r[r_idx] {
-            RegisterOperand::Special(_) => ADC_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => ADC_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => ADC_A_R8(reg),
         },
 
         0x90..=0x97 => match r[r_idx] {
-            RegisterOperand::Special(_) => SUB_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => SUB_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => SUB_A_R8(reg),
         },
 
         0x98..=0x9F => match r[r_idx] {
-            RegisterOperand::Special(_) => SBC_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => SBC_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => SBC_A_R8(reg),
         },
 
         0xA0..=0xA7 => match r[r_idx] {
-            RegisterOperand::Special(_) => AND_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => AND_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => AND_A_R8(reg),
         },
 
         0xA8..=0xAF => match r[r_idx] {
-            RegisterOperand::Special(_) => XOR_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => XOR_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => XOR_A_R8(reg),
         },
 
         0xB0..=0xB7 => match r[r_idx] {
-            RegisterOperand::Special(_) => OR_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => OR_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => OR_A_R8(reg),
         },
 
         0xB8..=0xBF => match r[r_idx] {
-            RegisterOperand::Special(_) => CP_A_HL(gameboy.ram[gameboy.hl().value() as usize]),
+            RegisterOperand::Special(_) => CP_A_HL(gameboy.memory[gameboy.hl()]),
             RegisterOperand::Simple(reg) => CP_A_R8(reg),
         },
 
@@ -341,17 +344,17 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
         0x09 => ADD_HL_R16(gameboy.bc()),
         0x19 => ADD_HL_R16(gameboy.de()),
         0x29 => ADD_HL_R16(gameboy.hl()),
-        0x39 => ADD_HL_SP(gameboy.hl().value(), gameboy.sp.0),
+        0x39 => ADD_HL_SP(gameboy.hl().value(), gameboy.sp),
 
         0x03 => INC_R16(gameboy.bc()),
         0x13 => INC_R16(gameboy.de()),
         0x23 => INC_R16(gameboy.hl()),
-        0x33 => INC_SP(gameboy.sp.0),
+        0x33 => INC_SP(gameboy.sp),
 
         0x0B => DEC_R16(gameboy.bc()),
         0x1B => DEC_R16(gameboy.de()),
         0x2B => DEC_R16(gameboy.hl()),
-        0x3B => DEC_SP(gameboy.sp.0),
+        0x3B => DEC_SP(gameboy.sp),
 
         0xE8 => ADD_SP_E8(rom[pc+1] as i8),
 

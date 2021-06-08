@@ -19,6 +19,7 @@ pub struct FlagRegister{pub z: bool, pub n: bool, pub h: bool, pub c: bool}
 pub enum SpecialRegister {
     WordRegister(ByteRegister, ByteRegister),
     DoubleFlagRegister(ByteRegister, FlagRegister),
+    StackPointer(u16)
 }
 
 impl SpecialRegister {
@@ -29,6 +30,7 @@ impl SpecialRegister {
                 let bit_flag = |b: bool, v: u8 | if b { 2u8.pow(v as u32) as u8 } else { 0 };
                 SpecialRegister::merge(a.0, bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0))
             },
+            SpecialRegister::StackPointer(n) => n
         }
     }
 
@@ -42,9 +44,6 @@ pub struct Bit(pub u8);
 
 #[derive(Copy, Clone, Debug)]
 pub struct ProgramCounter(pub u16);
-
-#[derive(Copy, Clone, Debug)]
-pub struct StackPointer(pub u16);
 
 #[derive(Copy, Clone, Debug)]
 pub enum ConditionCode {
