@@ -20,7 +20,7 @@ pub struct Gameboy {
     pub f: FlagRegister,
     pub pc: ProgramCounter,
     pub sp: StackPointer,
-    pub ram: [u8; 0xFFFF],
+    pub ram: [u8; 0x10000],
     pub vram: [u8; 2 * 8 * 1024],
     pub rom: Vec<u8>,
 }

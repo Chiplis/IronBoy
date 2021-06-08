@@ -29,7 +29,7 @@ fn main() {
         f: FlagRegister{z: true, n: false, h: true, c: true},
         sp: StackPointer(0xFFFE),
         pc: ProgramCounter(0x0100),
-        ram: [0; 0xFFFF],
+        ram: [0; 0x10000],
         vram: [0; 2 * 8 * 1024],
         rom: std::fs::read(rom).unwrap(),
     };
