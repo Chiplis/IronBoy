@@ -1,22 +1,22 @@
 use crate::Instruction;
-use crate::register::{Bit, SpecialRegister, RegisterId, FlagRegister, ProgramCounter, SimpleRegister, StackPointer, ConditionCode};
+use crate::register::{Bit, SpecialRegister, RegisterId, FlagRegister, ProgramCounter, ByteRegister, StackPointer, ConditionCode};
 use crate::instruction::Instruction::*;
 use crate::instruction::RstVec;
 
 enum RegisterOperand {
     Special(SpecialRegister),
-    Simple(SimpleRegister),
+    Simple(ByteRegister),
 }
 
 #[derive(Clone)]
 pub struct Gameboy {
-    pub a: SimpleRegister,
-    pub b: SimpleRegister,
-    pub c: SimpleRegister,
-    pub d: SimpleRegister,
-    pub e: SimpleRegister,
-    pub h: SimpleRegister,
-    pub l: SimpleRegister,
+    pub a: ByteRegister,
+    pub b: ByteRegister,
+    pub c: ByteRegister,
+    pub d: ByteRegister,
+    pub e: ByteRegister,
+    pub h: ByteRegister,
+    pub l: ByteRegister,
     pub f: FlagRegister,
     pub pc: ProgramCounter,
     pub sp: StackPointer,
@@ -30,24 +30,24 @@ impl Gameboy {
         SpecialRegister::DoubleFlagRegister(self.a, self.f)
     }
     pub fn bc(&self) -> SpecialRegister {
-        SpecialRegister::DoubleRegister(self.b, self.c)
+        SpecialRegister::WordRegister(self.b, self.c)
     }
     pub fn de(&self) -> SpecialRegister {
-        SpecialRegister::DoubleRegister(self.d, self.e)
+        SpecialRegister::WordRegister(self.d, self.e)
     }
 
     pub fn hl(&self) -> SpecialRegister {
-        SpecialRegister::DoubleRegister(self.h, self.l)
+        SpecialRegister::WordRegister(self.h, self.l)
     }
 
-    pub fn set_double_register(&mut self, value: u16, reg: SpecialRegister) {
+    pub fn set_word_register(&mut self, value: u16, reg: SpecialRegister) {
         let [hi, lo] = value.to_le_bytes();
         match reg {
             SpecialRegister::DoubleFlagRegister(_, _) => {
                 self.a.0 = hi;
                 self.set_flag(lo);
             }
-            SpecialRegister::DoubleRegister(a, b) => {
+            SpecialRegister::WordRegister(a, b) => {
                 self.get_register(a.1).0 = hi;
                 self.get_register(b.1).0 = lo;
             }
@@ -78,7 +78,7 @@ impl Gameboy {
         self.f.h = flags & 0x10 == 0x10;
     }
 
-    pub fn get_register(&mut self, id: RegisterId) -> &mut SimpleRegister {
+    pub fn get_register(&mut self, id: RegisterId) -> &mut ByteRegister {
         match id {
             RegisterId::A => &mut self.a,
             RegisterId::B => &mut self.b,

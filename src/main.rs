@@ -1,7 +1,7 @@
 use instruction::Instruction;
 
 use crate::instruction_fetcher::{fetch_instruction, Gameboy};
-use crate::register::{FlagRegister, ProgramCounter, RegisterId, SimpleRegister, StackPointer};
+use crate::register::{FlagRegister, ProgramCounter, RegisterId, ByteRegister, StackPointer};
 use std::{thread, time, env};
 
 mod instruction_fetcher;
@@ -19,13 +19,13 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let rom = args.get(1).unwrap();
     let mut gameboy = Gameboy {
-        a: SimpleRegister(0x01, RegisterId::A),
-        b: SimpleRegister(0x00, RegisterId::B),
-        c: SimpleRegister(0x13, RegisterId::C),
-        d: SimpleRegister(0x00, RegisterId::D),
-        e: SimpleRegister(0xD8, RegisterId::E),
-        h: SimpleRegister(0x01, RegisterId::H),
-        l: SimpleRegister(0x4D, RegisterId::L),
+        a: ByteRegister(0x01, RegisterId::A),
+        b: ByteRegister(0x00, RegisterId::B),
+        c: ByteRegister(0x13, RegisterId::C),
+        d: ByteRegister(0x00, RegisterId::D),
+        e: ByteRegister(0xD8, RegisterId::E),
+        h: ByteRegister(0x01, RegisterId::H),
+        l: ByteRegister(0x4D, RegisterId::L),
         f: FlagRegister{z: true, n: false, h: true, c: true},
         sp: StackPointer(0xFFFE),
         pc: ProgramCounter(0x0100),

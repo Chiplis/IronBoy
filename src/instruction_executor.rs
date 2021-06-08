@@ -1,6 +1,6 @@
 use crate::Instruction;
 use crate::instruction_fetcher::Gameboy;
-use crate::register::{SimpleRegister, FlagRegister, ProgramCounter, StackPointer, RegisterId, ConditionCode};
+use crate::register::{ByteRegister, FlagRegister, ProgramCounter, StackPointer, RegisterId, ConditionCode};
 use std::collections::HashMap;
 use crate::instruction::Instruction::*;
 
@@ -8,8 +8,8 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
     gb.pc.0 += match instruction {
         NOP => { 1 }
 
-        ADC_A_R8(SimpleRegister(n, _)) | ADC_A_HL(n) | ADC_A_N8(n) |
-        ADD_A_R8(SimpleRegister(n, _)) | ADD_A_HL(n) | ADD_A_N8(n) => {
+        ADC_A_R8(ByteRegister(n, _)) | ADC_A_HL(n) | ADC_A_N8(n) |
+        ADD_A_R8(ByteRegister(n, _)) | ADD_A_HL(n) | ADD_A_N8(n) => {
             let carry = match instruction {
                 ADD_A_R8(_) | ADD_A_N8(_) | ADD_A_HL(_) => 0,
                 _ => if gb.f.c { 1u8 } else { 0 }
@@ -23,7 +23,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
                 _ => 1
             }
         }
-        AND_A_R8(SimpleRegister(n, _)) | AND_A_N8(n) | AND_A_HL(n) => {
+        AND_A_R8(ByteRegister(n, _)) | AND_A_N8(n) | AND_A_HL(n) => {
             gb.a.0 &= n;
             gb.set_flags(gb.a.0 == 0, false, true, false);
             match instruction {
@@ -31,14 +31,14 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
                 _ => 1
             }
         }
-        CP_A_R8(SimpleRegister(n, _)) | CP_A_N8(n) | CP_A_HL(n) => {
+        CP_A_R8(ByteRegister(n, _)) | CP_A_N8(n) | CP_A_HL(n) => {
             gb.set_flags(gb.a.0 == n, true, half_carry_8_sub(gb.a.0, n, 0), n > gb.a.0);
             match instruction {
                 CP_A_N8(_) => 2,
                 _ => 1
             }
         }
-        DEC_R8(SimpleRegister(_, id)) => {
+        DEC_R8(ByteRegister(_, id)) => {
             let reg = gb.get_register(id).0;
             gb.get_register(id).0 = reg.wrapping_sub(1);
             let z = gb.get_register(id).0 == 0;
@@ -50,7 +50,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             gb.ram[n as usize] -= 1;
             1
         }
-        INC_R8(SimpleRegister(_, id)) => {
+        INC_R8(ByteRegister(_, id)) => {
             let reg = gb.get_register(id).0;
             gb.get_register(id).0 += 1;
             let z = gb.get_register(id).0 == 0;
@@ -62,7 +62,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             gb.ram[n as usize] += 1;
             1
         }
-        OR_A_R8(SimpleRegister(n, _)) | OR_A_HL(n) | OR_A_N8(n) => {
+        OR_A_R8(ByteRegister(n, _)) | OR_A_HL(n) | OR_A_N8(n) => {
             gb.a.0 |= n;
             gb.set_flags(gb.a.0 == 0, false, false, false);
             match instruction {
@@ -70,8 +70,8 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
                 _ => 1
             }
         }
-        SBC_A_R8(SimpleRegister(n, _)) | SBC_A_HL(n) | SBC_A_N8(n) |
-        SUB_A_R8(SimpleRegister(n, _)) | SUB_A_HL(n) | SUB_A_N8(n) => {
+        SBC_A_R8(ByteRegister(n, _)) | SBC_A_HL(n) | SBC_A_N8(n) |
+        SUB_A_R8(ByteRegister(n, _)) | SUB_A_HL(n) | SUB_A_N8(n) => {
             let carry = match instruction {
                 SUB_A_R8(_) | SUB_A_N8(_) | SUB_A_HL(_) => { 0 }
                 _ => if gb.f.c { 1 } else { 0 }
@@ -84,7 +84,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
                 _ => 1
             }
         }
-        XOR_A_R8(SimpleRegister(n, _)) | XOR_A_HL(n) | XOR_A_N8(n) => {
+        XOR_A_R8(ByteRegister(n, _)) | XOR_A_HL(n) | XOR_A_N8(n) => {
             gb.a.0 ^= n;
             gb.set_flags(gb.a.0 == 0, false, false, false);
             match instruction {
@@ -95,38 +95,38 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
         ADD_HL_R16(reg) => {
             let hc = half_carry_16_add(gb.hl().value(), reg.value(), 0);
             let (hl, carry) = gb.hl().value().overflowing_add(reg.value());
-            gb.set_double_register(hl, gb.hl());
+            gb.set_word_register(hl, gb.hl());
             gb.set_flags(gb.f.z, false, hc, carry);
             1
         }
         DEC_R16(reg) => {
-            gb.set_double_register(reg.value() - 1, reg);
+            gb.set_word_register(reg.value() - 1, reg);
             1
         }
         INC_R16(reg) => {
-            gb.set_double_register(reg.value() + 1, reg);
+            gb.set_word_register(reg.value() + 1, reg);
             1
         }
         BIT_U3_R8(_, _) | BIT_U3_HL(_, _) | RES_U3_R8(_, _) |
         RES_U3_HL(_, _) | SET_U3_R8(_, _) | SET_U3_HL(_, _) => {
             match instruction {
-                BIT_U3_R8(bit, SimpleRegister(n, _)) | BIT_U3_HL(bit, n) => gb.f.z = n & bit.0 == 0,
-                RES_U3_R8(bit, SimpleRegister(_, id)) => gb.get_register(id).0 &= bit.0,
+                BIT_U3_R8(bit, ByteRegister(n, _)) | BIT_U3_HL(bit, n) => gb.f.z = n & bit.0 == 0,
+                RES_U3_R8(bit, ByteRegister(_, id)) => gb.get_register(id).0 &= bit.0,
                 RES_U3_HL(bit, n) => gb.ram[n as usize] &= bit.0,
-                SET_U3_R8(bit, SimpleRegister(_, id)) => gb.get_register(id).0 |= bit.0,
+                SET_U3_R8(bit, ByteRegister(_, id)) => gb.get_register(id).0 |= bit.0,
                 SET_U3_HL(bit, n) => gb.ram[n as usize] |= bit.0,
                 _ => panic!()
             };
             2
         }
-        SWAP_R8(SimpleRegister(n, id)) => {
+        SWAP_R8(ByteRegister(n, id)) => {
             gb.set_flags(n == 0, false, false, false);
             gb.get_register(id).0 = n.rotate_left(4);
             2
         }
         SWAP_HL(n) => {
             gb.set_flags(n == 0, false, false, false);
-            gb.set_double_register(n.rotate_left(8), gb.hl());
+            gb.set_word_register(n.rotate_left(8), gb.hl());
             2
         }
         RL_R8(_) | RL_HL(_) | RLA |
@@ -188,7 +188,7 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             2
         }
         LD_R16_N16(a, b) => {
-            gb.set_double_register(b, a);
+            gb.set_word_register(b, a);
             3
         }
         LD_HL_R8(a, b) => {
@@ -237,22 +237,22 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
         }
         LD_HLD_A(n) => {
             gb.ram[n as usize] = gb.a.0;
-            gb.set_double_register(n.wrapping_sub(1), gb.hl());
+            gb.set_word_register(n.wrapping_sub(1), gb.hl());
             1
         }
         LD_HLI_A(n) => {
             gb.ram[n as usize] = gb.a.0;
-            gb.set_double_register(n.wrapping_add(1), gb.hl());
+            gb.set_word_register(n.wrapping_add(1), gb.hl());
             1
         }
         LD_A_HLD(n) => {
             gb.a.0 = gb.ram[n as usize];
-            gb.set_double_register(n.wrapping_sub(1), gb.hl());
+            gb.set_word_register(n.wrapping_sub(1), gb.hl());
             1
         }
         LD_A_HLI(n) => {
             gb.a.0 = gb.ram[n as usize];
-            gb.set_double_register(n.wrapping_add(1), gb.hl());
+            gb.set_word_register(n.wrapping_add(1), gb.hl());
             1
         }
         CALL_N16(n) => {

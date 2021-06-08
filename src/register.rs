@@ -10,21 +10,21 @@ pub enum RegisterId {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SimpleRegister(pub u8, pub RegisterId);
+pub struct ByteRegister(pub u8, pub RegisterId);
 
 #[derive(Copy, Clone, Debug)]
 pub struct FlagRegister{pub z: bool, pub n: bool, pub h: bool, pub c: bool}
 
 #[derive(Copy, Clone, Debug)]
 pub enum SpecialRegister {
-    DoubleRegister(SimpleRegister, SimpleRegister),
-    DoubleFlagRegister(SimpleRegister, FlagRegister),
+    WordRegister(ByteRegister, ByteRegister),
+    DoubleFlagRegister(ByteRegister, FlagRegister),
 }
 
 impl SpecialRegister {
     pub fn value(self) -> u16 {
         match self  {
-            SpecialRegister::DoubleRegister(h, l) => SpecialRegister::merge(h.0, l.0),
+            SpecialRegister::WordRegister(h, l) => SpecialRegister::merge(h.0, l.0),
             SpecialRegister::DoubleFlagRegister(a, FlagRegister{z, n, h, c}) => {
                 let bit_flag = |b: bool, v: u8 | if b { 2u8.pow(v as u32) as u8 } else { 0 };
                 SpecialRegister::merge(a.0, bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0))
