@@ -32,13 +32,13 @@ fn main() {
         f: FlagRegister{z: true, n: false, h: true, c: true},
         sp: StackPointer(0xFFFE),
         pc: ProgramCounter(0x0100),
-        memory: MemoryMap::new(),
+        mem: MemoryMap::new(),
         vram: [0; 2 * 8 * 1024],
         rom: std::fs::read(rom).unwrap(),
     };
     loop {
         let next_instruction = instruction_fetcher::fetch_instruction(&gameboy);
-        println!(" | {:?}", next_instruction);
+        println!(" | {:?} # {:#04x} | {}", next_instruction, gameboy.pc.0, gameboy.pc.0);
         instruction_executor::execute_instruction(&mut gameboy, next_instruction);
         //thread::sleep(time::Duration::from_millis(100));
     }

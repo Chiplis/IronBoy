@@ -6,8 +6,8 @@ use crate::memory_map::MemoryMap;
 use crate::register::SpecialRegister::StackPointer;
 
 enum RegisterOperand {
-    Special(SpecialRegister),
-    Simple(ByteRegister),
+    Word(SpecialRegister),
+    Byte(ByteRegister),
 }
 
 #[derive(Clone)]
@@ -22,7 +22,7 @@ pub struct Gameboy {
     pub f: FlagRegister,
     pub pc: ProgramCounter,
     pub sp: SpecialRegister,
-    pub memory: MemoryMap,
+    pub mem: MemoryMap,
     pub vram: [u8; 2 * 8 * 1024],
     pub rom: Vec<u8>,
 }
@@ -43,7 +43,7 @@ impl Gameboy {
     }
 
     pub fn set_word_register(&mut self, value: u16, reg: SpecialRegister) {
-        let [hi, lo] = value.to_le_bytes();
+        let [lo, hi] = value.to_le_bytes();
         match reg {
             SpecialRegister::DoubleFlagRegister(_, _) => {
                 self.a.0 = hi;
@@ -94,29 +94,24 @@ impl Gameboy {
     }
 }
 
-fn merge(a: u8, b: u8) -> u16 {
-    ((b as u16) << 8) | a as u16
-}
-
 #[deny(unreachable_patterns)]
 pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
     let pc = gameboy.pc.0 as usize;
     let rom = &gameboy.rom;
     let value = rom[pc];
-    print!("{:#04x}", value);
+    print!("{} | {:#04x}", value, value);
     let r = [
-        RegisterOperand::Simple(gameboy.b),
-        RegisterOperand::Simple(gameboy.c),
-        RegisterOperand::Simple(gameboy.d),
-        RegisterOperand::Simple(gameboy.e),
-        RegisterOperand::Simple(gameboy.h),
-        RegisterOperand::Simple(gameboy.l),
-        RegisterOperand::Special(gameboy.hl()),
-        RegisterOperand::Simple(gameboy.a),
+        RegisterOperand::Byte(gameboy.b),
+        RegisterOperand::Byte(gameboy.c),
+        RegisterOperand::Byte(gameboy.d),
+        RegisterOperand::Byte(gameboy.e),
+        RegisterOperand::Byte(gameboy.h),
+        RegisterOperand::Byte(gameboy.l),
+        RegisterOperand::Word(gameboy.hl()),
+        RegisterOperand::Byte(gameboy.a),
     ];
     let r_idx = ((value & 0x0F) % 8) as usize;
     match value {
-        // Redundant self assignments
         0xCB => {
             let cb_opcode = rom[pc+1];
 
@@ -130,57 +125,57 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
 
             match cb_opcode {
                 0x00..=0x07 => match r[bit_idx] {
-                    RegisterOperand::Special(_) => RLC_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => RLC_R8(reg),
+                    RegisterOperand::Word(_) => RLC_HL,
+                    RegisterOperand::Byte(reg) => RLC_R8(reg),
                 },
 
                 0x08..=0x0F => match r[bit_idx] {
-                    RegisterOperand::Special(_) => RRC_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => RRC_R8(reg),
+                    RegisterOperand::Word(_) => RRC_HL,
+                    RegisterOperand::Byte(reg) => RRC_R8(reg),
                 },
 
                 0x10..=0x17 => match r[bit_idx] {
-                    RegisterOperand::Special(_) => RL_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => RL_R8(reg),
+                    RegisterOperand::Word(_) => RL_HL,
+                    RegisterOperand::Byte(reg) => RL_R8(reg),
                 },
 
                 0x18..=0x1F => match r[bit_idx] {
-                    RegisterOperand::Special(_) => RR_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => RR_R8(reg),
+                    RegisterOperand::Word(_) => RR_HL,
+                    RegisterOperand::Byte(reg) => RR_R8(reg),
                 },
 
                 0x20..=0x27 => match r[bit_idx] {
-                    RegisterOperand::Special(_) => SLA_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => SLA_R8(reg),
+                    RegisterOperand::Word(_) => SLA_HL,
+                    RegisterOperand::Byte(reg) => SLA_R8(reg),
                 },
 
                 0x28..=0x2F => match r[bit_idx] {
-                    RegisterOperand::Special(_) => SRA_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => SRA_R8(reg),
+                    RegisterOperand::Word(_) => SRA_HL,
+                    RegisterOperand::Byte(reg) => SRA_R8(reg),
                 },
 
                 0x30..=0x37 => match r[bit_idx] {
-                    RegisterOperand::Special(_) => SWAP_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => SWAP_R8(reg),
+                    RegisterOperand::Word(_) => SWAP_HL,
+                    RegisterOperand::Byte(reg) => SWAP_R8(reg),
                 },
 
                 0x38..=0x3F => match r[bit_idx] {
-                    RegisterOperand::Special(_) => SRL_HL(gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => SRL_R8(reg),
+                    RegisterOperand::Word(_) => SRL_HL,
+                    RegisterOperand::Byte(reg) => SRL_R8(reg),
                 },
                 0x40..=0x7F => match r[bit_idx] {
-                    RegisterOperand::Special(_) => BIT_U3_HL(Bit(set[bit]), gameboy.memory[gameboy.hl()]),
-                    RegisterOperand::Simple(reg) => BIT_U3_R8(Bit(set[bit]), reg)
+                    RegisterOperand::Word(_) => BIT_U3_HL(Bit(set[bit])),
+                    RegisterOperand::Byte(reg) => BIT_U3_R8(Bit(set[bit]), reg)
                 },
 
                 0x80..=0xBF => match r[bit_idx] {
-                    RegisterOperand::Special(_) => RES_U3_HL(Bit(res[bit]), gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => RES_U3_R8(Bit(res[bit]), reg),
+                    RegisterOperand::Word(_) => RES_U3_HL(Bit(res[bit])),
+                    RegisterOperand::Byte(reg) => RES_U3_R8(Bit(res[bit]), reg),
                 },
 
                 0xC0..=0xFF => match r[bit_idx] {
-                    RegisterOperand::Special(_) => SET_U3_HL(Bit(set[bit]), gameboy.hl().value()),
-                    RegisterOperand::Simple(reg) => SET_U3_R8(Bit(set[bit]), reg),
+                    RegisterOperand::Word(_) => SET_U3_HL(Bit(set[bit])),
+                    RegisterOperand::Byte(reg) => SET_U3_R8(Bit(set[bit]), reg),
                 },
             }
         }
@@ -193,134 +188,134 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
         0x2E => LD_R8_N8(gameboy.l, rom[pc+1]),
 
         0x78..=0x7F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.a, gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.a, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.a),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.a, reg),
         },
 
         0x40..=0x47 => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.b, gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.b, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.b),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.b, reg),
         },
 
         0x48..=0x4F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.c, gameboy.memory[gameboy.hl().value()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.c, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.c),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.c, reg),
         },
 
         0x50..=0x57 => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.d, gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.d, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.d),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.d, reg),
         },
 
         0x58..=0x5F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.e, gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.e, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.e),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.e, reg),
         },
 
         0x60..=0x67 => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.h, gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.h, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.h),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.h, reg),
         },
 
         0x68..=0x6F => match r[r_idx] {
-            RegisterOperand::Special(_) => LD_R8_HL(gameboy.l, gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => LD_R8_R8(gameboy.l, reg),
+            RegisterOperand::Word(_) => LD_R8_HL(gameboy.l),
+            RegisterOperand::Byte(reg) => LD_R8_R8(gameboy.l, reg),
         },
 
         0x70..=0x75 => match r[r_idx] {
-            RegisterOperand::Simple(reg) => LD_HL_R8(gameboy.hl().value(), reg),
+            RegisterOperand::Byte(reg) => LD_HL_R8(reg),
             _ => panic!("Should never use HL register for these opcodes."),
         },
 
         0x80..=0x87 => match r[r_idx] {
-            RegisterOperand::Special(_) => ADD_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => ADD_A_R8(reg),
+            RegisterOperand::Word(_) => ADD_A_HL,
+            RegisterOperand::Byte(reg) => ADD_A_R8(reg),
         },
 
         0x88..=0x8F => match r[r_idx] {
-            RegisterOperand::Special(_) => ADC_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => ADC_A_R8(reg),
+            RegisterOperand::Word(_) => ADC_A_HL,
+            RegisterOperand::Byte(reg) => ADC_A_R8(reg),
         },
 
         0x90..=0x97 => match r[r_idx] {
-            RegisterOperand::Special(_) => SUB_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => SUB_A_R8(reg),
+            RegisterOperand::Word(_) => SUB_A_HL,
+            RegisterOperand::Byte(reg) => SUB_A_R8(reg),
         },
 
         0x98..=0x9F => match r[r_idx] {
-            RegisterOperand::Special(_) => SBC_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => SBC_A_R8(reg),
+            RegisterOperand::Word(_) => SBC_A_HL,
+            RegisterOperand::Byte(reg) => SBC_A_R8(reg),
         },
 
         0xA0..=0xA7 => match r[r_idx] {
-            RegisterOperand::Special(_) => AND_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => AND_A_R8(reg),
+            RegisterOperand::Word(_) => AND_A_HL,
+            RegisterOperand::Byte(reg) => AND_A_R8(reg),
         },
 
         0xA8..=0xAF => match r[r_idx] {
-            RegisterOperand::Special(_) => XOR_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => XOR_A_R8(reg),
+            RegisterOperand::Word(_) => XOR_A_HL,
+            RegisterOperand::Byte(reg) => XOR_A_R8(reg),
         },
 
         0xB0..=0xB7 => match r[r_idx] {
-            RegisterOperand::Special(_) => OR_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => OR_A_R8(reg),
+            RegisterOperand::Word(_) => OR_A_HL,
+            RegisterOperand::Byte(reg) => OR_A_R8(reg),
         },
 
         0xB8..=0xBF => match r[r_idx] {
-            RegisterOperand::Special(_) => CP_A_HL(gameboy.memory[gameboy.hl()]),
-            RegisterOperand::Simple(reg) => CP_A_R8(reg),
+            RegisterOperand::Word(_) => CP_A_HL,
+            RegisterOperand::Byte(reg) => CP_A_R8(reg),
         },
 
         0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
             match r[(value as usize - 4) / 8] {
-                RegisterOperand::Special(_) => INC_HL(gameboy.hl().value()),
-                RegisterOperand::Simple(reg) => INC_R8(reg),
+                RegisterOperand::Word(_) => INC_HL,
+                RegisterOperand::Byte(reg) => INC_R8(reg),
             }
         }
 
         0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
             match r[(value as usize - 5) / 8] {
-                RegisterOperand::Special(_) => DEC_HL(gameboy.hl().value()),
-                RegisterOperand::Simple(reg) => DEC_R8(reg),
+                RegisterOperand::Word(_) => DEC_HL,
+                RegisterOperand::Byte(reg) => DEC_R8(reg),
             }
         }
 
-        0x36 => LD_HL_N8(gameboy.hl().value(), rom[pc+1]),
+        0x36 => LD_HL_N8(rom[pc+1]),
 
         0x0A => LD_A_R16(gameboy.bc()),
         0x1A => LD_A_R16(gameboy.de()),
 
-        0xFA => LD_A_N16(merge(rom[pc + 1], rom[pc + 2])),
+        0xFA => LD_A_N16(u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0x3E => LD_N16_A(merge(rom[pc + 1], rom[pc + 2])),
+        0x3E => LD_A_N8(rom[pc + 1]),
 
         0x02 => LD_R16_A(gameboy.bc()),
         0x12 => LD_R16_A(gameboy.de()),
         0x77 => LD_R16_A(gameboy.hl()),
 
-        0xEA => LD_N16_A(merge(rom[pc + 1], rom[pc + 2])),
+        0xEA => LDH_N16_A(u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
         0xF2 => LDH_A_C,
         0xE2 => LDH_C_A,
 
-        0x3A => LD_A_HLD(gameboy.hl().value()),
-        0x32 => LD_HLD_A(gameboy.hl().value()),
-        0x2A => LD_A_HLI(gameboy.hl().value()),
-        0x22 => LD_HLI_A(gameboy.hl().value()),
+        0x3A => LD_A_HLD,
+        0x32 => LD_HLD_A,
+        0x2A => LD_A_HLI,
+        0x22 => LD_HLI_A,
 
         0xE0 => LDH_N8_A(rom[pc+1]),
         0xF0 => LDH_A_N8(rom[pc+1]),
 
-        0x01 => LD_R16_N16(gameboy.bc(), merge(rom[pc + 1], rom[pc + 2])),
-        0x11 => LD_R16_N16(gameboy.de(), merge(rom[pc + 1], rom[pc + 2])),
-        0x21 => LD_R16_N16(gameboy.hl(), merge(rom[pc + 1], rom[pc + 2])),
-        0x31 => LD_SP_N16(merge(rom[pc + 1], rom[pc + 2])),
+        0x01 => LD_R16_N16(gameboy.bc(), u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0x11 => LD_R16_N16(gameboy.de(), u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0x21 => LD_R16_N16(gameboy.hl(), u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0x31 => LD_SP_N16(u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0xF9 => LD_SP_HL(gameboy.hl().value()),
+        0xF9 => LD_SP_HL,
         0xF8 => LD_HL_SP_E8(rom[pc+1] as i8),
 
-        0x08 => LD_N16_SP(merge(rom[pc + 1], rom[pc + 2])),
+        0x08 => LD_N16_SP(u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
         0xF5 => PUSH_AF,
         0xC5 => PUSH_R16(gameboy.bc()),
@@ -344,7 +339,7 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
         0x09 => ADD_HL_R16(gameboy.bc()),
         0x19 => ADD_HL_R16(gameboy.de()),
         0x29 => ADD_HL_R16(gameboy.hl()),
-        0x39 => ADD_HL_SP(gameboy.hl().value(), gameboy.sp),
+        0x39 => ADD_HL_SP,
 
         0x03 => INC_R16(gameboy.bc()),
         0x13 => INC_R16(gameboy.de()),
@@ -379,28 +374,28 @@ pub fn fetch_instruction(gameboy: &Gameboy) -> Instruction {
             }
         }
 
-        0xC3 => JP_N16(merge(rom[pc + 1], rom[pc + 2])),
-        0xC2 => JP_CC_N16(ConditionCode::NZ, merge(rom[pc + 1], rom[pc + 2])),
-        0xCA => JP_CC_N16(ConditionCode::Z, merge(rom[pc + 1], rom[pc + 2])),
-        0xD2 => JP_CC_N16(ConditionCode::NC, merge(rom[pc + 1], rom[pc + 2])),
+        0xC3 => JP_N16(u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0xC2 => JP_CC_N16(ConditionCode::NZ, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0xCA => JP_CC_N16(ConditionCode::Z, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0xD2 => JP_CC_N16(ConditionCode::NC, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0xDA => JP_CC_N16(ConditionCode::C, merge(rom[pc + 1], rom[pc + 2])),
-        0xE9 => JP_HL(gameboy.hl().value()),
+        0xDA => JP_CC_N16(ConditionCode::C, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
+        0xE9 => JP_HL,
 
         0x18 => JR_E8(rom[pc+1] as i8),
         0x20 => JR_CC_E8(ConditionCode::NZ, rom[pc+1] as i8),
         0x28 => JR_CC_E8(ConditionCode::Z, rom[pc+1] as i8),
         0x30 => JR_CC_E8(ConditionCode::NC, rom[pc+1] as i8),
         0x38 => JR_CC_E8(ConditionCode::C, rom[pc+1] as i8),
-        0xCD => CALL_N16(merge(rom[pc + 1], rom[pc + 2])),
+        0xCD => CALL_N16(u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0xC4 => CALL_CC_N16(ConditionCode::NZ, merge(rom[pc + 1], rom[pc + 2])),
+        0xC4 => CALL_CC_N16(ConditionCode::NZ, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0xCC => CALL_CC_N16(ConditionCode::Z, merge(rom[pc + 1], rom[pc + 2])),
+        0xCC => CALL_CC_N16(ConditionCode::Z, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0xD4 => CALL_CC_N16(ConditionCode::NC, merge(rom[pc + 1], rom[pc + 2])),
+        0xD4 => CALL_CC_N16(ConditionCode::NC, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
-        0xDC => CALL_CC_N16(ConditionCode::C, merge(rom[pc + 1], rom[pc + 2])),
+        0xDC => CALL_CC_N16(ConditionCode::C, u16::from_le_bytes([rom[pc + 1], rom[pc + 2]])),
 
         0xC7 => RST(RstVec::X00),
 
