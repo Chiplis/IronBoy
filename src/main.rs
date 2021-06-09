@@ -38,7 +38,6 @@ fn main() {
     };
     loop {
         let next_instruction = instruction_fetcher::fetch_instruction(&gameboy);
-        println!(" | {:?} # {:#04x} | {}", next_instruction, gameboy.pc.0, gameboy.pc.0);
         instruction_executor::execute_instruction(&mut gameboy, next_instruction);
         //thread::sleep(time::Duration::from_millis(100));
     }
