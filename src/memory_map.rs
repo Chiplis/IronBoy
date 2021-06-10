@@ -79,24 +79,6 @@ impl MemoryMap {
 
         MemoryMap { memory: mem }
     }
-
-    pub fn write_register(&mut self, register: ByteRegister, content: u8) {
-        self.write_offset(register.0, content);
-    }
-
-    pub fn write_offset(&mut self, offset: u8, content: u8) {
-        self.write_byte(offset as u16 + 0xFF00, content);
-    }
-
-    pub fn write_byte(&mut self, addr: u16, content: u8) {
-        self.memory[addr as usize] = content;
-        let should_echo = (0xC000 <= addr && addr <= 0xDDFF) || (0xE000 <= addr && addr <= 0xFDFF);
-        if should_echo {
-            let offset = if addr < 0xE000 { 0x2000 } else { -0x2000 };
-            let echo_addr = (addr as i32 + offset) as u16;
-            self.memory[echo_addr as usize] = content;
-        }
-    }
 }
 
 #[test]
@@ -106,9 +88,9 @@ fn test_echo_rw() {
     let address = 0xDDFF;
     let echo_address = 0xFDFF;
 
-    mem.write_byte(address, content);
+    mem[address] = content;
     assert_eq!(mem[address], mem[echo_address]);
-    mem.write_byte(echo_address, content + 1);
+    mem[echo_address] = content + 1;
     assert_ne!(mem[address], content);
     assert_eq!(mem[address], mem[echo_address]);
 }

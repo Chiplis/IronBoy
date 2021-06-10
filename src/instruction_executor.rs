@@ -1,11 +1,20 @@
 use crate::Instruction;
 use crate::instruction_fetcher::Gameboy;
-use crate::register::{ByteRegister};
+use crate::register::{ByteRegister, FlagRegister, SpecialRegister};
 use crate::instruction::Instruction::*;
 use crate::register::SpecialRegister::StackPointer;
+use std::cmp::{min, max};
 
 pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameboy {
+    println!("pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {}", gb.pc.0 + 1, gb.sp.value(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value());
     gb.pc.0 += instruction.size() as u16;
+    if gb.ime_counter == 0 {
+        gb.ime_counter = -1;
+        gb.ime = true;
+    } else {
+        gb.ime_counter = max(gb.ime_counter, -1);
+    }
+    let hl = gb.hl();
     match instruction {
         NOP => {}
 
@@ -103,14 +112,14 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
                 BIT_U3_HL(bit) => gb.f.z = gb.mem[gb.hl()] & bit.0 == 0,
                 RES_U3_R8(bit, ByteRegister(_, id)) => gb.get_register(id).0 &= bit.0,
                 RES_U3_HL(bit) => {
-                    let hl = gb.hl();
-                    gb.mem[hl] &= bit.0
+                    let hl = gb.hl().value();
+                    gb.mem[hl] &= bit.0;
                 }
                 SET_U3_R8(bit, ByteRegister(_, id)) => gb.get_register(id).0 |= bit.0,
                 SET_U3_HL(bit) => {
-                    let hl = gb.hl();
-                    gb.mem[hl] |= bit.0
-                },
+                    let hl = gb.hl().value();
+                    gb.mem[hl] |= bit.0;
+                }
                 _ => panic!()
             };
         }
@@ -121,52 +130,42 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
         SWAP_HL => {
             gb.set_flags(gb.hl().value() == 0, false, false, false);
             gb.set_word_register(gb.hl().value().rotate_left(8), gb.hl());
-        }
-        RL_R8(_) | RL_HL | RLA |
-        RR_R8(_) | RR_HL | RRA |
-        RLC_R8(_) | RLC_HL | RLCA |
-        RRC_R8(_) | RRC_HL | RRCA => {
+        },
+        RR_HL | RL_HL | RRC_HL | RLC_HL => { panic!() }
+        RL_R8(_)  | RLA | RR_R8(_)  | RRA | RLC_R8(_) | RLCA | RRC_R8(_) | RRCA => {
             let value: &mut u8 = match instruction {
                 RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => &mut gb.get_register(r.1).0,
                 RLA | RRA | RLCA | RRCA => &mut gb.a.0,
-                RR_HL | RL_HL | RRC_HL | RLC_HL => {
-                    let hl = gb.hl();
-                    &mut gb.mem[hl]
-                },
+                RR_HL | RL_HL | RRC_HL | RLC_HL => &mut gb.mem[hl],
                 _ => panic!(),
             };
-            let n = *value;
             *value = match instruction {
-                RLC_R8(_) | RLC_HL | RLCA => value.rotate_left(1),
-                RRC_R8(_) | RRC_HL | RRCA => value.rotate_right(1),
-                RR_R8(_) | RR_HL => *value >> 1,
-                RL_R8(_) | RL_HL => *value << 1,
+                RLC_R8(_) | RLCA => value.rotate_left(1),
+                RRC_R8(_) | RRCA => value.rotate_right(1),
+                RR_R8(_)  => *value >> 1,
+                RL_R8(_)  => *value << 1,
                 _ => panic!()
             };
+            let n = *value;
             let z = match instruction {
                 RLA | RRA | RLCA | RRCA => false,
                 _ => *value == 0
             };
             gb.set_flags(z, false, false, n & 128 != 0);
-        }
-        SRA_HL | SLA_HL |
-        SRA_R8(_) | SLA_R8(_) |
-        SRL_R8(_) | SRL_HL => {
+        },
+        SRA_R8(_) | SLA_R8(_) | SRL_R8(_) | SRL_HL | SLA_HL | SRA_HL => {
             let value: &mut u8 = match instruction {
-                SRA_HL | SLA_HL => {
-                    let hl = gb.hl();
-                    &mut gb.mem[hl]
-                },
+                SRL_HL | SRA_HL | SLA_HL => &mut gb.mem[hl],
                 SLA_R8(r) | SRA_R8(r) => &mut gb.get_register(r.1).0,
                 _ => panic!(),
             };
-            let n = *value;
             *value = match instruction {
                 SRA_R8(_) | SRA_HL => ((*value as i8) >> 1) as u8,
                 SRL_HL | SRL_R8(_) => *value >> 1,
                 SLA_R8(_) | SLA_HL => ((*value as i8) << 1) as u8,
                 _ => panic!()
             };
+            let n = *value;
             let z = match instruction {
                 RLA | RRA | RLCA | RRCA => false,
                 _ => *value == 0
@@ -176,44 +175,44 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
         LD_R8_R8(a, b) => gb.get_register(a.1).0 = b.0,
         LD_R8_N8(a, b) => gb.get_register(a.1).0 = b,
         LD_R16_N16(a, b) => gb.set_word_register(b, a),
-        LD_HL_R8(ByteRegister(n, _)) | LD_HL_N8(n) => gb.mem.write_byte(gb.hl().value(), n),
-        LD_R8_HL(a) => gb.get_register(a.1).0 = gb.mem[gb.hl()],
-        LD_R16_A(n) => gb.mem.write_byte(n.value(), gb.a.0),
-        LDH_N16_A(n) => gb.mem.write_byte(n, gb.a.0),
-        LDH_N8_A(n) => gb.mem.write_offset(n, gb.a.0),
-        LDH_C_A => gb.mem.write_register(gb.c, gb.a.0),
+        LD_HL_R8(ByteRegister(n, _)) | LD_HL_N8(n) => { gb.mem[hl] = n; },
+        LD_R8_HL(a) => gb.get_register(a.1).0 = gb.mem[hl],
+        LD_R16_A(n) => gb.mem[n] = gb.a.0,
+        LDH_N16_A(n) => gb.mem[n] = gb.a.0,
+        LDH_C_A => gb.mem[gb.c] = gb.a.0,
         LD_A_N8(n) => gb.a.0 = n,
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
         LD_A_N16(n) => gb.a.0 = gb.mem[n],
-        LDH_A_N8(n) => gb.a.0 = gb.mem[n],
+        LDH_A_N8(n) => gb.a.0 = gb.mem[n];,
+        LDH_N8_A(n) => gb.mem[n] = gb.a.0;,
         LDH_A_C => gb.a.0 = gb.mem[gb.c],
-        LD_HLD_A => {
-            gb.mem.write_byte(gb.hl().value(), gb.a.0);
-            gb.set_word_register(gb.hl().value().wrapping_sub(1), gb.hl());
-        }
-        LD_HLI_A => {
-            gb.mem.write_byte(gb.hl().value(), gb.a.0);
-            gb.set_word_register(gb.hl().value().wrapping_add(1), gb.hl());
-        }
         LD_A_HLD => {
-            gb.a.0 = gb.mem[gb.hl()];
-            gb.set_word_register(gb.hl().value().wrapping_sub(1), gb.hl());
+            gb.set_word_register(hl.value().wrapping_sub(1), gb.hl());
+            gb.a.0 = gb.mem[hl];
+        }
+        LD_HLD_A => {
+            gb.set_word_register(hl.value().wrapping_sub(1), gb.hl());
+            gb.mem[hl] = gb.a.0;
         }
         LD_A_HLI => {
-            gb.a.0 = gb.mem[gb.hl()];
-            gb.set_word_register(gb.hl().value().wrapping_add(1), gb.hl());
+            gb.a.0 = gb.mem[hl];
+            gb.set_word_register(hl.value().wrapping_add(1), gb.hl());
+        }
+        LD_HLI_A => {
+            gb.mem[hl] = gb.a.0;
+            gb.set_word_register(hl.value().wrapping_add(1), gb.hl());
         }
         CALL_N16(n) => {
-            gb.sp = StackPointer(gb.sp.value() - 1);
             let [lo, hi] = gb.pc.0.to_le_bytes();
+            gb.sp = StackPointer(gb.sp.value() - 1);
             gb.mem[gb.sp] = hi;
             gb.sp = StackPointer(gb.sp.value() - 1);
             gb.mem[gb.sp] = lo;
             gb.pc.0 = n;
         }
         CALL_CC_N16(cc, n) => if gb.cc_flag(cc) {
-            gb.sp = StackPointer(gb.sp.value() - 1);
             let [lo, hi] = gb.pc.0.to_le_bytes();
+            gb.sp = StackPointer(gb.sp.value() - 1);
             gb.mem[gb.sp] = hi;
             gb.sp = StackPointer(gb.sp.value() - 1);
             gb.mem[gb.sp] = lo;
@@ -228,32 +227,130 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
             gb.a.0 = !gb.a.0;
             gb.set_flags(gb.f.z, true, true, gb.f.c);
         }
-        _ => panic!(),
-        RET_CC(cc) => { if gb.cc_flag(cc) {} else {} }
-        RET => {}
-        RETI => {}
-        RST(rst_vec) => {}
-        ADD_HL_SP => {}
-        ADD_SP_E8(n) => {}
-        DEC_SP(sp) => {}
-        INC_SP(sp) => {}
-        LD_SP_N16(n) => {}
-        LD_N16_SP(n) => {}
-        LD_HL_SP_E8(n) => {}
-        LD_SP_HL => {}
-        POP_AF => {}
-        POP_R16(reg) => {}
-        PUSH_AF => {}
-        PUSH_R16(reg) => {}
-        CCF => {}
-        DAA => {}
-        DI => {}
-        EI => {}
+        RET_CC(cc) => {
+            if gb.cc_flag(cc) {
+                gb.pc.0 = gb.sp.value();
+                gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
+            }
+        }
+        RET => {
+            let [lo, hi] = gb.sp.value().to_le_bytes();
+            gb.pc.0 = u16::from_le_bytes([lo, hi]);
+            gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
+        }
+        RETI => {
+            let [lo, hi] = gb.sp.value().to_le_bytes();
+            gb.pc.0 = u16::from_le_bytes([lo, hi]);
+            gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
+            gb.ime = true;
+        }
+        RST(rst_vec) => { gb.pc.0 = rst_vec as u16; }
+        ADD_HL_SP => {
+            let (add, carry) = gb.hl().value().overflowing_add(gb.sp.value());
+            gb.set_flags(add == 0, true, half_carry_16_add(gb.hl().value(), gb.sp.value(), 0), carry);
+            gb.set_word_register(add, gb.hl());
+        }
+        ADD_SP_E8(n) | LD_HL_SP_E8(n) => {
+            let (add, carry) = if n < 0 {
+                gb.sp.value().overflowing_sub((n as u8 & !0x80) as u16)
+            } else {
+                gb.sp.value().overflowing_add((n as u8 & !0x80) as u16)
+            };
+            let half_carry = if n < 0 {
+                half_carry_16_sub(gb.sp.value(), (n as u8 & !0x80) as u16, 0)
+            } else {
+                half_carry_16_add(gb.sp.value(), (n as u8 & !0x80) as u16, 0)
+            };
+            gb.set_flags(false, false, half_carry, carry);
+            gb.set_word_register(add, if let ADD_SP_E8(n) = instruction { gb.sp } else { gb.hl() })
+        }
+        DEC_SP => { gb.set_word_register(gb.sp.value().wrapping_sub(1), gb.sp) }
+        INC_SP => { gb.set_word_register(gb.sp.value().wrapping_add(1), gb.sp) }
+
+        LD_SP_N16(n) => { gb.set_word_register(n, gb.sp) }
+        LD_N16_SP(n) => {
+            let [lo, hi] = gb.sp.value().to_le_bytes();
+            gb.mem[n] = lo;
+            gb.mem[n + 1] = lo;
+        }
+        LD_N8_A(n) => gb.a.0 = n,
+        LD_SP_HL => {
+            gb.set_word_register(gb.hl().value(), gb.sp);
+        }
+        POP_AF => {
+            let f = gb.mem[gb.sp];
+            gb.set_word_register(gb.sp.value().wrapping_add(1), gb.sp);
+            let (z, n, h, c) = (f & 0x80 != 0, f & 0x40 != 0, f & 0x20 != 0, f & 0x10 != 0);
+            gb.a.0 = gb.mem[gb.sp];
+            gb.set_word_register(gb.sp.value().wrapping_add(1), gb.sp);
+            gb.f = FlagRegister { z, n, h, c }
+        }
+        POP_R16(reg) => {
+            match reg {
+                SpecialRegister::WordRegister(ByteRegister(_, high), ByteRegister(_, low)) => {
+                    for id in &[low, high] {
+                        gb.get_register(low).0 = gb.mem[gb.sp.value()];
+                        gb.set_word_register(gb.sp.value().wrapping_add(1), gb.sp);
+                    }
+                }
+                _ => panic!()
+            }
+        }
+        PUSH_AF => {
+            gb.set_word_register(gb.sp.value().wrapping_sub(1), gb.sp);
+            let mut sp = gb.sp.value();
+            gb.mem[gb.sp] = gb.a.0;
+            gb.set_word_register(gb.sp.value().wrapping_sub(1), gb.sp);
+            gb.mem[sp] = gb.f.value();
+        }
+        PUSH_R16(reg) => {
+            match reg {
+                SpecialRegister::WordRegister(ByteRegister(_, high), ByteRegister(_, low)) => {
+                    for id in &[high, low] {
+                        gb.set_word_register(gb.sp.value().wrapping_sub(1), gb.sp);
+                        let sp = gb.sp.value();
+                        let value = gb.get_register(*id).0;
+                        gb.mem[gb.sp] = value;
+                    }
+                }
+                _ => panic!()
+            }
+        }
+        CCF => {
+            gb.f.n = false;
+            gb.f.h = false;
+            gb.f.c = !gb.f.c;
+        }
+        DAA => {
+            // note: assumes a is a uint8_t and wraps from 0xff to 0
+            if !gb.f.n {  // after an addition, adjust if (half-)carry occurred or if result is out of bounds
+                if gb.f.c || gb.a.0 > 0x99 {
+                    gb.a.0 += 0x60;
+                    gb.f.c = true;
+                }
+                if gb.f.h || (gb.a.0 & 0x0f) > 0x09 {
+                    gb.a.0 += 0x6;
+                }
+            } else {
+                if gb.f.c { gb.a.0 -= 0x60; }
+                if gb.f.h { gb.a.0 -= 0x6; }
+            }
+            gb.f.z = gb.a.0 == 0;
+            gb.f.h = false;
+        }
+        DI => { gb.ime = false; }
+        EI => {
+            gb.ime_counter = 2;
+        }
         HALT => {}
-        SCF => {}
+        SCF => {
+            gb.f.n = false;
+            gb.f.h = false;
+            gb.f.c = true;
+        }
         STOP => {}
     };
-
+    gb.ime_counter -= 1;
     return gb;
 }
 

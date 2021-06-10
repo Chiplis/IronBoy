@@ -20,6 +20,17 @@ pub struct FlagRegister {
     pub c: bool,
 }
 
+impl FlagRegister {
+    pub fn value(&self) -> u8 {
+        [self.c, self.h, self.n, self.z]
+            .iter()
+            .map(|f| if *f { 1 } else { 0 })
+            .enumerate()
+            .map(|(i, n)| (n << (i + 4)) as u8)
+            .sum()
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum SpecialRegister {
     WordRegister(ByteRegister, ByteRegister),

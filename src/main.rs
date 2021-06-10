@@ -35,6 +35,8 @@ fn main() {
         mem: MemoryMap::new(),
         vram: [0; 2 * 8 * 1024],
         rom: std::fs::read(rom).unwrap(),
+        ime_counter: -1,
+        ime: false
     };
     loop {
         let next_instruction = instruction_fetcher::fetch_instruction(&gameboy);

@@ -27,10 +27,18 @@ pub struct Gameboy {
     pub mem: MemoryMap,
     pub vram: [u8; 2 * 8 * 1024],
     pub rom: Vec<u8>,
+    pub ime_counter: i8,
+    pub ime: bool
+}
+
+trait Special { }
+
+impl Special for (ByteRegister, ByteRegister) {
+
 }
 
 impl Gameboy {
-    pub fn af(&self) -> SpecialRegister {
+    pub fn af(self) -> SpecialRegister {
         SpecialRegister::DoubleFlagRegister(self.a, self.f)
     }
     pub fn bc(&self) -> SpecialRegister {
@@ -308,12 +316,12 @@ pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
         0x03 => INC_R16(gb.bc()),
         0x13 => INC_R16(gb.de()),
         0x23 => INC_R16(gb.hl()),
-        0x33 => INC_SP(gb.sp),
+        0x33 => INC_SP,
 
         0x0B => DEC_R16(gb.bc()),
         0x1B => DEC_R16(gb.de()),
         0x2B => DEC_R16(gb.hl()),
-        0x3B => DEC_SP(gb.sp),
+        0x3B => DEC_SP,
 
         0xE8 => ADD_SP_E8(rom[pc + 1] as i8),
 
