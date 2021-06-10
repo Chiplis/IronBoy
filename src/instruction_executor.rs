@@ -7,6 +7,7 @@ use std::cmp::{min, max};
 
 pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameboy {
     println!("pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {}", gb.pc.0 + 1, gb.sp.value(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value());
+    //println!("pc: {}", gb.pc.0 + 1);
     gb.pc.0 += instruction.size() as u16;
     if gb.ime_counter == 0 {
         gb.ime_counter = -1;
@@ -183,8 +184,8 @@ pub fn execute_instruction(gb: &mut Gameboy, instruction: Instruction) -> &Gameb
         LD_A_N8(n) => gb.a.0 = n,
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
         LD_A_N16(n) => gb.a.0 = gb.mem[n],
-        LDH_A_N8(n) => gb.a.0 = gb.mem[n];,
-        LDH_N8_A(n) => gb.mem[n] = gb.a.0;,
+        LDH_A_N8(n) => gb.a.0 = gb.mem[n],
+        LDH_N8_A(n) => gb.mem[n] = gb.a.0,
         LDH_A_C => gb.a.0 = gb.mem[gb.c],
         LD_A_HLD => {
             gb.set_word_register(hl.value().wrapping_sub(1), gb.hl());

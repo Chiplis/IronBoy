@@ -32,9 +32,8 @@ fn main() {
         f: FlagRegister{z: true, n: false, h: true, c: true},
         sp: StackPointer(0xFFFE),
         pc: ProgramCounter(0x0100),
-        mem: MemoryMap::new(),
+        mem: MemoryMap::new(std::fs::read(rom).unwrap()),
         vram: [0; 2 * 8 * 1024],
-        rom: std::fs::read(rom).unwrap(),
         ime_counter: -1,
         ime: false
     };
