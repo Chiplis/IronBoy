@@ -14,6 +14,7 @@ enum RegisterOperand {
 
 #[derive(Clone)]
 pub struct Gameboy {
+    pub i: u32,
     pub a: ByteRegister,
     pub b: ByteRegister,
     pub c: ByteRegister,
@@ -104,7 +105,7 @@ impl Gameboy {
 }
 
 #[deny(unreachable_patterns)]
-pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
+pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
     let pc = gb.pc.0;
     let ram = &gb.mem;
     let opcode = ram[pc];
@@ -112,7 +113,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
     let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
     operands.insert(operands.len() - 1, RegisterOperand::HL);
     let operand_idx = ((opcode & 0x0F) % 8) as usize;
-    match opcode {
+    (opcode, match opcode {
         0xCB => {
             let cb_opcode = ram[pc + 1] as u8;
 
@@ -239,19 +240,19 @@ pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
 
         0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
             match operands[(opcode as usize - 4) / 8] {
-                RegisterOperand::HL => INC_HL,
+                RegisterOperand::HL => INC_R16(gb.hl()),
                 RegisterOperand::Byte(reg) => INC_R8(reg),
             }
         }
 
         0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
             match operands[(opcode as usize - 5) / 8] {
-                RegisterOperand::HL => DEC_HL,
+                RegisterOperand::HL => DEC_R16(gb.hl()),
                 RegisterOperand::Byte(reg) => DEC_R8(reg),
             }
         }
 
-        0x36 => LD_HL_N8(ram[pc + 1]),
+        0x36 => LDH_HL_N8(ram[pc + 1]),
 
         0x0A => LD_A_R16(gb.bc()),
         0x1A => LD_A_R16(gb.de()),
@@ -314,12 +315,12 @@ pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
         0x03 => INC_R16(gb.bc()),
         0x13 => INC_R16(gb.de()),
         0x23 => INC_R16(gb.hl()),
-        0x33 => INC_SP,
+        0x33 => INC_R16(gb.sp),
 
         0x0B => DEC_R16(gb.bc()),
         0x1B => DEC_R16(gb.de()),
         0x2B => DEC_R16(gb.hl()),
-        0x3B => DEC_SP,
+        0x3B => DEC_R16(gb.sp),
 
         0xE8 => ADD_SP_E8(ram[pc + 1] as i8),
 
@@ -398,5 +399,5 @@ pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
         0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
             panic!("P: {}, C: {}, N: {}", ram[pc - 1], opcode, ram[pc + 1])
         }
-    }
+    })
 }

@@ -2,10 +2,14 @@ use std::ops::{Index, IndexMut};
 use crate::register::{SpecialRegister, ByteRegister};
 use crate::memory_map::GpuRegisterId::LcdControl;
 use std::fmt::Display;
+use crate::instruction::{Interrupt, InterruptId};
+use crate::instruction::InterruptId::{VBlank, Joypad, Serial, Timer, STAT};
+use std::convert::TryInto;
 
 #[derive(Clone)]
 pub struct MemoryMap {
     memory: [u8; 0x10000],
+    pub(crate) interrupts: [Interrupt; 5]
 }
 
 impl Index<u16> for MemoryMap {
@@ -24,6 +28,13 @@ impl Index<SpecialRegister> for MemoryMap {
 
 impl IndexMut<SpecialRegister> for MemoryMap {
     fn index_mut(&mut self, index: SpecialRegister) -> &mut Self::Output { self.get_mut(index.value()) }
+}
+
+impl Index<InterruptId> for MemoryMap {
+    type Output = Interrupt;
+    fn index(&self, id: InterruptId) -> &Self::Output {
+        self.interrupts.iter().find(|i| i.id == id).unwrap()
+    }
 }
 
 impl Index<ByteRegister> for MemoryMap {
@@ -55,13 +66,34 @@ struct GPU {
     scroll_y: GpuRegister,
     scroll_x: GpuRegister,
     scan_line: GpuRegister,
-    background: GpuRegister
+    background: GpuRegister,
+}
+
+impl Interrupt {
+    const IE_ADDRESS: u16 = 0xFFFF;
+    const IF_ADDRESS: u16 = 0xFF0F;
+
+    pub fn handler(mem: &[u8; 0x10000]) -> [Interrupt; 5] {
+        [
+            Interrupt { mem: *mem, id: VBlank, mask: 0x01 },
+            Interrupt { mem: *mem, id: STAT, mask: 0x02 },
+            Interrupt { mem: *mem, id: Timer, mask: 0x04 },
+            Interrupt { mem: *mem, id: Serial, mask: 0x08 },
+            Interrupt { mem: *mem, id: Joypad, mask: 0x10 },
+        ]
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.mem[Interrupt::IE_ADDRESS as usize] & self.mem[Interrupt::IF_ADDRESS as usize] & self.mask != 0
+    }
+
 }
 
 impl MemoryMap {
+
     pub fn new(rom: Vec<u8>) -> Self {
         let mut memory: [u8; 0x10000] = [0; 0x10000];
-        let mut mem = MemoryMap { memory };
+        let mut mem = MemoryMap { memory, interrupts: Interrupt::handler(&memory) };
         mem[0xFF05_u16] = 0;
         mem[0xFF06_u16] = 0;
         mem[0xFF07_u16] = 0;
@@ -101,22 +133,17 @@ impl MemoryMap {
         //println!("Reading address {} with value {}", address.into(), self.memory[address.into()]);
         &self.memory[address.into()]
     }
+
     fn get_mut<T: Into<usize> + Display + Copy>(&mut self, address: T) -> &mut u8 {
         //println!("Writing address {}", address.into());
         &mut self.memory[address.into()]
     }
-}
 
-#[test]
-fn test_echo_rw() {
-    let mem = &mut MemoryMap::new();
-    let content = 0x42;
-    let address = 0xDDFF;
-    let echo_address = 0xFDFF;
-
-    mem[address] = content;
-    assert_eq!(mem[address], mem[echo_address]);
-    mem[echo_address] = content + 1;
-    assert_ne!(mem[address], content);
-    assert_eq!(mem[address], mem[echo_address]);
+    pub fn set_interrupt(&mut self, interrupt: InterruptId, set: bool) {
+        if set {
+            self[Interrupt::IF_ADDRESS] |= self[interrupt].mask;
+        } else {
+            self[Interrupt::IF_ADDRESS] &= !self[interrupt].mask;
+        }
+    }
 }
