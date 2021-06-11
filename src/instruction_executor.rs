@@ -6,17 +6,15 @@ use crate::register::SpecialRegister::StackPointer;
 use std::cmp::{min, max};
 use crate::instruction::InterruptId::{VBlank, STAT, Timer, Serial, Joypad};
 
+#[deny(unreachable_patterns)]
 pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction)) -> &Gameboy {
-    gb.i += 1;
     println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {}", op, gb.pc.0 + 1, gb.sp.value(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value());
-
-    //println!("pc: {}", gb.pc.0 + 1);
-    if gb.i >= 12335 {}
 
     if handle_interrupts(gb) { return gb; };
 
     gb.pc.0 += instruction.size() as u16;
     let hl = gb.hl();
+    let mut condition = true;
     match instruction {
         NOP => {}
 
@@ -213,28 +211,13 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.mem[gb.sp] = lo;
             gb.pc.0 = n;
         }
-        CALL_CC_N16(cc, n) => if gb.cc_flag(cc) {
-            let [lo, hi] = gb.pc.0.to_le_bytes();
-            gb.sp = StackPointer(gb.sp.value() - 1);
-            gb.mem[gb.sp] = hi;
-            gb.sp = StackPointer(gb.sp.value() - 1);
-            gb.mem[gb.sp] = lo;
-            gb.pc.0 = n;
-        }
+
         JP_HL => gb.pc.0 = gb.hl().value(),
         JP_N16(n) => gb.pc.0 = n,
-        JP_CC_N16(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = n }
         JR_E8(n) => gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16,
-        JR_CC_E8(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16 }
         CPL => {
             gb.a.0 = !gb.a.0;
             gb.set_flags(gb.f.z, true, true, gb.f.c);
-        }
-        RET_CC(cc) => {
-            if gb.cc_flag(cc) {
-                gb.pc.0 = gb.sp.value();
-                gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
-            }
         }
         RET => {
             let [lo, hi] = gb.sp.value().to_le_bytes();
@@ -347,8 +330,28 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.f.h = false;
             gb.f.c = true;
         }
+
+        RET_CC(cc) => if gb.cc_flag(cc) {
+            gb.pc.0 = gb.sp.value();
+            gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
+        } else { condition = false }
+
+        JP_CC_N16(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = n; } else { condition = false }
+
+        JR_CC_E8(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16; } else { condition = false }
+
+        CALL_CC_N16(cc, n) => if gb.cc_flag(cc) {
+            let [lo, hi] = gb.pc.0.to_le_bytes();
+            gb.sp = StackPointer(gb.sp.value() - 1);
+            gb.mem[gb.sp] = hi;
+            gb.sp = StackPointer(gb.sp.value() - 1);
+            gb.mem[gb.sp] = lo;
+            gb.pc.0 = n;
+        } else { condition = false }
+
         STOP => {}
     };
+    gb.i += instruction.cycles(condition) as u32;
     gb.ime_counter -= 1;
     return gb;
 }

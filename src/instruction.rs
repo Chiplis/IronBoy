@@ -200,7 +200,6 @@ impl Instruction {
             OR_A_HL => 2,
             CP_A_R8(..) => 1,
             CP_A_HL => 2,
-            RET_CC(..) => 5 / 2,
             POP_R16(..) => 3,
             JP_N16(..) => 4,
             PUSH_R16(..) => 4,
@@ -225,11 +224,10 @@ impl Instruction {
             RLC_HL | RRC_HL | SLA_HL | SWAP_HL | BIT_U3_HL(..) | SRL_HL |
             RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
 
-
             JR_CC_E8(..) => if condition { 3 } else { 2 },
             JP_CC_N16(..) => if condition { 4 } else { 3 },
+            RET_CC(..) => if condition { 5 } else { 2 },
             CALL_CC_N16(..) => if condition { 6 } else { 3 },
-
         }
     }
 }
