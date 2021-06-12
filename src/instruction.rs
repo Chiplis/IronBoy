@@ -95,7 +95,6 @@ pub enum Instruction {
     RST(RstVec),
     ADD_HL_SP,
     ADD_SP_E8(i8),
-    LD_SP_N16(u16),
     LD_N16_SP(u16),
     LD_HL_SP_E8(i8),
     LD_SP_HL,
@@ -125,7 +124,7 @@ impl Instruction {
             LDH_A_N8(_) | LDH_N8_A(_) | ADD_SP_E8(_) | LD_HL_SP_E8(_) => 2,
 
             LDH_N16_A(_) | LD_A_N16(_) | LD_R16_N16(..) | CALL_N16(_) | CALL_CC_N16(..) |
-            JP_N16(_) | JP_CC_N16(..) | LD_SP_N16(_) | LD_N16_SP(_) => 3,
+            JP_N16(_) | JP_CC_N16(..) | LD_N16_SP(_) => 3,
             _ => 1
         }
     }
@@ -144,8 +143,8 @@ impl Instruction {
             SRL_R8(..) | OR_A_N8(..) | XOR_A_N8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
             ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A => 2,
 
-            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) | LD_SP_N16(..) |
-            POP_AF | DECH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
+            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) | POP_AF |
+            DECH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
 
             LDH_N16_A(..) | PUSH_AF | RETI | RET | JP_N16(..) | PUSH_R16(..) |
             ADD_SP_E8(..) | RST(..) | LD_A_N16(..) | RLC_R8(..) | RRC_R8(..) |

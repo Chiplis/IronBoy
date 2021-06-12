@@ -250,8 +250,6 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_flags(false, false, half_carry, carry);
             gb.set_word_register(add, if let ADD_SP_E8(n) = instruction { gb.sp } else { gb.hl() })
         }
-
-        LD_SP_N16(n) => gb.set_word_register(n, gb.sp),
         LD_N16_SP(n) => {
             let [lo, hi] = gb.sp.value().to_le_bytes();
             gb.mem[n] = lo;

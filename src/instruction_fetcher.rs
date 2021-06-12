@@ -282,7 +282,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0x01 => LD_R16_N16(gb.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
         0x11 => LD_R16_N16(gb.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
         0x21 => LD_R16_N16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x31 => LD_SP_N16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x31 => LD_R16_N16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF9 => LD_SP_HL,
         0xF8 => LD_HL_SP_E8(ram[pc + 1] as i8),
@@ -311,7 +311,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0x09 => ADD_HL_R16(gb.bc()),
         0x19 => ADD_HL_R16(gb.de()),
         0x29 => ADD_HL_R16(gb.hl()),
-        0x39 => ADD_HL_SP,
+        0x39 => ADD_HL_R16(gb.sp),
 
         0x03 => INC_R16(gb.bc()),
         0x13 => INC_R16(gb.de()),
