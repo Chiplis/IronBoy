@@ -1,4 +1,4 @@
-use crate::register::{Bit, ConditionCode, ByteRegister, SpecialRegister};
+use crate::register::{Bit, ConditionCode, ByteRegister, WordRegister};
 use Instruction::*;
 use crate::memory_map::MemoryMap;
 
@@ -32,9 +32,9 @@ pub enum Instruction {
     XOR_A_R8(ByteRegister),
     XOR_A_HL,
     XOR_A_N8(u8),
-    ADD_HL_R16(SpecialRegister),
-    DEC_R16(SpecialRegister),
-    INC_R16(SpecialRegister),
+    ADD_HL_R16(WordRegister),
+    DEC_R16(WordRegister),
+    INC_R16(WordRegister),
     BIT_U3_R8(Bit, ByteRegister),
     BIT_U3_HL(Bit),
     RES_U3_R8(Bit, ByteRegister),
@@ -63,16 +63,16 @@ pub enum Instruction {
     SRL_HL,
     LD_R8_R8(ByteRegister, ByteRegister),
     LD_R8_N8(ByteRegister, u8),
-    LD_R16_N16(SpecialRegister, u16),
+    LD_R16_N16(WordRegister, u16),
     LD_HL_R8(ByteRegister),
     LD_HL_N8(u8),
     LD_R8_HL(ByteRegister),
-    LD_R16_A(SpecialRegister),
+    LD_R16_A(WordRegister),
     LDH_N16_A(u16),
     LD_N8_A(u8),
     LDH_N8_A(u8),
     LDH_C_A,
-    LD_A_R16(SpecialRegister),
+    LD_A_R16(WordRegister),
     LD_A_N8(u8),
     LD_A_N16(u16),
     LDH_A_N8(u8),
@@ -100,9 +100,9 @@ pub enum Instruction {
     LD_HL_SP_E8(i8),
     LD_SP_HL,
     POP_AF,
-    POP_R16(SpecialRegister),
+    POP_R16(WordRegister),
     PUSH_AF,
-    PUSH_R16(SpecialRegister),
+    PUSH_R16(WordRegister),
     CCF,
     CPL,
     DAA,
@@ -133,96 +133,29 @@ impl Instruction {
     #[deny(unreachable_patterns)]
     pub fn cycles(&self, condition: bool) -> u8 {
         match self {
-            NOP => 1,
-            RRCA => 1,
-            STOP => 1,
-            RLA => 1,
-            RRA => 1,
-            LD_HLI_A => 2,
-            DAA => 1,
-            LD_A_HLI => 2,
-            CPL => 1,
-            RLCA => 1,
-            LD_HLD_A => 2,
-            SCF => 1,
-            ADD_HL_SP => 2,
-            LD_A_HLD => 2,
-            CCF => 1,
-            HALT => 1,
-            ADD_A_HL => 2,
-            ADC_A_HL => 2,
-            SBC_A_HL => 2,
-            RETI => 4,
-            RET => 4,
-            DI => 1,
-            PUSH_AF => 4,
-            EI => 1,
-            LD_SP_HL => 2,
-            POP_AF => 3,
-            JP_HL => 1,
-            LD_R16_N16(..) => 3,
-            LD_R16_A(..) => 2,
-            INC_R16(..) => 2,
-            INC_R8(..) => 1,
-            DEC_R8(..) => 1,
-            LD_R8_N8(..) => 2,
+            DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
+            DEC_R8(..) | AND_A_N8(..) | LD_R8_R8(..) | ADD_A_R8(..) | SUB_A_R8(..) |
+            SBC_A_R8(..) | AND_A_R8(..) | XOR_A_R8(..) | OR_A_R8(..) | CP_A_R8(..) |
+            NOP | RRCA | STOP | RLA | RRA => 1,
+
+            CP_A_HL | INC_R16(..) | LD_SP_HL | LD_R8_N8(..) | XOR_A_HL | AND_A_HL | LD_HL_R8(..) |
+            ADC_A_R8(..) | LD_A_N8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_N8(..) |
+            SUB_A_N8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_N8(..) | ADD_A_N8(..) | CP_A_N8(..) |
+            SRL_R8(..) | OR_A_N8(..) | XOR_A_N8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
+            ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A => 2,
+
+            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) | LD_SP_N16(..) |
+            POP_AF | DECH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
+
+            LDH_N16_A(..) | PUSH_AF | RETI | RET | JP_N16(..) | PUSH_R16(..) |
+            ADD_SP_E8(..) | RST(..) | LD_A_N16(..) | RLC_R8(..) | RRC_R8(..) |
+            SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | RES_U3_R8(..) | SET_U3_R8(..) |
+            RL_R8(..) | RR_R8(..) | SRA_R8(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |
+            BIT_U3_HL(..) | SRL_HL | RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
+
             LD_N16_SP(..) => 5,
-            ADD_HL_R16(..) => 2,
-            LD_A_R16(..) => 2,
-            DEC_R16(..) => 2,
-            ADC_A_N8(..) => 2,
-            AND_A_N8(..) => 1,
-            JR_E8(..) => 3,
-            LDH_N16_A(..) => 4,
-            LDH_N8_A(..) => 3,
-            LD_SP_N16(..) => 3,
 
-            DECH_HL => 3,
-            LDH_HL_N8(..) => 3,
-
-            LD_A_N8(..) => 2,
-
-            LD_R8_R8(..) => 1,
-            LD_R8_HL(..) => 2,
-            LD_HL_R8(..) => 2,
-            ADD_A_R8(..) => 1,
-            ADC_A_R8(..) => 2,
-            SUB_A_R8(..) => 1,
-            SUB_A_HL => 2,
-            LD_HL_SP_E8(..) => 3,
-
-            SBC_A_R8(..) => 1,
-            AND_A_R8(..) => 1,
-            AND_A_HL => 2,
-            XOR_A_R8(..) => 1,
-            XOR_A_HL => 2,
-            OR_A_R8(..) => 1,
-            OR_A_HL => 2,
-            CP_A_R8(..) => 1,
-            CP_A_HL => 2,
-            POP_R16(..) => 3,
-            JP_N16(..) => 4,
-            PUSH_R16(..) => 4,
             CALL_N16(..) => 6,
-            SUB_A_N8(..) => 2,
-            LDH_A_N8(..) => 3,
-            LDH_C_A => 2,
-            LDH_A_C => 2,
-            SBC_A_N8(..) => 2,
-            LD_N8_A(..) => 3,
-            ADD_SP_E8(..) => 4,
-            RST(..) => 4,
-            LD_A_N16(..) => 4,
-            ADD_A_N8(..) => 2,
-            CP_A_N8(..) => 2,
-            OR_A_N8(..) => 2,
-            XOR_A_N8(..) => 2,
-            LD_HL_N8(..) => 3,
-            RLC_R8(..) | RRC_R8(..) | SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) |
-            RES_U3_R8(..) | SET_U3_R8(..) | RL_R8(..) | RR_R8(..) | SRA_R8(..) |
-            SRL_R8(..) => 2,
-            RLC_HL | RRC_HL | SLA_HL | SWAP_HL | BIT_U3_HL(..) | SRL_HL |
-            RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
 
             JR_CC_E8(..) => if condition { 3 } else { 2 },
             JP_CC_N16(..) => if condition { 4 } else { 3 },
@@ -231,7 +164,6 @@ impl Instruction {
         }
     }
 }
-
 
 #[derive(Copy, Clone, Debug)]
 pub enum RstVec {

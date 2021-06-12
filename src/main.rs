@@ -4,7 +4,7 @@ use crate::instruction_fetcher::{fetch_instruction, Gameboy};
 use crate::register::{FlagRegister, ProgramCounter, RegisterId, ByteRegister};
 use std::{thread, time, env};
 use crate::memory_map::MemoryMap;
-use crate::register::SpecialRegister::StackPointer;
+use crate::register::WordRegister::StackPointer;
 use minifb::{Key, WindowOptions, Window};
 
 mod instruction_fetcher;

@@ -1,5 +1,5 @@
 use std::ops::{Index, IndexMut};
-use crate::register::{SpecialRegister, ByteRegister};
+use crate::register::{WordRegister, ByteRegister};
 use crate::memory_map::GpuRegisterId::LcdControl;
 use std::fmt::Display;
 use crate::instruction::{Interrupt, InterruptId};
@@ -21,13 +21,13 @@ impl IndexMut<u16> for MemoryMap {
     fn index_mut(&mut self, index: u16) -> &mut Self::Output { self.get_mut(index) }
 }
 
-impl Index<SpecialRegister> for MemoryMap {
+impl Index<WordRegister> for MemoryMap {
     type Output = u8;
-    fn index(&self, index: SpecialRegister) -> &Self::Output { self.get(index.value()) }
+    fn index(&self, index: WordRegister) -> &Self::Output { self.get(index.value()) }
 }
 
-impl IndexMut<SpecialRegister> for MemoryMap {
-    fn index_mut(&mut self, index: SpecialRegister) -> &mut Self::Output { self.get_mut(index.value()) }
+impl IndexMut<WordRegister> for MemoryMap {
+    fn index_mut(&mut self, index: WordRegister) -> &mut Self::Output { self.get_mut(index.value()) }
 }
 
 impl Index<InterruptId> for MemoryMap {

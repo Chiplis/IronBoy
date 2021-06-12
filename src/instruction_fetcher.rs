@@ -1,11 +1,12 @@
 use crate::Instruction;
-use crate::register::{Bit, SpecialRegister, RegisterId, FlagRegister, ProgramCounter, ByteRegister, ConditionCode};
+use crate::register::{Bit, WordRegister, RegisterId, FlagRegister, ProgramCounter, ByteRegister, ConditionCode};
 use crate::instruction::Instruction::*;
 use crate::instruction::RstVec;
 use crate::memory_map::MemoryMap;
-use crate::register::SpecialRegister::StackPointer;
+use crate::register::WordRegister::StackPointer;
 use std::iter::FromIterator;
 use std::ops::Div;
+use std::cmp::max;
 
 enum RegisterOperand {
     HL,
@@ -24,46 +25,44 @@ pub struct Gameboy {
     pub l: ByteRegister,
     pub f: FlagRegister,
     pub pc: ProgramCounter,
-    pub sp: SpecialRegister,
+    pub sp: WordRegister,
     pub mem: MemoryMap,
     pub vram: [u8; 2 * 8 * 1024],
     pub ime_counter: i8,
-    pub ime: bool
+    pub ime: bool,
 }
 
-trait Special { }
+trait Special {}
 
-impl Special for (ByteRegister, ByteRegister) {
-
-}
+impl Special for (ByteRegister, ByteRegister) {}
 
 impl Gameboy {
-    pub fn af(self) -> SpecialRegister {
-        SpecialRegister::DoubleFlagRegister(self.a, self.f)
+    pub fn af(self) -> WordRegister {
+        WordRegister::AccFlag(self.a, self.f)
     }
-    pub fn bc(&self) -> SpecialRegister {
-        SpecialRegister::WordRegister(self.b, self.c)
+    pub fn bc(&self) -> WordRegister {
+        WordRegister::Double(self.b, self.c)
     }
-    pub fn de(&self) -> SpecialRegister {
-        SpecialRegister::WordRegister(self.d, self.e)
-    }
-
-    pub fn hl(&self) -> SpecialRegister {
-        SpecialRegister::WordRegister(self.h, self.l)
+    pub fn de(&self) -> WordRegister {
+        WordRegister::Double(self.d, self.e)
     }
 
-    pub fn set_word_register(&mut self, value: u16, reg: SpecialRegister) {
+    pub fn hl(&self) -> WordRegister {
+        WordRegister::Double(self.h, self.l)
+    }
+
+    pub fn set_word_register(&mut self, value: u16, reg: WordRegister) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
-            SpecialRegister::DoubleFlagRegister(_, _) => {
+            WordRegister::AccFlag(_, _) => {
                 self.a.0 = hi;
                 self.set_flag(lo);
             }
-            SpecialRegister::WordRegister(a, b) => {
+            WordRegister::Double(a, b) => {
                 self.get_register(a.1).0 = hi;
                 self.get_register(b.1).0 = lo;
             }
-            SpecialRegister::StackPointer(_) => self.sp = StackPointer(value)
+            WordRegister::StackPointer(_) => self.sp = StackPointer(value)
         };
     }
 
@@ -110,9 +109,17 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
     let ram = &gb.mem;
     let opcode = ram[pc];
     let registers = [gb.b, gb.c, gb.d, gb.e, gb.h, gb.l, gb.a];
+
     let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
     operands.insert(operands.len() - 1, RegisterOperand::HL);
     let operand_idx = ((opcode & 0x0F) % 8) as usize;
+    let mut register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
+
+    if (0x77_u8..0x80_u8).contains(&opcode) {
+        operands.rotate_right(1);
+        register_idx -= 1;
+    }
+
     (opcode, match opcode {
         0xCB => {
             let cb_opcode = ram[pc + 1] as u8;
@@ -188,14 +195,9 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0x26 => LD_R8_N8(gb.h, ram[pc + 1]),
         0x2E => LD_R8_N8(gb.l, ram[pc + 1]),
 
-        0x40..=0x6F | 0x78..=0x7F  => match operands[operand_idx] {
-            RegisterOperand::HL => LD_R8_HL(registers[(opcode as usize- 0x40) / 8]),
-            RegisterOperand::Byte(reg) => LD_R8_R8(registers[(opcode as usize - 0x40) / 8], reg)
-        },
-
-        0x70..=0x75 => match operands[operand_idx] {
-            RegisterOperand::Byte(reg) => LD_HL_R8(reg),
-            _ => panic!("Should never use HL register for these opcodes."),
+        0x40..=0x75 | 0x77..=0x7F => match operands[operand_idx] {
+            RegisterOperand::HL => LD_R8_HL(registers[register_idx]),
+            RegisterOperand::Byte(reg) => LD_R8_R8(registers[register_idx], reg)
         },
 
         0x80..=0x87 => match operands[operand_idx] {
@@ -263,7 +265,6 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
 
         0x02 => LD_R16_A(gb.bc()),
         0x12 => LD_R16_A(gb.de()),
-        0x77 => LD_R16_A(gb.hl()),
 
         0xEA => LDH_N16_A(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
