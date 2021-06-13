@@ -24,10 +24,10 @@ pub struct Gameboy {
     pub f: FlagRegister,
     pub pc: ProgramCounter,
     pub sp: WordRegister,
-    pub mem: MemoryMap,
     pub vram: [u8; 2 * 8 * 1024],
     pub ime_counter: i8,
     pub ime: bool,
+    pub mem: MemoryMap,
 }
 
 trait Special {}
@@ -35,7 +35,7 @@ trait Special {}
 impl Special for (ByteRegister, ByteRegister) {}
 
 impl Gameboy {
-    pub fn af(self) -> WordRegister {
+    pub fn af(&self) -> WordRegister {
         WordRegister::AccFlag(self.a, self.f)
     }
     pub fn bc(&self) -> WordRegister {
@@ -119,10 +119,6 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         register_idx = (register_idx - 1) % 7 ;
     }
 
-    if opcode == 0x78 {
-        //println!("")
-    }
-
     (opcode, match opcode {
         0xCB => {
             let cb_opcode = ram[pc + 1] as u8;
@@ -130,8 +126,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
             let bit: usize = ((cb_opcode as usize % 0x40) >> 4) * 2 + if cb_opcode & 0x0F > 7 { 1 } else { 0 };
             if bit > 7 { panic!("Bit parsing is failing: {}.", bit) };
 
-            let set = [128, 64, 32, 16, 8, 4, 2, 1];
-            let res = [127, 191, 223, 239, 247, 251, 253, 254];
+            let mask = [1, 2, 4, 8, 16, 32, 64, 128];
             let bit_idx = ((cb_opcode & 0x0F) % 8) as usize;
 
             match cb_opcode {
@@ -175,18 +170,18 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
                     RegisterOperand::Byte(reg) => SRL_R8(reg),
                 },
                 0x40..=0x7F => match operands[bit_idx] {
-                    RegisterOperand::HL => BIT_U3_HL(Bit(set[bit])),
-                    RegisterOperand::Byte(reg) => BIT_U3_R8(Bit(set[bit]), reg)
+                    RegisterOperand::HL => BIT_U3_HL(Bit(mask[bit])),
+                    RegisterOperand::Byte(reg) => BIT_U3_R8(Bit(mask[bit]), reg)
                 },
 
                 0x80..=0xBF => match operands[bit_idx] {
-                    RegisterOperand::HL => RES_U3_HL(Bit(res[bit])),
-                    RegisterOperand::Byte(reg) => RES_U3_R8(Bit(res[bit]), reg),
+                    RegisterOperand::HL => RES_U3_HL(Bit(mask[bit])),
+                    RegisterOperand::Byte(reg) => RES_U3_R8(Bit(mask[bit]), reg),
                 },
 
                 0xC0..=0xFF => match operands[bit_idx] {
-                    RegisterOperand::HL => SET_U3_HL(Bit(set[bit])),
-                    RegisterOperand::Byte(reg) => SET_U3_R8(Bit(set[bit]), reg),
+                    RegisterOperand::HL => SET_U3_HL(Bit(mask[bit])),
+                    RegisterOperand::Byte(reg) => SET_U3_R8(Bit(mask[bit]), reg),
                 },
             }
         }
@@ -245,7 +240,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
 
         0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
             match operands[(opcode as usize - 4) / 8] {
-                RegisterOperand::HL => INC_R16(gb.hl()),
+                RegisterOperand::HL => INCH_HL,
                 RegisterOperand::Byte(reg) => INC_R8(reg),
             }
         }
@@ -297,10 +292,10 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0xD5 => PUSH_R16(gb.de()),
         0xE5 => PUSH_R16(gb.hl()),
 
-        0xF1 => POP_AF,
         0xC1 => POP_R16(gb.bc()),
         0xD1 => POP_R16(gb.de()),
         0xE1 => POP_R16(gb.hl()),
+        0xF1 => POP_R16(gb.af()),
 
         0xC6 => ADD_A_N8(ram[pc + 1]),
         0xCE => ADC_A_N8(ram[pc + 1]),

@@ -1,6 +1,7 @@
-use crate::register::{Bit, ConditionCode, ByteRegister, WordRegister};
 use Instruction::*;
+
 use crate::memory_map::MemoryMap;
+use crate::register::{Bit, ByteRegister, ConditionCode, WordRegister};
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
@@ -19,6 +20,7 @@ pub enum Instruction {
     CP_A_N8(u8),
     DEC_R8(ByteRegister),
     DECH_HL,
+    INCH_HL,
     INC_R8(ByteRegister),
     OR_A_R8(ByteRegister),
     OR_A_HL,
@@ -98,7 +100,6 @@ pub enum Instruction {
     LD_N16_SP(u16),
     LD_HL_SP_E8(i8),
     LD_SP_HL,
-    POP_AF,
     POP_R16(WordRegister),
     PUSH_AF,
     PUSH_R16(WordRegister),
@@ -143,8 +144,8 @@ impl Instruction {
             SRL_R8(..) | OR_A_N8(..) | XOR_A_N8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
             ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A => 2,
 
-            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) | POP_AF |
-            DECH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
+            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) |
+            DECH_HL | INCH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
 
             LDH_N16_A(..) | PUSH_AF | RETI | RET | JP_N16(..) | PUSH_R16(..) |
             ADD_SP_E8(..) | RST(..) | LD_A_N16(..) | RLC_R8(..) | RRC_R8(..) |
@@ -174,21 +175,4 @@ pub enum RstVec {
     X28 = 0x28,
     X30 = 0x30,
     X38 = 0x38,
-}
-
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum InterruptId {
-    VBlank = 0x40,
-    STAT = 0x48,
-    Timer = 0x50,
-    Serial = 0x58,
-    Joypad = 0x60,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Interrupt {
-    pub id: InterruptId,
-    pub mask: u8,
-    pub mem: [u8; 0x10000],
 }

@@ -29,6 +29,13 @@ impl FlagRegister {
             .map(|(i, n)| (n << (i + 4)) as u8)
             .sum()
     }
+
+    pub fn set(&mut self, v: u8) {
+        self.z = 0x80 & v != 0;
+        self.n = 0x40 & v != 0;
+        self.h = 0x20 & v != 0;
+        self.c = 0x10 & v != 0;
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

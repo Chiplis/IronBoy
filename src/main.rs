@@ -13,6 +13,7 @@ mod register;
 mod instruction_executor;
 mod memory_map;
 mod ppu;
+mod interrupt;
 
 fn execute(gameboy: Gameboy, instruction: Instruction) -> Gameboy {
     match instruction {

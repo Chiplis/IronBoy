@@ -1,5 +1,5 @@
 use crate::memory_map::MemoryMap;
-use std::ops::{Index, Range, IndexMut};
+use std::ops::{Index, Range, IndexMut, RangeInclusive};
 use crate::ppu::PpuState::{PixelTransfer, HBlank, VBlank, OamSearch};
 use std::cmp::max;
 
@@ -13,9 +13,14 @@ struct PpuRegister(PpuRegisterAddress, u8, PpuRegisterId, PpuRegisterAccess);
 
 #[deny(unreachable_patterns)]
 impl MemoryRegion for PPU {
-    fn regions(&self) -> Vec<Range<u16>> { vec![(0x8000..0xA000), (0xFE00..0xFEA0), (0xFF40..0xFF4C)] }
 
-    fn invalid_read_mut(&mut self) -> &mut u8 { &mut self.invalid[0] }
+    fn sub_regions(&self) -> Vec<RangeInclusive<u16>> {
+        vec![
+            (0x8000..=0x9FFF),
+            (0xFE00..=0xFE9F),
+            (0xFF40..=0xFF4B)
+        ]
+    }
 
     fn read(&self, address: u16) -> &u8 {
         match address {
@@ -24,7 +29,11 @@ impl MemoryRegion for PPU {
             (0x9000..=0x97FF) => &self.tile_block_c[(address - 0x9000) as usize],
             (0x9800..=0x9BFF) => &self.tile_map_a[(address - 0x9800) as usize],
             (0x9C00..=0x9FFF) => &self.tile_map_b[(address - 0x9C00) as usize],
-            (0xFE00..=0xFE9F) => &self.oam[(address - 0xFE00) as usize],
+
+            (0xFE00..=0xFE9F) => if self.state == OamSearch || self.state == PixelTransfer {
+                &self.invalid[0]
+            } else { &self.oam[(address - 0xFE00) as usize] },
+
             (0xFF40..=0xFF4B) => &self.registers[(address - 0xFF40) as usize],
             _ => panic!()
         }
@@ -37,22 +46,27 @@ impl MemoryRegion for PPU {
             (0x9000..=0x97FF) => &mut self.tile_block_c[(address - 0x9000) as usize],
             (0x9800..=0x9BFF) => &mut self.tile_map_a[(address - 0x9800) as usize],
             (0x9C00..=0x9FFF) => &mut self.tile_map_b[(address - 0x9C00) as usize],
-            (0xFE00..=0xFE9F) => &mut self.oam[(address - 0xFE00) as usize],
+
+            (0xFE00..=0xFE9F) => if self.state == OamSearch || self.state == PixelTransfer {
+                self.invalid[0] = 0x99;
+                &mut self.invalid[0]
+            } else { &mut self.oam[(address - 0xFE00) as usize] },
+
             (0xFF40..=0xFF4B) => &mut self.registers[(address - 0xFF40) as usize],
+
             _ => panic!()
         }
     }
 }
 
 pub trait MemoryRegion {
-    fn regions(&self) -> Vec<Range<u16>>;
-    fn invalid_read(&self) -> &u8 { &0xFF }
-    fn invalid_read_mut(&mut self) -> &mut u8;
+    fn sub_regions(&self) -> Vec<RangeInclusive<u16>>;
     fn read(&self, address: u16) -> &u8;
     fn read_mut(&mut self, address: u16) -> &mut u8;
 }
 
-enum PpuState {
+#[derive(PartialEq, Copy, Clone)]
+pub enum PpuState {
     OamSearch,
     PixelTransfer,
     HBlank,
@@ -74,9 +88,16 @@ pub(crate) struct PPU {
     ticks: u16,
 }
 
+#[derive(Copy, Clone)]
+pub enum RenderResult {
+    StateChange(PpuState, PpuState),
+    ProcessingState(PpuState)
+}
+
+
 impl PPU {
     pub fn new() -> Self {
-        PPU{
+        PPU {
             pixels_processed: 0,
             state: PpuState::OamSearch,
             tile_block_a: [0; 2048],
@@ -87,17 +108,19 @@ impl PPU {
             oam: [0; 160],
             registers: [0; 12],
             tick_count: 0,
-            invalid: [0; 1],
+            invalid: [0xFF; 1],
             ticks: 0,
         }
     }
 
     pub fn line(&mut self) -> &mut u8 { self.read_mut(0xFF44) }
 
-    pub fn render_cycle(&mut self, cpu_cycles: u8) {
+
+    pub fn render_cycle(&mut self, cpu_cycles: u8) -> RenderResult {
         self.ticks += (cpu_cycles as u16 * 4);
         *self.line() %= 154;
-        return self.ticks -= match self.state {
+        let old_state = self.state;
+        self.ticks -= match self.state {
             PpuState::OamSearch => if self.ticks < 80 { 0 } else {
                 self.state = PixelTransfer;
                 80
@@ -109,7 +132,7 @@ impl PPU {
             }
             PpuState::HBlank => if self.ticks < 204 { 0 } else {
                 *self.line() += 1;
-                self.state = if *self.line() < 144 { OamSearch } else { VBlank  };
+                self.state = if *self.line() < 144 { OamSearch } else { VBlank };
                 204
             }
             PpuState::VBlank => if self.ticks < 204 + 172 + 80 { 0 } else {
@@ -118,5 +141,7 @@ impl PPU {
                 204 + 172 + 80
             }
         };
+        if old_state == self.state { RenderResult::ProcessingState(self.state) }
+        else { RenderResult::StateChange(old_state, self.state) }
     }
 }
