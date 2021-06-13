@@ -112,7 +112,7 @@ pub enum Instruction {
     SCF,
     STOP,
 }
-
+#[deny(unreachable_patterns)]
 impl Instruction {
     pub fn size(&self) -> u8 {
         match self {
@@ -121,7 +121,7 @@ impl Instruction {
             SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(_) | SWAP_HL | RL_R8(_) | RL_HL | RLC_R8(_) |
             RLC_HL | RR_R8(_) | RR_HL | RRC_R8(_) | RRC_HL | SLA_R8(_) | SLA_HL | SRA_R8(_) |
             SRA_HL | SRL_R8(_) | SRL_HL | LD_R8_N8(..) | LD_HL_N8(..) | JR_E8(_) | JR_CC_E8(..) |
-            LDH_A_N8(_) | LDH_N8_A(_) | ADD_SP_E8(_) | LD_HL_SP_E8(_) => 2,
+            LDH_A_N8(_) | LDH_N8_A(_) | ADD_SP_E8(_) | LD_HL_SP_E8(_) | LDH_HL_N8(..) => 2,
 
             LDH_N16_A(_) | LD_A_N16(_) | LD_R16_N16(..) | CALL_N16(_) | CALL_CC_N16(..) |
             JP_N16(_) | JP_CC_N16(..) | LD_N16_SP(_) => 3,

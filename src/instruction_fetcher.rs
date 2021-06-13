@@ -110,12 +110,17 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
 
     let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
     operands.insert(operands.len() - 1, RegisterOperand::HL);
-    let operand_idx = ((opcode & 0x0F) % 8) as usize;
+    let mut operand_idx = ((opcode & 0x0F) % 8) as usize;
     let mut register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
 
     if (0x77_u8..0x80_u8).contains(&opcode) {
         operands.rotate_right(1);
-        register_idx -= 1;
+        operand_idx = (operand_idx + 1) % operands.len();
+        register_idx = (register_idx - 1) % 7 ;
+    }
+
+    if opcode == 0x78 {
+        //println!("")
     }
 
     (opcode, match opcode {
@@ -280,7 +285,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0x01 => LD_R16_N16(gb.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
         0x11 => LD_R16_N16(gb.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
         0x21 => LD_R16_N16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x31 => LD_R16_N16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x31 => LD_R16_N16(gb.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF9 => LD_SP_HL,
         0xF8 => LD_HL_SP_E8(ram[pc + 1] as i8),

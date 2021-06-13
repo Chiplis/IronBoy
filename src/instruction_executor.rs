@@ -183,12 +183,8 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         LD_A_N8(n) => gb.a.0 = n,
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
         LD_A_N16(n) => gb.a.0 = gb.mem[n],
-        LDH_A_N8(n) => {
-            gb.a.0 = gb.mem[n];
-        },
-        LDH_N8_A(n) => {
-            gb.mem[n] = gb.a.0;
-        },
+        LDH_A_N8(n) => gb.a.0 = gb.mem[n],
+        LDH_N8_A(n) => gb.mem[n] = gb.a.0,
         LDH_HL_N8(n) => gb.mem[hl] = n,
         LDH_A_C => gb.a.0 = gb.mem[gb.c],
         LD_A_HLD => {
@@ -224,12 +220,14 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_flags(gb.f.z, true, true, gb.f.c);
         }
         RET => {
-            let [lo, hi] = gb.sp.value().to_le_bytes();
+            let lo = gb.mem[gb.sp.value()];
+            let hi = gb.mem[gb.sp.value().wrapping_add(1)];
             gb.pc.0 = u16::from_le_bytes([lo, hi]);
             gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
         }
         RETI => {
-            let [lo, hi] = gb.sp.value().to_le_bytes();
+            let lo = gb.mem[gb.sp.value()];
+            let hi = gb.mem[gb.sp.value().wrapping_add(1)];
             gb.pc.0 = u16::from_le_bytes([lo, hi]);
             gb.set_word_register(gb.sp.value().wrapping_add(2), gb.sp);
             gb.ime_counter = 0;
