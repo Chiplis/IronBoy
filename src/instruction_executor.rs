@@ -7,10 +7,10 @@ use std::cmp::{min, max};
 use crate::instruction::InterruptId::{VBlank, STAT, Timer, Serial, Joypad};
 
 #[deny(unreachable_patterns)]
-pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction)) -> &Gameboy {
+pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction)) -> u8 {
     println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {}", op, gb.pc.0 + 1, gb.sp.value(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value());
 
-    if handle_interrupts(gb) { return gb; };
+    if handle_interrupts(gb) { return 4 };
 
     gb.pc.0 += instruction.size() as u16;
     let hl = gb.hl();
@@ -103,8 +103,8 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_flags(gb.f.z, false, hc, carry);
         }
         DECH_HL => { gb.mem[hl] -= 1 }
-        DEC_R16(reg) => gb.set_word_register(reg.value() - 1, reg),
-        INC_R16(reg) => gb.set_word_register(reg.value() + 1, reg),
+        DEC_R16(reg) => gb.set_word_register(reg.value().wrapping_sub(1), reg),
+        INC_R16(reg) => gb.set_word_register(reg.value().wrapping_add(1), reg),
         BIT_U3_R8(_, _) | BIT_U3_HL(_) | RES_U3_R8(_, _) |
         RES_U3_HL(_) | SET_U3_R8(_, _) | SET_U3_HL(_) => {
             match instruction {
@@ -183,8 +183,12 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         LD_A_N8(n) => gb.a.0 = n,
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
         LD_A_N16(n) => gb.a.0 = gb.mem[n],
-        LDH_A_N8(n) => gb.a.0 = gb.mem[n],
-        LDH_N8_A(n) => gb.mem[n] = gb.a.0,
+        LDH_A_N8(n) => {
+            gb.a.0 = gb.mem[n];
+        },
+        LDH_N8_A(n) => {
+            gb.mem[n] = gb.a.0;
+        },
         LDH_HL_N8(n) => gb.mem[hl] = n,
         LDH_A_C => gb.a.0 = gb.mem[gb.c],
         LD_A_HLD => {
@@ -349,9 +353,8 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
 
         STOP => {}
     };
-    gb.i += instruction.cycles(condition) as u32;
     gb.ime_counter -= 1;
-    return gb;
+    instruction.cycles(condition)
 }
 
 fn calc_with_carry<T: Copy>(operands: Vec<T>, acc: &mut T, op: fn(T, T) -> (T, bool)) -> (T, bool) {

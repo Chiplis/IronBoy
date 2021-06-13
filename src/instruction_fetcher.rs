@@ -13,9 +13,7 @@ enum RegisterOperand {
     Byte(ByteRegister),
 }
 
-#[derive(Clone)]
 pub struct Gameboy {
-    pub i: u32,
     pub a: ByteRegister,
     pub b: ByteRegister,
     pub c: ByteRegister,

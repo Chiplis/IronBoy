@@ -12,6 +12,7 @@ mod instruction;
 mod register;
 mod instruction_executor;
 mod memory_map;
+mod ppu;
 
 fn execute(gameboy: Gameboy, instruction: Instruction) -> Gameboy {
     match instruction {
@@ -24,7 +25,6 @@ fn main() {
     let rom = args.get(1).unwrap();
 
     let mut gameboy = Gameboy {
-        i: 0,
         a: ByteRegister(0x01, RegisterId::A),
         b: ByteRegister(0x00, RegisterId::B),
         c: ByteRegister(0x13, RegisterId::C),
@@ -42,7 +42,8 @@ fn main() {
     };
     loop {
         let next_instruction = instruction_fetcher::fetch_instruction(&gameboy);
-        instruction_executor::execute_instruction(&mut gameboy, next_instruction);
+        let cycles = instruction_executor::execute_instruction(&mut gameboy, next_instruction);
+        gameboy.mem.cycle(cycles);
         //thread::sleep(time::Duration::from_millis(100));
     }
 }

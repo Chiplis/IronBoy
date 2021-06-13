@@ -1,15 +1,15 @@
 use std::ops::{Index, IndexMut};
 use crate::register::{WordRegister, ByteRegister};
-use crate::memory_map::GpuRegisterId::LcdControl;
 use std::fmt::Display;
 use crate::instruction::{Interrupt, InterruptId};
 use crate::instruction::InterruptId::{VBlank, Joypad, Serial, Timer, STAT};
 use std::convert::TryInto;
+use crate::ppu::{PPU, MemoryRegion};
 
-#[derive(Clone)]
 pub struct MemoryMap {
     memory: [u8; 0x10000],
-    pub(crate) interrupts: [Interrupt; 5]
+    interrupts: [Interrupt; 5],
+    ppu: PPU
 }
 
 impl Index<u16> for MemoryMap {
@@ -48,25 +48,11 @@ impl IndexMut<ByteRegister> for MemoryMap {
 
 impl Index<u8> for MemoryMap {
     type Output = u8;
-    fn index(&self, index: u8) -> &Self::Output { &self.memory[0xFF00 + index as usize] }
+    fn index(&self, index: u8) -> &Self::Output { self.get(0xFF00 + index as u16) }
 }
 
 impl IndexMut<u8> for MemoryMap {
-    fn index_mut(&mut self, index: u8) -> &mut Self::Output { &mut self.memory[0xFF00 + index as usize] }
-}
-
-enum GpuRegisterId { LcdControl, LcdStatus, LcdInterrupt, ScrollY, ScrollX, ScanLine, Background }
-
-enum GpuRegisterAccess { R, W, RW }
-
-struct GpuRegister(u16, u8, GpuRegisterId, GpuRegisterAccess);
-
-struct GPU {
-    control: GpuRegister,
-    scroll_y: GpuRegister,
-    scroll_x: GpuRegister,
-    scan_line: GpuRegister,
-    background: GpuRegister,
+    fn index_mut(&mut self, index: u8) -> &mut Self::Output { self.get_mut(0xFF00 + index as u16) }
 }
 
 impl Interrupt {
@@ -93,7 +79,7 @@ impl MemoryMap {
 
     pub fn new(rom: Vec<u8>) -> Self {
         let mut memory: [u8; 0x10000] = [0; 0x10000];
-        let mut mem = MemoryMap { memory, interrupts: Interrupt::handler(&memory) };
+        let mut mem = MemoryMap { ppu: PPU::new(), memory, interrupts: Interrupt::handler(&memory) };
         mem[0xFF05_u16] = 0;
         mem[0xFF06_u16] = 0;
         mem[0xFF07_u16] = 0;
@@ -131,12 +117,20 @@ impl MemoryMap {
 
     fn get<T: Into<usize> + Display + Copy>(&self, address: T) -> &u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory[address.into()]);
-        &self.memory[address.into()]
+        if self.ppu.regions().iter().any(|region| region.contains(&(address.into() as u16))) {
+            self.ppu.read(address.into() as u16)
+        } else {
+            &self.memory[address.into()]
+        }
     }
 
     fn get_mut<T: Into<usize> + Display + Copy>(&mut self, address: T) -> &mut u8 {
         //println!("Writing address {}", address.into());
-        &mut self.memory[address.into()]
+        if self.ppu.regions().iter().any(|region| region.contains(&(address.into() as u16))) {
+            self.ppu.read_mut(address.into() as u16)
+        } else {
+            &mut self.memory[address.into()]
+        }
     }
 
     pub fn set_interrupt(&mut self, interrupt: InterruptId, set: bool) {
@@ -145,5 +139,9 @@ impl MemoryMap {
         } else {
             self[Interrupt::IF_ADDRESS] &= !self[interrupt].mask;
         }
+    }
+
+    pub fn cycle(&mut self, cpu_cycles: u8) {
+        self.ppu.render_cycle(cpu_cycles);
     }
 }
