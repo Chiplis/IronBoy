@@ -197,7 +197,13 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         LD_A_N8(n) => gb.a.0 = n,
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
         LD_A_N16(n) => gb.a.0 = gb.mem[n],
-        LDH_A_N8(n) => gb.a.0 = gb.mem[n],
+        LDH_A_N8(n) => {
+            if gb.pc.0 == 10282 {
+                let a = gb.mem[n];
+                print!("");
+            }
+            gb.a.0 = gb.mem[n]
+        },
         LDH_N8_A(n) => {
             if n == 0 {
                 let v = (gb.mem[n] & 0xCF) | (gb.a.0 & 0x30); // Joypad
@@ -379,8 +385,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
 
         STOP => {}
     };
-    instruction.cycles(condition) + if handle_interrupts(gb) { return 4 } else { 0 }
-
+    instruction.cycles(condition) + if handle_interrupts(gb) { 4 } else { 0 }
 }
 
 fn calc_with_carry<T: Copy>(operands: Vec<T>, acc: &mut T, op: fn(T, T) -> (T, bool)) -> (T, bool) {

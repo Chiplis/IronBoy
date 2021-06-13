@@ -118,7 +118,6 @@ impl PPU {
 
     pub fn render_cycle(&mut self, cpu_cycles: u8) -> RenderResult {
         self.ticks += (cpu_cycles as u16 * 4);
-        *self.line() %= 154;
         let old_state = self.state;
         self.ticks -= match self.state {
             PpuState::OamSearch => if self.ticks < 80 { 0 } else {
@@ -137,7 +136,7 @@ impl PPU {
             }
             PpuState::VBlank => if self.ticks < 204 + 172 + 80 { 0 } else {
                 *self.line() += 1;
-                self.state = if *self.line() == 154 { OamSearch } else { VBlank };
+                self.state = if *self.line() == 154 { *self.line() %= 154; OamSearch } else { VBlank };
                 204 + 172 + 80
             }
         };

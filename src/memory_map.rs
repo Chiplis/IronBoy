@@ -82,9 +82,6 @@ impl MemoryMap {
         } else if self.interrupt.sub_regions().iter().any(|sr| sr.contains(&(address.into() as u16))) {
             self.interrupt.read_mut(address.into() as u16)
         } else {
-            if address.into() == 0xFF20 {
-                println!("Address expected")
-            }
             &mut self.memory[address.into()]
         }
     }
