@@ -30,15 +30,16 @@ pub struct PPU {
     tile_map_b: [u8; 0xA000 - 0x9C00],
     oam: [u8; 0xFEA0 - 0xFE00],
     registers: [u8; 0xFF4C - 0xFF40],
-    invalid: [u8; 1],
+    invalid: u8,
     ticks: u16,
+    off: bool,
 }
 
 #[derive(Copy, Clone)]
 pub enum RenderResult {
     StateChange(PpuState, PpuState),
     ProcessingState(PpuState),
-    Off,
+    LcdOff,
 }
 
 
@@ -54,12 +55,13 @@ impl PPU {
             tile_map_b: [0; 1024],
             oam: [0; 160],
             registers: [0; 12],
-            invalid: [0xFF; 1],
+            invalid: 0xFF,
             ticks: 0,
+            off: false,
         }
     }
 
-    pub fn line(&mut self) -> &mut u8 { self.read_mut(0xFF44) }
+    pub fn line(&mut self) -> &mut u8 { &mut self.registers[4] }
 
     pub fn lcdc(&mut self) -> &mut u8 { self.read_mut(0xFF40) }
 
@@ -69,12 +71,13 @@ impl PPU {
             *self.line() = 0;
             self.ticks = 0;
             self.state = OamSearch;
-            return RenderResult::Off
+            return RenderResult::LcdOff
         }
 
         let old_state = self.state;
 
         self.ticks += (cpu_cycles as u16 * 4);
+
         self.ticks -= match self.state {
             PpuState::OamSearch => if self.ticks < 80 { 0 } else {
                 self.state = PixelTransfer;
@@ -88,7 +91,7 @@ impl PPU {
 
             PpuState::HBlank => if self.ticks < 204 { 0 } else {
                 *self.line() += 1;
-                self.state = if *self.line() < 144 { OamSearch } else { VBlank };
+                self.state = if *self.line() == 144 { VBlank } else { OamSearch };
                 204
             }
 
@@ -106,7 +109,6 @@ impl PPU {
         }
     }
 }
-
 
 #[deny(unreachable_patterns)]
 impl MemoryRegion for PPU {
@@ -141,9 +143,10 @@ impl MemoryRegion for PPU {
             (0x9800..=0x9BFF, _) => &mut self.tile_map_a[(address - 0x9800) as usize],
             (0x9C00..=0x9FFF, _) => &mut self.tile_map_b[(address - 0x9C00) as usize],
 
-            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => &mut self.invalid[0],
+            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => &mut self.invalid,
             (0xFE00..=0xFE9F, _) => &mut self.oam[(address - 0xFE00) as usize],
-            (0xFF40..=0xFF4B, _) => &mut self.registers[(address - 0xFF40) as usize],
+            (0xFF44, _) => &mut self.invalid,
+            (0xFF40..=0xFF43, _) | (0xFF45..=0xFF4B, _) => &mut self.registers[(address - 0xFF40) as usize],
             _ => panic!()
         }
     }
