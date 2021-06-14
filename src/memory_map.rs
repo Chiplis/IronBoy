@@ -9,12 +9,6 @@ use crate::ppu::{PPU, PpuState, RenderResult};
 use crate::ppu::PpuState::{OamSearch, PixelTransfer};
 use crate::register::{ByteRegister, WordRegister};
 
-pub struct MemoryMap {
-    memory: [u8; 0x10000],
-    pub(crate) interrupt: Interrupt,
-    ppu: PPU
-}
-
 impl Index<u16> for MemoryMap {
     type Output = u8;
     fn index(&self, index: u16) -> &Self::Output { self.get(index) }
@@ -51,15 +45,24 @@ impl IndexMut<u8> for MemoryMap {
     fn index_mut(&mut self, index: u8) -> &mut Self::Output { self.get_mut(0xFF00 + index as u16) }
 }
 
-impl MemoryMap {
+pub struct MemoryMap {
+    memory: [u8; 0x10000],
+    pub(crate) interrupt: Interrupt,
+    ppu: PPU,
+    invalid: u8,
+    rom_size: usize,
+}
 
+impl MemoryMap {
     pub fn new(rom: Vec<u8>) -> Self {
         let ppu = PPU::new();
         let interrupt = Interrupt::new();
         let mut mem = MemoryMap {
             ppu,
             interrupt,
-            memory: [0; 0x10000]
+            memory: [0; 0x10000],
+            rom_size: rom.len() as usize,
+            invalid: 0xFF,
         };
         mem.init_memory();
         rom.iter().enumerate().for_each(|(index, v)| mem[index as u16] = *v);
@@ -83,6 +86,8 @@ impl MemoryMap {
             self.ppu.read_mut(address.into() as u16)
         } else if self.interrupt.sub_regions().iter().any(|sr| sr.contains(&(address.into() as u16))) {
             self.interrupt.read_mut(address.into() as u16)
+        } else if address.into() < self.rom_size {
+            return &mut self.invalid;
         } else {
             &mut self.memory[address.into()]
         }
@@ -91,7 +96,7 @@ impl MemoryMap {
     pub fn cycle(&mut self, cpu_cycles: u8) {
         match self.ppu.render_cycle(cpu_cycles) {
             RenderResult::StateChange(_, PpuState::VBlank) => self.interrupt.set(VBlank, true),
-            _ => { }
+            _ => {}
         }
     }
 
