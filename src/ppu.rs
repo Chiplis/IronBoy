@@ -30,7 +30,6 @@ pub struct PPU {
     tile_map_b: [u8; 0xA000 - 0x9C00],
     oam: [u8; 0xFEA0 - 0xFE00],
     registers: [u8; 0xFF4C - 0xFF40],
-    tick_count: u8,
     invalid: [u8; 1],
     ticks: u16,
 }
@@ -55,7 +54,6 @@ impl PPU {
             tile_map_b: [0; 1024],
             oam: [0; 160],
             registers: [0; 12],
-            tick_count: 0,
             invalid: [0xFF; 1],
             ticks: 0,
         }
@@ -121,37 +119,31 @@ impl MemoryRegion for PPU {
     }
 
     fn read(&self, address: u16) -> &u8 {
-        match address {
-            (0x8000..=0x87FF) => &self.tile_block_a[(address - 0x8000) as usize],
-            (0x8800..=0x8FFF) => &self.tile_block_b[(address - 0x8800) as usize],
-            (0x9000..=0x97FF) => &self.tile_block_c[(address - 0x9000) as usize],
-            (0x9800..=0x9BFF) => &self.tile_map_a[(address - 0x9800) as usize],
-            (0x9C00..=0x9FFF) => &self.tile_map_b[(address - 0x9C00) as usize],
+        match (address, self.state) {
+            (0x8000..=0x87FF, _) => &self.tile_block_a[(address - 0x8000) as usize],
+            (0x8800..=0x8FFF, _) => &self.tile_block_b[(address - 0x8800) as usize],
+            (0x9000..=0x97FF, _) => &self.tile_block_c[(address - 0x9000) as usize],
+            (0x9800..=0x9BFF, _) => &self.tile_map_a[(address - 0x9800) as usize],
+            (0x9C00..=0x9FFF, _) => &self.tile_map_b[(address - 0x9C00) as usize],
 
-            (0xFE00..=0xFE9F) => if self.state == OamSearch || self.state == PixelTransfer {
-                &self.invalid[0]
-            } else { &self.oam[(address - 0xFE00) as usize] },
-
-            (0xFF40..=0xFF4B) => &self.registers[(address - 0xFF40) as usize],
+            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => &0xFF,
+            (0xFE00..=0xFE9F, _) => &self.oam[(address - 0xFE00) as usize],
+            (0xFF40..=0xFF4B, _) => &self.registers[(address - 0xFF40) as usize],
             _ => panic!()
         }
     }
 
     fn read_mut(&mut self, address: u16) -> &mut u8 {
-        match address {
-            (0x8000..=0x87FF) => &mut self.tile_block_a[(address - 0x8000) as usize],
-            (0x8800..=0x8FFF) => &mut self.tile_block_b[(address - 0x8800) as usize],
-            (0x9000..=0x97FF) => &mut self.tile_block_c[(address - 0x9000) as usize],
-            (0x9800..=0x9BFF) => &mut self.tile_map_a[(address - 0x9800) as usize],
-            (0x9C00..=0x9FFF) => &mut self.tile_map_b[(address - 0x9C00) as usize],
+        match (address, self.state) {
+            (0x8000..=0x87FF, _) => &mut self.tile_block_a[(address - 0x8000) as usize],
+            (0x8800..=0x8FFF, _) => &mut self.tile_block_b[(address - 0x8800) as usize],
+            (0x9000..=0x97FF, _) => &mut self.tile_block_c[(address - 0x9000) as usize],
+            (0x9800..=0x9BFF, _) => &mut self.tile_map_a[(address - 0x9800) as usize],
+            (0x9C00..=0x9FFF, _) => &mut self.tile_map_b[(address - 0x9C00) as usize],
 
-            (0xFE00..=0xFE9F) => if self.state == OamSearch || self.state == PixelTransfer {
-                self.invalid[0] = 0x99;
-                &mut self.invalid[0]
-            } else { &mut self.oam[(address - 0xFE00) as usize] },
-
-            (0xFF40..=0xFF4B) => &mut self.registers[(address - 0xFF40) as usize],
-
+            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => &mut self.invalid[0],
+            (0xFE00..=0xFE9F, _) => &mut self.oam[(address - 0xFE00) as usize],
+            (0xFF40..=0xFF4B, _) => &mut self.registers[(address - 0xFF40) as usize],
             _ => panic!()
         }
     }
