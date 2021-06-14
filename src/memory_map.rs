@@ -1,12 +1,13 @@
 use std::convert::TryInto;
 use std::fmt::Display;
-use std::ops::{Index, IndexMut};
-
-use crate::interrupt::{InterruptId, Interrupt};
-use crate::interrupt::InterruptId::{Joypad, Serial, STAT, Timer, VBlank};
-use crate::ppu::{MemoryRegion, PPU, PpuState, RenderResult};
-use crate::register::{ByteRegister, WordRegister};
+use std::ops::{Index, IndexMut, RangeInclusive};
 use std::slice::Iter;
+
+use crate::interrupt::{Interrupt, InterruptId};
+use crate::interrupt::InterruptId::{Joypad, Serial, STAT, Timer, VBlank};
+use crate::ppu::{PPU, PpuState, RenderResult};
+use crate::ppu::PpuState::{OamSearch, PixelTransfer};
+use crate::register::{ByteRegister, WordRegister};
 
 pub struct MemoryMap {
     memory: [u8; 0x10000],
@@ -58,9 +59,10 @@ impl MemoryMap {
         let mut mem = MemoryMap {
             ppu,
             interrupt,
-            memory: MemoryMap::init_memory()
+            memory: [0; 0x10000]
         };
-        rom.iter().enumerate().for_each(|(index, v)| mem.memory[index] = *v);
+        mem.init_memory();
+        rom.iter().enumerate().for_each(|(index, v)| mem[index as u16] = *v);
         mem
     }
 
@@ -93,40 +95,44 @@ impl MemoryMap {
         }
     }
 
-    pub fn init_memory() -> [u8; 0x10000]{
-        let mut mem = [0; 0x10000];
-        mem[0xFF05_usize] = 0;
-        mem[0xFF06_usize] = 0;
-        mem[0xFF07_usize] = 0;
-        mem[0xFF10_usize] = 0x80;
-        mem[0xFF11_usize] = 0xBF;
-        mem[0xFF12_usize] = 0xF3;
-        mem[0xFF14_usize] = 0xBF;
-        mem[0xFF16_usize] = 0x3F;
-        mem[0xFF16_usize] = 0x3F;
-        mem[0xFF17_usize] = 0;
-        mem[0xFF19_usize] = 0xBF;
-        mem[0xFF1A_usize] = 0x7F;
-        mem[0xFF1B_usize] = 0xFF;
-        mem[0xFF1C_usize] = 0x9F;
-        mem[0xFF1E_usize] = 0xFF;
-        mem[0xFF20_usize] = 0xFF;
-        mem[0xFF21_usize] = 0;
-        mem[0xFF22_usize] = 0;
-        mem[0xFF23_usize] = 0xBF;
-        mem[0xFF24_usize] = 0x77;
-        mem[0xFF25_usize] = 0xF3;
-        mem[0xFF26_usize] = 0xF1;
-        mem[0xFF40_usize] = 0x91;
-        mem[0xFF42_usize] = 0;
-        mem[0xFF43_usize] = 0;
-        mem[0xFF45_usize] = 0;
-        mem[0xFF47_usize] = 0xFC;
-        mem[0xFF48_usize] = 0xFF;
-        mem[0xFF49_usize] = 0xFF;
-        mem[0xFF4A_usize] = 0;
-        mem[0xFF4B_usize] = 0;
-        mem[0xFF00_usize] = 0xFF;
-        mem
+    fn init_memory(&mut self) {
+        self[0xFF05_u16] = 0;
+        self[0xFF06_u16] = 0;
+        self[0xFF07_u16] = 0;
+        self[0xFF10_u16] = 0x80;
+        self[0xFF11_u16] = 0xBF;
+        self[0xFF12_u16] = 0xF3;
+        self[0xFF14_u16] = 0xBF;
+        self[0xFF16_u16] = 0x3F;
+        self[0xFF16_u16] = 0x3F;
+        self[0xFF17_u16] = 0;
+        self[0xFF19_u16] = 0xBF;
+        self[0xFF1A_u16] = 0x7F;
+        self[0xFF1B_u16] = 0xFF;
+        self[0xFF1C_u16] = 0x9F;
+        self[0xFF1E_u16] = 0xFF;
+        self[0xFF20_u16] = 0xFF;
+        self[0xFF21_u16] = 0;
+        self[0xFF22_u16] = 0;
+        self[0xFF23_u16] = 0xBF;
+        self[0xFF24_u16] = 0x77;
+        self[0xFF25_u16] = 0xF3;
+        self[0xFF26_u16] = 0xF1;
+        self[0xFF40_u16] = 0x91;
+        self[0xFF42_u16] = 0;
+        self[0xFF43_u16] = 0;
+        self[0xFF45_u16] = 0;
+        self[0xFF47_u16] = 0xFC;
+        self[0xFF48_u16] = 0xFF;
+        self[0xFF49_u16] = 0xFF;
+        self[0xFF4A_u16] = 0;
+        self[0xFF4B_u16] = 0;
+        self[0xFF00_u16] = 0xFF;
     }
+}
+
+pub trait MemoryRegion {
+    fn sub_regions(&self) -> Vec<RangeInclusive<u16>>;
+    fn read(&self, address: u16) -> &u8;
+    fn read_mut(&mut self, address: u16) -> &mut u8;
 }

@@ -1,5 +1,5 @@
 use crate::interrupt::InterruptId::{VBlank, STAT, Timer, Serial, Joypad};
-use crate::ppu::MemoryRegion;
+use crate::memory_map::MemoryRegion;
 use std::ops::{Range, RangeInclusive, Index};
 use std::collections::HashMap;
 use crate::interrupt::InterruptState::{Enabled, Requested, Active, Inactive, Priority};

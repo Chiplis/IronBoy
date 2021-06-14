@@ -198,18 +198,16 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
         LD_A_N16(n) => gb.a.0 = gb.mem[n],
         LDH_A_N8(n) => {
-            if gb.pc.0 == 10282 {
-                let a = gb.mem[n];
-                print!("");
-            }
-            gb.a.0 = gb.mem[n]
+            let x = gb.mem[n];
+            gb.a.0 = x;
         },
         LDH_N8_A(n) => {
             if n == 0 {
                 let v = (gb.mem[n] & 0xCF) | (gb.a.0 & 0x30); // Joypad
                 gb.mem[n] = v
             } else {
-                gb.mem[n] = gb.a.0;
+                let x = gb.a.0;
+                gb.mem[n] = x;
             }
         },
         LDH_HL_N8(n) => gb.mem[hl] = n,
