@@ -113,7 +113,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         },
         INCH_HL => {
             let old = gb.mem[hl];
-            gb.mem *= (hl, old.wrapping_sub(1));
+            gb.mem *= (hl, old.wrapping_add(1));
             let hc = half_carry_8_add(old, 1, 0);
             gb.set_flags(gb.mem[hl] == 0, false, hc, gb.f.c);
         },
