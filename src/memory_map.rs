@@ -13,24 +13,15 @@ use std::any::{Any, TypeId};
 impl <Address: 'static + Into<u16>> Index<Address> for MemoryMap {
     type Output = u8;
     fn index(&self, address: Address) -> &Self::Output {
-        if address.type_id() == TypeId::of::<u8>() {
-            self.read(address.into() + 0xFF00)
-        } else {
-            self.read(address.into())
-        }
+        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
+        self.read(translated_address)
     }
 }
 
 impl <Address: 'static + Into<u16> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for &mut MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
-        if (address.into() == 53246 || address.into() == 53245) {
-            print!("")
-        }
-        if address.type_id() == TypeId::of::<u8>() {
-            self.write(address.into() + 0xFF00, value.into())
-        } else {
-            self.write(address.into(), value.into())
-        }
+        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
+        self.write(translated_address, value.into());
     }
 }
 
@@ -57,15 +48,17 @@ impl MemoryMap {
         mem
     }
 
-    fn read<T: Into<usize> + Display + Copy>(&self, address: T) -> &u8 {
+    fn read<T: 'static + Into<usize> + Display + Copy>(&self, address: T) -> &u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
-        match self.ppu.read(address.into()) {
+        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
+        let value = match self.ppu.read(translated_address) {
             Some(value) => value,
-            None => match self.interrupt.read(address.into()) {
+            None => match self.interrupt.read(translated_address) {
                 Some(value) => &value,
-                None => &self.memory[address.into()]
+                None => &self.memory[translated_address]
             }
-        }
+        };
+        value
     }
 
     fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {

@@ -11,7 +11,7 @@ use InterruptState::Active;
 #[deny(unreachable_patterns)]
 pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction)) -> u8 {
     println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {}", op, gb.pc.0 + 1, gb.sp.to_address(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value());
-    if gb.pc.0 == 10682 {
+    if gb.pc.0 == 10280 {
        print!("")
     }
     gb.pc.0 += instruction.size() as u16;
@@ -164,7 +164,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         },
         LDH_N8_A(n) => {
             if n == 0 {
-                let v = (gb.mem[n] & 0xCF) | gb.a.0; // Joypad
+                let v = (gb.mem[n] & 0xCF) | (gb.a.0 & 0x30);
                 gb.mem *= (n, v)
             } else {
                 let x = gb.a.0;

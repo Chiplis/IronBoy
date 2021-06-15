@@ -134,7 +134,7 @@ impl Instruction {
     pub fn cycles(&self, condition: bool) -> u8 {
         match self {
             DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
-            DEC_R8(..) | AND_A_N8(..) | LD_R8_R8(..) | ADD_A_R8(..) | SUB_A_R8(..) |
+            DEC_R8(..) | LD_R8_R8(..) | ADD_A_R8(..) | SUB_A_R8(..) |
             SBC_A_R8(..) | AND_A_R8(..) | XOR_A_R8(..) | OR_A_R8(..) | CP_A_R8(..) |
             NOP | RRCA | STOP | RLA | RRA => 1,
 
@@ -142,16 +142,16 @@ impl Instruction {
             ADC_A_R8(..) | LD_A_N8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_N8(..) |
             SUB_A_N8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_N8(..) | ADD_A_N8(..) | CP_A_N8(..) |
             SRL_R8(..) | OR_A_N8(..) | XOR_A_N8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
-            ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A => 2,
+            ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
+            RLC_R8(..) | RL_R8(..) | SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) |
+            RR_R8(..) | SRA_R8(..) | RRC_R8(..) | AND_A_N8(..) => 2,
 
-            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) |
+            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) | BIT_U3_HL(..) |
             DECH_HL | INCH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
 
             LDH_N16_A(..) | PUSH_AF | RETI | RET | JP_N16(..) | PUSH_R16(..) |
-            ADD_SP_E8(..) | RST(..) | LD_A_N16(..) | RLC_R8(..) | RRC_R8(..) |
-            SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | RES_U3_R8(..) | SET_U3_R8(..) |
-            RL_R8(..) | RR_R8(..) | SRA_R8(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |
-            BIT_U3_HL(..) | SRL_HL | RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
+            ADD_SP_E8(..) | RST(..) | LD_A_N16(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |
+            SRL_HL | RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
 
             LD_N16_SP(..) => 5,
 

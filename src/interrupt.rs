@@ -41,6 +41,7 @@ impl Interrupt {
         let mut registers = HashMap::new();
         registers.insert(Interrupt::IF_ADDRESS, 0x0);
         registers.insert(Interrupt::IE_ADDRESS, 0x0);
+        registers.insert(Interrupt::JOYPAD_ADDRESS, 0xEF);
         let vblank = InterruptMask(0x01);
         let stat = InterruptMask(0x02);
         let timer = InterruptMask(0x04);
@@ -62,7 +63,7 @@ impl Interrupt {
             STAT => if self.state(VBlank) != Active { state } else { Priority(VBlank) },
             Timer => if self.state(STAT) != Active { state } else { Priority(STAT) },
             Serial => if self.state(Timer) != Active { state } else { Priority(Timer) },
-            Joypad => if self.state(Serial) != Active { state } else { Priority(Joypad) },
+            Joypad => if self.state(Serial) != Active { state } else { Priority(Serial) },
         }
     }
 
@@ -70,20 +71,20 @@ impl Interrupt {
         if set {
             *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() |= self[interrupt].0;
         } else {
-            *self.registers.get_mut(&Interrupt::IE_ADDRESS).unwrap() &= !self[interrupt].0;
+            *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() &= !self[interrupt].0;
         }
     }
 
     pub(crate) fn read(&self, address: usize) -> Option<&u8> {
-        if address == Interrupt::JOYPAD_ADDRESS {
-            Some(&0xEF)
-        } else {
-            self.registers.get(&address)
-        }
+        self.registers.get(&address)
     }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        if address == Interrupt::JOYPAD_ADDRESS { return true }
+        if address == Interrupt::JOYPAD_ADDRESS {
+            self.registers.insert(address, value);
+            return true
+        }
+
         if !self.registers.contains_key(&address) { return false }
         self.registers.insert(address, value);
         true
