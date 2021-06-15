@@ -247,7 +247,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
 
         0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
             match operands[(opcode as usize - 5) / 8] {
-                RegisterOperand::HL => DEC_R16(gb.hl()),
+                RegisterOperand::HL => DECH_HL,
                 RegisterOperand::Byte(reg) => DEC_R8(reg),
             }
         }
