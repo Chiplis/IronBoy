@@ -73,11 +73,14 @@ impl MemoryMap {
     pub fn cycle(&mut self, cpu_cycles: u8) {
         match self.ppu.render_cycle(cpu_cycles) {
             RenderResult::StateChange(_, PpuState::VBlank) => self.interrupt.set(VBlank, true),
+            RenderResult::StatInterrupt => {
+                self.interrupt.set(STAT, true)
+            },
             _ => {}
         }
     }
 
-    pub(crate) fn init_memory(mut mem: &mut MemoryMap, rom: &Vec<u8>) {
+    fn init_memory(mut mem: &mut MemoryMap, rom: &Vec<u8>) {
         for (index, value) in rom.iter().enumerate() {
             mem.memory[index] = *value
         }

@@ -5,8 +5,8 @@ use crate::instruction::Instruction::*;
 use crate::register::WordRegister::StackPointer;
 use std::cmp::{min, max};
 use crate::interrupt::InterruptId::{VBlank, STAT, Timer, Serial, Joypad};
-use crate::interrupt::InterruptState;
-use InterruptState::Active;
+use crate::interrupt::{InterruptState, InterruptId};
+use InterruptState::*;
 
 #[deny(unreachable_patterns)]
 pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction)) -> u8 {
@@ -20,12 +20,12 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
     match instruction {
         NOP => {}
 
-        ADD_A_R8(ByteRegister(n, _)) | ADD_A_N8(n) => {
+        ADD_A_R8(ByteRegister(n, _)) | ADD_A_U8(n) => {
             let (add, carry) = calc_with_carry(vec![gb.a.0, n], &mut 0, |a, b| a.overflowing_add(b));
             gb.set_flags(add == 0, false, half_carry_8_add(gb.a.0, n, 0), carry);
             gb.a.0 = add;
         }
-        ADC_A_R8(ByteRegister(n, _)) | ADC_A_N8(n) => {
+        ADC_A_R8(ByteRegister(n, _)) | ADC_A_U8(n) => {
             let carry = if gb.f.c { 1 } else { 0 };
             let (add, new_carry) = calc_with_carry(vec![gb.a.0, n, carry], &mut 0, |a, b| a.overflowing_add(b));
             gb.set_flags(add == 0, false, half_carry_8_add(gb.a.0, n, carry), new_carry);
@@ -37,7 +37,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_flags(add == 0, false, half_carry_8_add(gb.a.0, gb.mem[hl], carry), new_carry);
             gb.a.0 = add;
         }
-        AND_A_R8(ByteRegister(n, _)) | AND_A_N8(n) => {
+        AND_A_R8(ByteRegister(n, _)) | AND_A_U8(n) => {
             gb.a.0 &= n;
             gb.set_flags(gb.a.0 == 0, false, true, false);
         }
@@ -45,7 +45,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.a.0 &= gb.mem[hl];
             gb.set_flags(gb.a.0 == 0, false, true, false);
         }
-        CP_A_R8(ByteRegister(n, _)) | CP_A_N8(n) =>
+        CP_A_R8(ByteRegister(n, _)) | CP_A_U8(n) =>
             gb.set_flags(gb.a.0 == n, true, half_carry_8_sub(gb.a.0, n, 0), n > gb.a.0),
         CP_A_HL => {
             let n = gb.mem[hl];
@@ -66,7 +66,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             let hc = half_carry_8_add(reg, 1, 0);
             gb.set_flags(z, false, hc, gb.f.c);
         }
-        OR_A_R8(ByteRegister(n, _)) | OR_A_N8(n) => {
+        OR_A_R8(ByteRegister(n, _)) | OR_A_U8(n) => {
             gb.a.0 |= n;
             gb.set_flags(gb.a.0 == 0, false, false, false);
         }
@@ -74,12 +74,12 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.a.0 |= gb.mem[hl];
             gb.set_flags(gb.a.0 == 0, false, false, false);
         }
-        SUB_A_R8(ByteRegister(n, _)) | SUB_A_N8(n) => {
+        SUB_A_R8(ByteRegister(n, _)) | SUB_A_U8(n) => {
             let (sub, c) = calc_with_carry(vec![gb.a.0, n], &mut 0, |a, b| a.overflowing_sub(b));
             gb.a.0 = sub;
             gb.set_flags(gb.a.0 == 0, true, half_carry_8_sub(gb.a.0, n, 0), c);
         }
-        SBC_A_R8(ByteRegister(n, _)) | SBC_A_N8(n) => {
+        SBC_A_R8(ByteRegister(n, _)) | SBC_A_U8(n) => {
             let carry = if gb.f.c { 1 } else { 0 };
             let (sub, new_carry) = calc_with_carry(vec![gb.a.0, n, carry], &mut 0, |a, b| a.overflowing_sub(b));
             gb.a.0 = sub;
@@ -91,7 +91,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.a.0 = sub;
             gb.set_flags(gb.a.0 == 0, true, half_carry_8_sub(gb.a.0, gb.mem[hl], carry), new_carry);
         }
-        XOR_A_R8(ByteRegister(n, _)) | XOR_A_N8(n) => {
+        XOR_A_R8(ByteRegister(n, _)) | XOR_A_U8(n) => {
             gb.a.0 ^= n;
             gb.set_flags(gb.a.0 == 0, false, false, false);
         }
@@ -148,21 +148,21 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_word_register(gb.hl().to_address().rotate_left(8), gb.hl());
         }
         LD_R8_R8(a, b) => gb.get_register(a.1).0 = b.0,
-        LD_R8_N8(a, b) => gb.get_register(a.1).0 = b,
-        LD_R16_N16(a, b) => gb.set_word_register(b, a),
+        LD_R8_U8(a, b) => gb.get_register(a.1).0 = b,
+        LD_R16_U16(a, b) => gb.set_word_register(b, a),
         LD_HL_R8(ByteRegister(n, _)) | LD_HL_N8(n) => { gb.mem *= (hl, n); }
         LD_R8_HL(a) => gb.get_register(a.1).0 = gb.mem[hl],
         LD_R16_A(n) => gb.mem *= (n, gb.a),
-        LDH_N16_A(n) => gb.mem *= (n, gb.a),
+        LDH_U16_A(n) => gb.mem *= (n, gb.a),
         LDH_C_A => gb.mem *= (gb.c, gb.a),
-        LD_A_N8(n) => gb.a.0 = n,
+        LD_A_U8(n) => gb.a.0 = n,
         LD_A_R16(n) => gb.a.0 = gb.mem[n],
-        LD_A_N16(n) => gb.a.0 = gb.mem[n],
-        LDH_A_N8(n) => {
+        LDH_A_U16(n) => gb.a.0 = gb.mem[n],
+        LDH_A_U8(n) => {
             let x = gb.mem[n];
             gb.a.0 = x;
         },
-        LDH_N8_A(n) => {
+        LDH_U8_A(n) => {
             if n == 0 {
                 let v = (gb.mem[n] & 0xCF) | (gb.a.0 & 0x30);
                 gb.mem *= (n, v)
@@ -171,7 +171,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
                 gb.mem *= (n, x);
             }
         },
-        LDH_HL_N8(n) => gb.mem *= (hl, n),
+        LDH_HL_U8(n) => gb.mem *= (hl, n),
         LDH_A_C => gb.a.0 = gb.mem[gb.c],
         LD_A_HLD => {
             gb.set_word_register(hl.to_address().wrapping_sub(1), gb.hl());
@@ -189,7 +189,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.mem *= (hl, gb.a);
             gb.set_word_register(hl.to_address().wrapping_add(1), gb.hl());
         }
-        CALL_N16(n) => {
+        CALL_U16(n) => {
             let [lo, hi] = gb.pc.0.to_le_bytes();
             gb.sp = StackPointer(gb.sp.to_address() - 1);
             gb.mem *= (gb.sp, hi);
@@ -199,8 +199,8 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         }
 
         JP_HL => gb.pc.0 = gb.hl().to_address(),
-        JP_N16(n) => gb.pc.0 = n,
-        JR_E8(n) => gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16,
+        JP_U16(n) => gb.pc.0 = n,
+        JR_I8(n) => gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16,
         CPL => {
             gb.a.0 = !gb.a.0;
             gb.set_flags(gb.f.z, true, true, gb.f.c);
@@ -231,7 +231,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_flags(add == 0, true, half_carry_16_add(gb.hl().to_address(), gb.sp.to_address(), 0), carry);
             gb.set_word_register(add, gb.hl());
         }
-        ADD_SP_E8(n) | LD_HL_SP_E8(n) => {
+        ADD_SP_I8(n) | LD_HL_SP_I8(n) => {
             let (add, carry) = if n < 0 {
                 gb.sp.to_address().overflowing_sub((n as u8 & !0x80) as u16)
             } else {
@@ -243,14 +243,14 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
                 half_carry_16_add(gb.sp.to_address(), (n as u8 & !0x80) as u16, 0)
             };
             gb.set_flags(false, false, half_carry, carry);
-            gb.set_word_register(add, if let ADD_SP_E8(n) = instruction { gb.sp } else { gb.hl() })
+            gb.set_word_register(add, if let ADD_SP_I8(n) = instruction { gb.sp } else { gb.hl() })
         }
-        LD_N16_SP(n) => {
+        LD_U16_SP(n) => {
             let [lo, hi] = gb.sp.to_address().to_le_bytes();
             gb.mem *= (n, lo);
             gb.mem *= (n+1, hi);
         }
-        LD_N8_A(n) => gb.a.0 = n,
+        LD_U8_A(n) => gb.a.0 = n,
         LD_SP_HL => gb.set_word_register(gb.hl().to_address(), gb.sp),
         POP_R16(reg) => {
             match reg {
@@ -311,9 +311,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.f.h = false;
         }
         DI => { gb.ime = false; }
-        EI => {
-            gb.ime_counter = 2;
-        }
+        EI => { gb.ime_counter = 2 }
         HALT => {}
         SCF => {
             gb.f.n = false;
@@ -328,11 +326,11 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.set_word_register(gb.sp.to_address().wrapping_add(2), gb.sp);
         } else { condition = false }
 
-        JP_CC_N16(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = n; } else { condition = false }
+        JP_CC_U16(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = n; } else { condition = false }
 
-        JR_CC_E8(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16; } else { condition = false }
+        JR_CC_I8(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16 } else { condition = false }
 
-        CALL_CC_N16(cc, n) => if gb.cc_flag(cc) {
+        CALL_CC_U16(cc, n) => if gb.cc_flag(cc) {
             let [lo, hi] = gb.pc.0.to_le_bytes();
             gb.sp = StackPointer(gb.sp.to_address() - 1);
             gb.mem *= (gb.sp, hi);
@@ -370,23 +368,30 @@ fn handle_interrupts(gb: &mut Gameboy) -> bool {
     }
     if !gb.ime { return false; }
     for interrupt_id in [VBlank, STAT, Timer, Serial, Joypad].iter() {
-        let state = gb.mem.interrupt.state(*interrupt_id);
-        match state {
-            Active => {
-                gb.ime = false;
-                gb.mem.interrupt.set(*interrupt_id, false);
-                let [lo, hi] = gb.pc.0.to_le_bytes();
-                gb.sp = StackPointer(gb.sp.to_address() - 1);
-                gb.mem *= (gb.sp, hi);
-                gb.sp = StackPointer(gb.sp.to_address() - 1);
-                gb.mem *= (gb.sp, lo);
-                gb.pc.0 = *interrupt_id as u16;
-                return true
-            }
-            _ => {  }
+        if trigger_interrupt(gb, interrupt_id) {
+            return true
         }
     }
     return false
+}
+
+fn trigger_interrupt(gb: &mut Gameboy, interrupt_id: &InterruptId) -> bool {
+    let state = gb.mem.interrupt.state(*interrupt_id);
+    match state {
+        Active => {
+            gb.ime = false;
+            gb.mem.interrupt.set(*interrupt_id, false);
+            let [lo, hi] = gb.pc.0.to_le_bytes();
+            gb.sp = StackPointer(gb.sp.to_address() - 1);
+            gb.mem *= (gb.sp, hi);
+            gb.sp = StackPointer(gb.sp.to_address() - 1);
+            gb.mem *= (gb.sp, lo);
+            gb.pc.0 = *interrupt_id as u16;
+            true
+        },
+        Priority(priority_id) => trigger_interrupt(gb, &priority_id),
+        Inactive | Enabled | Requested => false
+    }
 }
 
 fn half_carry_8_add(a: u8, b: u8, c: u8) -> bool { (((a & 0xF) + ((b + c) & 0xF)) & 0x10) == 0x10 }

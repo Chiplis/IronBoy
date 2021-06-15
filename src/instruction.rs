@@ -8,32 +8,32 @@ use crate::register::{Bit, ByteRegister, ConditionCode, WordRegister};
 pub enum Instruction {
     ADC_A_R8(ByteRegister),
     ADC_A_HL,
-    ADC_A_N8(u8),
+    ADC_A_U8(u8),
     ADD_A_R8(ByteRegister),
     ADD_A_HL,
-    ADD_A_N8(u8),
+    ADD_A_U8(u8),
     AND_A_R8(ByteRegister),
     AND_A_HL,
-    AND_A_N8(u8),
+    AND_A_U8(u8),
     CP_A_R8(ByteRegister),
     CP_A_HL,
-    CP_A_N8(u8),
+    CP_A_U8(u8),
     DEC_R8(ByteRegister),
     DECH_HL,
     INCH_HL,
     INC_R8(ByteRegister),
     OR_A_R8(ByteRegister),
     OR_A_HL,
-    OR_A_N8(u8),
+    OR_A_U8(u8),
     SBC_A_R8(ByteRegister),
     SBC_A_HL,
-    SBC_A_N8(u8),
+    SBC_A_U8(u8),
     SUB_A_R8(ByteRegister),
     SUB_A_HL,
-    SUB_A_N8(u8),
+    SUB_A_U8(u8),
     XOR_A_R8(ByteRegister),
     XOR_A_HL,
-    XOR_A_N8(u8),
+    XOR_A_U8(u8),
     ADD_HL_R16(WordRegister),
     DEC_R16(WordRegister),
     INC_R16(WordRegister),
@@ -64,41 +64,41 @@ pub enum Instruction {
     SRL_R8(ByteRegister),
     SRL_HL,
     LD_R8_R8(ByteRegister, ByteRegister),
-    LD_R8_N8(ByteRegister, u8),
-    LD_R16_N16(WordRegister, u16),
+    LD_R8_U8(ByteRegister, u8),
+    LD_R16_U16(WordRegister, u16),
     LD_HL_R8(ByteRegister),
     LD_HL_N8(u8),
     LD_R8_HL(ByteRegister),
     LD_R16_A(WordRegister),
-    LDH_N16_A(u16),
-    LD_N8_A(u8),
-    LDH_N8_A(u8),
+    LDH_U16_A(u16),
+    LD_U8_A(u8),
+    LDH_U8_A(u8),
     LDH_C_A,
     LD_A_R16(WordRegister),
-    LD_A_N8(u8),
-    LD_A_N16(u16),
-    LDH_A_N8(u8),
-    LDH_HL_N8(u8),
+    LD_A_U8(u8),
+    LDH_A_U16(u16),
+    LDH_A_U8(u8),
+    LDH_HL_U8(u8),
     LDH_A_C,
     LD_HLI_A,
     LD_HLD_A,
     LD_A_HLI,
     LD_A_HLD,
-    CALL_N16(u16),
-    CALL_CC_N16(ConditionCode, u16),
+    CALL_U16(u16),
+    CALL_CC_U16(ConditionCode, u16),
     JP_HL,
-    JP_N16(u16),
-    JP_CC_N16(ConditionCode, u16),
-    JR_E8(i8),
-    JR_CC_E8(ConditionCode, i8),
+    JP_U16(u16),
+    JP_CC_U16(ConditionCode, u16),
+    JR_I8(i8),
+    JR_CC_I8(ConditionCode, i8),
     RET_CC(ConditionCode),
     RET,
     RETI,
     RST(RstVec),
     ADD_HL_SP,
-    ADD_SP_E8(i8),
-    LD_N16_SP(u16),
-    LD_HL_SP_E8(i8),
+    ADD_SP_I8(i8),
+    LD_U16_SP(u16),
+    LD_HL_SP_I8(i8),
     LD_SP_HL,
     POP_R16(WordRegister),
     PUSH_AF,
@@ -117,15 +117,15 @@ pub enum Instruction {
 impl Instruction {
     pub fn size(&self) -> u8 {
         match self {
-            LD_A_N8(_) | ADC_A_N8(_) | ADD_A_N8(_) | AND_A_N8(_) | CP_A_N8(_) | OR_A_N8(_) | SBC_A_N8(_) |
-            SUB_A_N8(_) | XOR_A_N8(_) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
+            LD_A_U8(_) | ADC_A_U8(_) | ADD_A_U8(_) | AND_A_U8(_) | CP_A_U8(_) | OR_A_U8(_) | SBC_A_U8(_) |
+            SUB_A_U8(_) | XOR_A_U8(_) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
             SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(_) | SWAP_HL | RL_R8(_) | RL_HL | RLC_R8(_) |
             RLC_HL | RR_R8(_) | RR_HL | RRC_R8(_) | RRC_HL | SLA_R8(_) | SLA_HL | SRA_R8(_) |
-            SRA_HL | SRL_R8(_) | SRL_HL | LD_R8_N8(..) | LD_HL_N8(..) | JR_E8(_) | JR_CC_E8(..) |
-            LDH_A_N8(_) | LDH_N8_A(_) | ADD_SP_E8(_) | LD_HL_SP_E8(_) | LDH_HL_N8(..) => 2,
+            SRA_HL | SRL_R8(_) | SRL_HL | LD_R8_U8(..) | LD_HL_N8(..) | JR_I8(_) | JR_CC_I8(..) |
+            LDH_A_U8(_) | LDH_U8_A(_) | ADD_SP_I8(_) | LD_HL_SP_I8(_) | LDH_HL_U8(..) => 2,
 
-            LDH_N16_A(_) | LD_A_N16(_) | LD_R16_N16(..) | CALL_N16(_) | CALL_CC_N16(..) |
-            JP_N16(_) | JP_CC_N16(..) | LD_N16_SP(_) => 3,
+            LDH_U16_A(_) | LDH_A_U16(_) | LD_R16_U16(..) | CALL_U16(_) | CALL_CC_U16(..) |
+            JP_U16(_) | JP_CC_U16(..) | LD_U16_SP(_) => 3,
             _ => 1
         }
     }
@@ -138,29 +138,29 @@ impl Instruction {
             SBC_A_R8(..) | AND_A_R8(..) | XOR_A_R8(..) | OR_A_R8(..) | CP_A_R8(..) |
             NOP | RRCA | STOP | RLA | RRA => 1,
 
-            CP_A_HL | INC_R16(..) | LD_SP_HL | LD_R8_N8(..) | XOR_A_HL | AND_A_HL | LD_HL_R8(..) |
-            ADC_A_R8(..) | LD_A_N8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_N8(..) |
-            SUB_A_N8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_N8(..) | ADD_A_N8(..) | CP_A_N8(..) |
-            SRL_R8(..) | OR_A_N8(..) | XOR_A_N8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
+            CP_A_HL | INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | XOR_A_HL | AND_A_HL | LD_HL_R8(..) |
+            ADC_A_R8(..) | LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_U8(..) |
+            SUB_A_U8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_U8(..) | ADD_A_U8(..) | CP_A_U8(..) |
+            SRL_R8(..) | OR_A_U8(..) | XOR_A_U8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
             ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
             RLC_R8(..) | RL_R8(..) | SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) |
-            RR_R8(..) | SRA_R8(..) | RRC_R8(..) | AND_A_N8(..) => 2,
+            RR_R8(..) | SRA_R8(..) | RRC_R8(..) | AND_A_U8(..) => 2,
 
-            POP_R16(..) | LD_HL_N8(..) | LD_N8_A(..) | JR_E8(..) | LDH_N8_A(..) | BIT_U3_HL(..) |
-            DECH_HL | INCH_HL | LDH_HL_N8(..) | LD_HL_SP_E8(..) | LDH_A_N8(..) | LD_R16_N16(..) => 3,
+            POP_R16(..) | LD_HL_N8(..) | LD_U8_A(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) |
+            DECH_HL | INCH_HL | LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
 
-            LDH_N16_A(..) | PUSH_AF | RETI | RET | JP_N16(..) | PUSH_R16(..) |
-            ADD_SP_E8(..) | RST(..) | LD_A_N16(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |
+            LDH_U16_A(..) | PUSH_AF | RETI | RET | JP_U16(..) | PUSH_R16(..) |
+            ADD_SP_I8(..) | RST(..) | LDH_A_U16(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |
             SRL_HL | RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
 
-            LD_N16_SP(..) => 5,
+            LD_U16_SP(..) => 5,
 
-            CALL_N16(..) => 6,
+            CALL_U16(..) => 6,
 
-            JR_CC_E8(..) => if condition { 3 } else { 2 },
-            JP_CC_N16(..) => if condition { 4 } else { 3 },
+            JR_CC_I8(..) => if condition { 3 } else { 2 },
+            JP_CC_U16(..) => if condition { 4 } else { 3 },
             RET_CC(..) => if condition { 5 } else { 2 },
-            CALL_CC_N16(..) => if condition { 6 } else { 3 },
+            CALL_CC_U16(..) => if condition { 6 } else { 3 },
         }
     }
 }

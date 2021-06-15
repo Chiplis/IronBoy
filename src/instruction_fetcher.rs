@@ -186,12 +186,12 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
             }
         }
 
-        0x06 => LD_R8_N8(gb.b, ram[pc + 1]),
-        0x0E => LD_R8_N8(gb.c, ram[pc + 1]),
-        0x16 => LD_R8_N8(gb.d, ram[pc + 1]),
-        0x1E => LD_R8_N8(gb.e, ram[pc + 1]),
-        0x26 => LD_R8_N8(gb.h, ram[pc + 1]),
-        0x2E => LD_R8_N8(gb.l, ram[pc + 1]),
+        0x06 => LD_R8_U8(gb.b, ram[pc + 1]),
+        0x0E => LD_R8_U8(gb.c, ram[pc + 1]),
+        0x16 => LD_R8_U8(gb.d, ram[pc + 1]),
+        0x1E => LD_R8_U8(gb.e, ram[pc + 1]),
+        0x26 => LD_R8_U8(gb.h, ram[pc + 1]),
+        0x2E => LD_R8_U8(gb.l, ram[pc + 1]),
 
         0x40..=0x75 | 0x77..=0x7F => match operands[operand_idx] {
             RegisterOperand::HL => LD_R8_HL(registers[register_idx]),
@@ -252,19 +252,19 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
             }
         }
 
-        0x36 => LDH_HL_N8(ram[pc + 1]),
+        0x36 => LDH_HL_U8(ram[pc + 1]),
 
         0x0A => LD_A_R16(gb.bc()),
         0x1A => LD_A_R16(gb.de()),
 
-        0xFA => LD_A_N16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xFA => LDH_A_U16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
-        0x3E => LD_A_N8(ram[pc + 1]),
+        0x3E => LD_A_U8(ram[pc + 1]),
 
         0x02 => LD_R16_A(gb.bc()),
         0x12 => LD_R16_A(gb.de()),
 
-        0xEA => LDH_N16_A(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xEA => LDH_U16_A(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF2 => LDH_A_C,
         0xE2 => LDH_C_A,
@@ -274,18 +274,18 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0x2A => LD_A_HLI,
         0x22 => LD_HLI_A,
 
-        0xE0 => LDH_N8_A(ram[pc + 1]),
-        0xF0 => LDH_A_N8(ram[pc + 1]),
+        0xE0 => LDH_U8_A(ram[pc + 1]),
+        0xF0 => LDH_A_U8(ram[pc + 1]),
 
-        0x01 => LD_R16_N16(gb.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x11 => LD_R16_N16(gb.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x21 => LD_R16_N16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x31 => LD_R16_N16(gb.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x01 => LD_R16_U16(gb.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x11 => LD_R16_U16(gb.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x21 => LD_R16_U16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x31 => LD_R16_U16(gb.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF9 => LD_SP_HL,
-        0xF8 => LD_HL_SP_E8(ram[pc + 1] as i8),
+        0xF8 => LD_HL_SP_I8(ram[pc + 1] as i8),
 
-        0x08 => LD_N16_SP(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x08 => LD_U16_SP(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF5 => PUSH_AF,
         0xC5 => PUSH_R16(gb.bc()),
@@ -297,14 +297,14 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0xE1 => POP_R16(gb.hl()),
         0xF1 => POP_R16(gb.af()),
 
-        0xC6 => ADD_A_N8(ram[pc + 1]),
-        0xCE => ADC_A_N8(ram[pc + 1]),
-        0xD6 => SUB_A_N8(ram[pc + 1]),
-        0xDE => SBC_A_N8(ram[pc + 1]),
-        0xE6 => AND_A_N8(ram[pc + 1]),
-        0xF6 => OR_A_N8(ram[pc + 1]),
-        0xEE => XOR_A_N8(ram[pc + 1]),
-        0xFE => CP_A_N8(ram[pc + 1]),
+        0xC6 => ADD_A_U8(ram[pc + 1]),
+        0xCE => ADC_A_U8(ram[pc + 1]),
+        0xD6 => SUB_A_U8(ram[pc + 1]),
+        0xDE => SBC_A_U8(ram[pc + 1]),
+        0xE6 => AND_A_U8(ram[pc + 1]),
+        0xF6 => OR_A_U8(ram[pc + 1]),
+        0xEE => XOR_A_U8(ram[pc + 1]),
+        0xFE => CP_A_U8(ram[pc + 1]),
 
         0x09 => ADD_HL_R16(gb.bc()),
         0x19 => ADD_HL_R16(gb.de()),
@@ -321,7 +321,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0x2B => DEC_R16(gb.hl()),
         0x3B => DEC_R16(gb.sp),
 
-        0xE8 => ADD_SP_E8(ram[pc + 1] as i8),
+        0xE8 => ADD_SP_I8(ram[pc + 1] as i8),
 
         0x27 => DAA,
         0x2F => CPL,
@@ -344,28 +344,28 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
             }
         }
 
-        0xC3 => JP_N16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0xC2 => JP_CC_N16(ConditionCode::NZ, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0xCA => JP_CC_N16(ConditionCode::Z, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0xD2 => JP_CC_N16(ConditionCode::NC, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xC3 => JP_U16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xC2 => JP_CC_U16(ConditionCode::NZ, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xCA => JP_CC_U16(ConditionCode::Z, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xD2 => JP_CC_U16(ConditionCode::NC, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
-        0xDA => JP_CC_N16(ConditionCode::C, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xDA => JP_CC_U16(ConditionCode::C, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
         0xE9 => JP_HL,
 
-        0x18 => JR_E8(ram[pc + 1] as i8),
-        0x20 => JR_CC_E8(ConditionCode::NZ, ram[pc + 1] as i8),
-        0x28 => JR_CC_E8(ConditionCode::Z, ram[pc + 1] as i8),
-        0x30 => JR_CC_E8(ConditionCode::NC, ram[pc + 1] as i8),
-        0x38 => JR_CC_E8(ConditionCode::C, ram[pc + 1] as i8),
-        0xCD => CALL_N16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x18 => JR_I8(ram[pc + 1] as i8),
+        0x20 => JR_CC_I8(ConditionCode::NZ, ram[pc + 1] as i8),
+        0x28 => JR_CC_I8(ConditionCode::Z, ram[pc + 1] as i8),
+        0x30 => JR_CC_I8(ConditionCode::NC, ram[pc + 1] as i8),
+        0x38 => JR_CC_I8(ConditionCode::C, ram[pc + 1] as i8),
+        0xCD => CALL_U16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
-        0xC4 => CALL_CC_N16(ConditionCode::NZ, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xC4 => CALL_CC_U16(ConditionCode::NZ, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
-        0xCC => CALL_CC_N16(ConditionCode::Z, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xCC => CALL_CC_U16(ConditionCode::Z, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
-        0xD4 => CALL_CC_N16(ConditionCode::NC, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xD4 => CALL_CC_U16(ConditionCode::NC, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
-        0xDC => CALL_CC_N16(ConditionCode::C, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0xDC => CALL_CC_U16(ConditionCode::C, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xC7 => RST(RstVec::X00),
 
