@@ -12,6 +12,16 @@ pub enum RegisterId {
 #[derive(Copy, Clone, Debug)]
 pub struct ByteRegister(pub u8, pub RegisterId);
 
+impl Into<u16> for ByteRegister {
+    fn into(self) -> u16 {
+        self.0 as u16 + 0xFF00
+    }
+}
+
+impl Into<u8> for ByteRegister {
+    fn into(self) -> u8 { self.0 }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct FlagRegister {
     pub z: bool,
@@ -45,8 +55,14 @@ pub enum WordRegister {
     StackPointer(u16),
 }
 
+
+impl Into<u16> for WordRegister {
+    fn into(self) -> u16 { self.to_address() }
+}
+
+
 impl WordRegister {
-    pub fn value(self) -> u16 {
+    pub(crate) fn to_address(self) -> u16 {
         match self {
             WordRegister::Double(h, l) => u16::from_le_bytes([l.0, h.0]),
             WordRegister::AccFlag(a, FlagRegister { z, n, h, c }) => {

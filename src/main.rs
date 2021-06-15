@@ -23,7 +23,8 @@ fn execute(gameboy: Gameboy, instruction: Instruction) -> Gameboy {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let rom = args.get(1).unwrap();
+    let rom = std::fs::read(args.get(1).unwrap()).unwrap();
+    let mem = &mut MemoryMap::new(&rom);
 
     let mut gameboy = Gameboy {
         a: ByteRegister(0x01, RegisterId::A),
@@ -36,7 +37,7 @@ fn main() {
         f: FlagRegister { z: true, n: false, h: true, c: true },
         sp: StackPointer(0xFFFE),
         pc: ProgramCounter(0x0100),
-        mem: MemoryMap::new(std::fs::read(rom).unwrap()),
+        mem,
         vram: [0; 2 * 8 * 1024],
         ime_counter: -1,
         ime: false,

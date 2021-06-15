@@ -13,7 +13,7 @@ enum RegisterOperand {
     Byte(ByteRegister),
 }
 
-pub struct Gameboy {
+pub struct Gameboy<'a> {
     pub a: ByteRegister,
     pub b: ByteRegister,
     pub c: ByteRegister,
@@ -27,14 +27,14 @@ pub struct Gameboy {
     pub vram: [u8; 2 * 8 * 1024],
     pub ime_counter: i8,
     pub ime: bool,
-    pub mem: MemoryMap,
+    pub mem: &'a mut MemoryMap,
 }
 
 trait Special {}
 
 impl Special for (ByteRegister, ByteRegister) {}
 
-impl Gameboy {
+impl Gameboy<'_> {
     pub fn af(&self) -> WordRegister {
         WordRegister::AccFlag(self.a, self.f)
     }

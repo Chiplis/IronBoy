@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::ops::{Index, IndexMut, Range, RangeInclusive};
 
-use crate::memory_map::{MemoryMap, MemoryRegion};
+use crate::memory_map::{MemoryMap};
 use crate::ppu::PpuState::{HBlank, OamSearch, PixelTransfer, VBlank};
 
 enum PpuRegisterId { LcdControl, LcdStatus, LcdInterrupt, ScrollY, ScrollX, ScanLine, Background }
@@ -63,7 +63,7 @@ impl PPU {
 
     pub fn line(&mut self) -> &mut u8 { &mut self.registers[4] }
 
-    pub fn lcdc(&mut self) -> &mut u8 { self.read_mut(0xFF40) }
+    pub fn lcdc(&mut self) -> &u8 { self.read(0xFF40).unwrap() }
 
     pub fn render_cycle(&mut self, cpu_cycles: u8) -> RenderResult {
 
@@ -108,46 +108,36 @@ impl PPU {
             RenderResult::StateChange(old_state, self.state)
         }
     }
-}
 
-#[deny(unreachable_patterns)]
-impl MemoryRegion for PPU {
-    fn sub_regions(&self) -> Vec<RangeInclusive<u16>> {
-        vec![
-            (0x8000..=0x9FFF),
-            (0xFE00..=0xFE9F),
-            (0xFF40..=0xFF4B)
-        ]
-    }
-
-    fn read(&self, address: u16) -> &u8 {
+    pub fn read(&self, address: usize) -> Option<&u8> {
         match (address, self.state) {
-            (0x8000..=0x87FF, _) => &self.tile_block_a[(address - 0x8000) as usize],
-            (0x8800..=0x8FFF, _) => &self.tile_block_b[(address - 0x8800) as usize],
-            (0x9000..=0x97FF, _) => &self.tile_block_c[(address - 0x9000) as usize],
-            (0x9800..=0x9BFF, _) => &self.tile_map_a[(address - 0x9800) as usize],
-            (0x9C00..=0x9FFF, _) => &self.tile_map_b[(address - 0x9C00) as usize],
+            (0x8000..=0x87FF, _) => Some(&self.tile_block_a[(address - 0x8000) as usize]),
+            (0x8800..=0x8FFF, _) => Some(&self.tile_block_b[(address - 0x8800) as usize]),
+            (0x9000..=0x97FF, _) => Some(&self.tile_block_c[(address - 0x9000) as usize]),
+            (0x9800..=0x9BFF, _) => Some(&self.tile_map_a[(address - 0x9800) as usize]),
+            (0x9C00..=0x9FFF, _) => Some(&self.tile_map_b[(address - 0x9C00) as usize]),
 
-            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => &0xFF,
-            (0xFE00..=0xFE9F, _) => &self.oam[(address - 0xFE00) as usize],
-            (0xFF40..=0xFF4B, _) => &self.registers[(address - 0xFF40) as usize],
-            _ => panic!()
+            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => Some(&0xFF),
+            (0xFE00..=0xFE9F, _) => Some(&self.oam[(address - 0xFE00) as usize]),
+            (0xFF40..=0xFF4B, _) => Some(&self.registers[(address - 0xFF40) as usize]),
+            _ => None
         }
     }
 
-    fn read_mut(&mut self, address: u16) -> &mut u8 {
+    pub(crate) fn write(&mut self, address: usize, value: u8) -> bool {
+        let mut wrote = true;
         match (address, self.state) {
-            (0x8000..=0x87FF, _) => &mut self.tile_block_a[(address - 0x8000) as usize],
-            (0x8800..=0x8FFF, _) => &mut self.tile_block_b[(address - 0x8800) as usize],
-            (0x9000..=0x97FF, _) => &mut self.tile_block_c[(address - 0x9000) as usize],
-            (0x9800..=0x9BFF, _) => &mut self.tile_map_a[(address - 0x9800) as usize],
-            (0x9C00..=0x9FFF, _) => &mut self.tile_map_b[(address - 0x9C00) as usize],
+            (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
+            (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,
+            (0x9000..=0x97FF, _) => self.tile_block_c[address - 0x9000] = value,
+            (0x9800..=0x9BFF, _) => self.tile_map_a[address - 0x9800] = value,
+            (0x9C00..=0x9FFF, _) => self.tile_map_b[address - 0x9C00] = value,
 
-            (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => &mut self.invalid,
-            (0xFE00..=0xFE9F, _) => &mut self.oam[(address - 0xFE00) as usize],
-            (0xFF44, _) => &mut self.invalid,
-            (0xFF40..=0xFF43, _) | (0xFF45..=0xFF4B, _) => &mut self.registers[(address - 0xFF40) as usize],
-            _ => panic!()
+            (0xFF44, _) | (0xFE00..=0xFE9F, OamSearch) | (0xFE00..=0xFE9F, PixelTransfer) => {},
+            (0xFE00..=0xFE9F, _) => self.oam[address - 0xFE00] = value,
+            (0xFF40..=0xFF43, _) | (0xFF45..=0xFF4B, _) => self.registers[address - 0xFF40] = value,
+            _ => { wrote = false; }
         }
+        wrote
     }
 }
