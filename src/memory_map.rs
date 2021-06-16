@@ -5,8 +5,8 @@ use std::slice::Iter;
 
 use crate::interrupt::{Interrupt, InterruptId};
 use crate::interrupt::InterruptId::{Joypad, Serial, STAT, Timer, VBlank};
-use crate::ppu::{PPU, PpuState, RenderResult};
-use crate::ppu::PpuState::{OamSearch, PixelTransfer};
+use crate::ppu::{PPU, PpuMode, PpuState};
+use crate::ppu::PpuMode::{OamSearch, PixelTransfer};
 use crate::register::{ByteRegister, WordRegister};
 use std::any::{Any, TypeId};
 
@@ -72,8 +72,8 @@ impl MemoryMap {
 
     pub fn cycle(&mut self, cpu_cycles: u8) {
         match self.ppu.render_cycle(cpu_cycles) {
-            RenderResult::StateChange(_, PpuState::VBlank) => self.interrupt.set(VBlank, true),
-            RenderResult::StatInterrupt => {
+            PpuState::StateChange(_, PpuMode::VBlank) => self.interrupt.set(VBlank, true),
+            PpuState::StatInterrupt => {
                 self.interrupt.set(STAT, true)
             },
             _ => {}
