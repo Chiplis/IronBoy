@@ -11,6 +11,7 @@ use crate::register::{ByteRegister, WordRegister};
 use std::any::{Any, TypeId};
 use crate::ppu::RenderCycle::{StatTrigger, Normal};
 use crate::ppu::PpuState::ModeChange;
+use PpuMode::VBlank;
 
 impl <Address: 'static + Into<u16>> Index<Address> for MemoryMap {
     type Output = u8;
