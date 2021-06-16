@@ -5,10 +5,11 @@ use crate::memory_map::{MemoryMap};
 use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
 use crate::interrupt::{Interrupt, InterruptId};
 use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt, WriteInt};
-use crate::ppu::PpuState::LcdOff;
+use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
 use crate::ppu::TileMapArea::{H9C00, H9800};
 use crate::ppu::ObjSize::{StackedTile, SingleTile};
 use crate::ppu::AddressingMode::{H8800, H8000};
+use crate::ppu::RenderCycle::{Normal, StatTrigger};
 
 enum PpuRegisterId { LcdControl, LcdStatus, LcdInterrupt, ScrollY, ScrollX, ScanLine, Background }
 
@@ -45,10 +46,14 @@ pub struct PPU {
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PpuState {
-    StateChange(PpuMode, PpuMode),
-    ProcessingState(PpuMode),
+    ModeChange(PpuMode, PpuMode),
+    ProcessingMode(PpuMode),
     LcdOff,
-    StatInterrupt,
+}
+
+pub enum RenderCycle {
+    Normal(PpuState),
+    StatTrigger(PpuState)
 }
 
 #[derive(Clone, Copy)]
@@ -80,21 +85,21 @@ impl PPU {
         }
     }
 
-    pub fn render_cycle(&mut self, cpu_cycles: u8) -> PpuState {
+    pub fn render_cycle(&mut self, cpu_cycles: u8) -> RenderCycle {
         if !self.lcdc.enabled() {
-            *self.line() = 0;
+            *self.ly() = 0;
             self.ticks = 0;
             self.mode = HBlank;
             self.state = PpuState::LcdOff;
             self.force_irq = false;
-            return self.state;
+            return Normal(self.state);
         }
+
+        let old_mode = self.mode;
 
         if self.state == PpuState::LcdOff {
             self.mode = OamSearch;
         }
-
-        let old_mode = self.mode;
 
         let mut lyc_stat_check = if self.state == PpuState::LcdOff { self.lyc_check() } else { false };
 
@@ -112,42 +117,34 @@ impl PPU {
             }
 
             PpuMode::HBlank => if self.ticks < 204 { 0 } else {
-                *self.line() += 1;
+                *self.ly() += 1;
                 lyc_stat_check = self.lyc_check();
-                self.mode = if *self.line() == 144 { VBlank } else { OamSearch };
+                self.mode = if *self.ly() == 144 { VBlank } else { OamSearch };
                 204
             }
 
             PpuMode::VBlank => if self.ticks < 204 + 172 + 80 { 0 } else {
-                *self.line() = (*self.line() + 1) % 154;
+                *self.ly() = (*self.ly() + 1) % 154;
                 lyc_stat_check = self.lyc_check();
-                self.mode = if *self.line() == 0 { OamSearch } else { VBlank };
+                self.mode = if *self.ly() == 0 { OamSearch } else { VBlank };
                 204 + 172 + 80
             }
         };
+        self.state = if old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(old_mode, self.mode)};
 
-        self.handle_interrupts(old_mode, lyc_stat_check);
-
-        return self.state;
+        self.cycle_result(old_mode, lyc_stat_check)
     }
 
-    fn handle_interrupts(&mut self, old_mode: PpuMode, lyc_stat_check: bool) {
+    fn cycle_result(&mut self, old_mode: PpuMode, lyc_stat_check: bool) -> RenderCycle {
         let new_interrupts = self.stat_interrupts(lyc_stat_check);
-        self.stat_line = *new_interrupts.iter().find(|i| i.is_some()).map(|i| i.as_ref()).flatten().unwrap_or(&Low);
-
         let trigger_stat_interrupt = match (self.stat_line, new_interrupts) {
             (Low, [.., Some(ModeInt(m))]) if m == self.mode && old_mode != m => true,
             (Low, [.., Some(LycInt)]) => true,
             _ => false
         };
-
+        self.stat_line = *new_interrupts.iter().find(|i| i.is_some()).map(|i| i.as_ref()).flatten().unwrap_or(&Low);
         self.force_irq = false;
-
-        self.state = match (old_mode, self.mode, trigger_stat_interrupt) {
-            (_, VBlank, _) if old_mode != VBlank => PpuState::StateChange(old_mode, self.mode),
-            (_, _, true) => PpuState::StatInterrupt,
-            _ => PpuState::StateChange(old_mode, self.mode)
-        };
+        if trigger_stat_interrupt { StatTrigger(self.state) } else { Normal(self.state) }
     }
 
     pub fn read(&self, address: usize) -> Option<&u8> {
@@ -205,7 +202,7 @@ impl PPU {
 
     fn scx(&mut self) -> &mut u8 { &mut self.registers[0x2] }
 
-    fn line(&mut self) -> &mut u8 { &mut self.registers[0x3] }
+    fn ly(&mut self) -> &mut u8 { &mut self.registers[0x3] }
 
     fn lyc(&mut self) -> &mut u8 { &mut self.registers[0x4] }
 
@@ -219,7 +216,7 @@ impl PPU {
 
     fn wx(&mut self) -> &mut u8 { &mut self.registers[0xA] }
 
-    fn lyc_check(&mut self) -> bool { *self.line() == *self.lyc() }
+    fn lyc_check(&mut self) -> bool { *self.ly() == *self.lyc() }
 
     fn stat_interrupts(&mut self, lyc_check: bool) -> [Option<StatInterrupt>; 4] {
         let stat = *self.stat();
@@ -227,7 +224,7 @@ impl PPU {
             if stat & 0x08 != 0 || self.force_irq { Some(ModeInt(OamSearch)) } else { None },
             if stat & 0x10 != 0 || self.force_irq { Some(ModeInt(VBlank)) } else { None },
             if stat & 0x20 != 0 || self.force_irq { Some(ModeInt(HBlank)) } else { None },
-            if (stat & 0x40 != 0 && lyc_check) || self.force_irq { Some(LycInt) } else { None }
+            if lyc_check && (stat & 0x40 != 0 || self.force_irq) { Some(LycInt) } else { None }
         ]
     }
 }

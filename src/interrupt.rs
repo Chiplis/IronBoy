@@ -1,4 +1,4 @@
-use crate::interrupt::InterruptId::{VBlank, STAT, Timer, Serial, Joypad};
+use crate::interrupt::InterruptId::{VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt};
 use std::ops::{Range, RangeInclusive, Index};
 use std::collections::HashMap;
 use crate::interrupt::InterruptState::{Enabled, Requested, Active, Inactive, Priority};
@@ -6,11 +6,11 @@ use crate::interrupt::InterruptState::{Enabled, Requested, Active, Inactive, Pri
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum InterruptId {
-    VBlank = 0x40,
-    STAT = 0x48,
-    Timer = 0x50,
-    Serial = 0x58,
-    Joypad = 0x60,
+    VBlankInt = 0x40,
+    StatInt = 0x48,
+    TimerInt = 0x50,
+    SerialInt = 0x58,
+    JoypadInt = 0x60,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -59,19 +59,19 @@ impl Interrupt {
         let active = requested && enabled;
         let state = if active { Active } else if enabled { Enabled } else if requested { Requested } else { Inactive };
         match interrupt {
-            VBlank => state,
-            STAT => if self.state(VBlank) != Active { state } else { Priority(VBlank) },
-            Timer => if self.state(STAT) != Active { state } else { Priority(STAT) },
-            Serial => if self.state(Timer) != Active { state } else { Priority(Timer) },
-            Joypad => if self.state(Serial) != Active { state } else { Priority(Serial) },
+            VBlankInt => state,
+            StatInt => if self.state(VBlankInt) != Active { state } else { Priority(VBlankInt) },
+            TimerInt => if self.state(StatInt) != Active { state } else { Priority(StatInt) },
+            SerialInt => if self.state(TimerInt) != Active { state } else { Priority(TimerInt) },
+            JoypadInt => if self.state(SerialInt) != Active { state } else { Priority(SerialInt) },
         }
     }
 
-    pub fn set(&mut self, interrupt: InterruptId, set: bool) {
+    pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
         if set {
-            *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() |= self[interrupt].0;
+            interrupts.iter().for_each(|i| *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() |= self[*i].0)
         } else {
-            *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() &= !self[interrupt].0;
+            interrupts.iter().for_each(|i| *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() &= !self[*i].0)
         }
     }
 
@@ -98,11 +98,11 @@ impl Index<InterruptId> for Interrupt {
 
     fn index(&self, id: InterruptId) -> &Self::Output {
         match id {
-            VBlank => &self.vblank,
-            STAT => &self.stat,
-            Timer => &self.timer,
-            Serial => &self.serial,
-            Joypad => &self.joypad,
+            VBlankInt => &self.vblank,
+            StatInt => &self.stat,
+            TimerInt => &self.timer,
+            SerialInt => &self.serial,
+            JoypadInt => &self.joypad,
         }
     }
 }

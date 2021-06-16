@@ -4,11 +4,13 @@ use std::ops::{Index, IndexMut, RangeInclusive, MulAssign};
 use std::slice::Iter;
 
 use crate::interrupt::{Interrupt, InterruptId};
-use crate::interrupt::InterruptId::{Joypad, Serial, STAT, Timer, VBlank};
+use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
 use crate::ppu::{PPU, PpuMode, PpuState};
 use crate::ppu::PpuMode::{OamSearch, PixelTransfer};
 use crate::register::{ByteRegister, WordRegister};
 use std::any::{Any, TypeId};
+use crate::ppu::RenderCycle::{StatTrigger, Normal};
+use crate::ppu::PpuState::ModeChange;
 
 impl <Address: 'static + Into<u16>> Index<Address> for MemoryMap {
     type Output = u8;
@@ -72,10 +74,8 @@ impl MemoryMap {
 
     pub fn cycle(&mut self, cpu_cycles: u8) {
         match self.ppu.render_cycle(cpu_cycles) {
-            PpuState::StateChange(_, PpuMode::VBlank) => self.interrupt.set(VBlank, true),
-            PpuState::StatInterrupt => {
-                self.interrupt.set(STAT, true)
-            },
+            StatTrigger(ModeChange(_, VBlank)) => { self.interrupt.set(vec![VBlankInt, StatInt], true) },
+            Normal(ModeChange(_, VBlank)) => { self.interrupt.set(vec![VBlankInt], true) }
             _ => {}
         }
     }
