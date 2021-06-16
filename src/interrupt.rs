@@ -22,7 +22,7 @@ pub enum InterruptState {
     Priority(InterruptId),
 }
 
-pub struct Interrupt {
+pub struct InterruptHandler {
     registers: HashMap<usize, u8>,
     vblank: InterruptMask,
     stat: InterruptMask,
@@ -32,55 +32,53 @@ pub struct Interrupt {
     invalid: [u8; 1]
 }
 
-impl Interrupt {
+impl InterruptHandler {
     const IE_ADDRESS: usize = 0xFFFF;
     const IF_ADDRESS: usize = 0xFF0F;
     const JOYPAD_ADDRESS: usize = 0xFF00;
 
     pub fn new() -> Self {
         let mut registers = HashMap::new();
-        registers.insert(Interrupt::IF_ADDRESS, 0x0);
-        registers.insert(Interrupt::IE_ADDRESS, 0x0);
-        registers.insert(Interrupt::JOYPAD_ADDRESS, 0xEF);
+        registers.insert(InterruptHandler::IF_ADDRESS, 0x0);
+        registers.insert(InterruptHandler::IE_ADDRESS, 0x0);
+        registers.insert(InterruptHandler::JOYPAD_ADDRESS, 0xEF);
         let vblank = InterruptMask(0x01);
         let stat = InterruptMask(0x02);
         let timer = InterruptMask(0x04);
         let serial = InterruptMask(0x08);
         let joypad = InterruptMask(0x10);
         let invalid = [1_u8; 1];
-        Interrupt { registers, vblank, stat, timer, serial, joypad, invalid}
+        InterruptHandler { registers, vblank, stat, timer, serial, joypad, invalid}
     }
 
-    pub fn state(&self, interrupt: InterruptId) -> InterruptState {
-        let ie_flag = self.registers[&Interrupt::IE_ADDRESS];
-        let if_flag = self.registers[&Interrupt::IF_ADDRESS];
+    pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
+        let ie_flag = self.registers[&InterruptHandler::IE_ADDRESS];
+        let if_flag = self.registers[&InterruptHandler::IF_ADDRESS];
         let enabled = ie_flag & self[interrupt].0 != 0;
         let requested = if_flag & self[interrupt].0 != 0;
         let active = requested && enabled;
         let state = if active { Active } else if enabled { Enabled } else if requested { Requested } else { Inactive };
         match interrupt {
             VBlankInt => state,
-            StatInt => if self.state(VBlankInt) != Active { state } else { Priority(VBlankInt) },
-            TimerInt => if self.state(StatInt) != Active { state } else { Priority(StatInt) },
-            SerialInt => if self.state(TimerInt) != Active { state } else { Priority(TimerInt) },
-            JoypadInt => if self.state(SerialInt) != Active { state } else { Priority(SerialInt) },
+            StatInt => if self.get_state(VBlankInt) != Active { state } else { Priority(VBlankInt) },
+            TimerInt => if self.get_state(StatInt) != Active { state } else { Priority(StatInt) },
+            SerialInt => if self.get_state(TimerInt) != Active { state } else { Priority(TimerInt) },
+            JoypadInt => if self.get_state(SerialInt) != Active { state } else { Priority(SerialInt) },
         }
     }
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
         if set {
-            interrupts.iter().for_each(|i| *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() |= self[*i].0)
+            interrupts.iter().for_each(|i| *self.registers.get_mut(&InterruptHandler::IF_ADDRESS).unwrap() |= self[*i].0)
         } else {
-            interrupts.iter().for_each(|i| *self.registers.get_mut(&Interrupt::IF_ADDRESS).unwrap() &= !self[*i].0)
+            interrupts.iter().for_each(|i| *self.registers.get_mut(&InterruptHandler::IF_ADDRESS).unwrap() &= !self[*i].0)
         }
     }
 
-    pub(crate) fn read(&self, address: usize) -> Option<&u8> {
-        self.registers.get(&address)
-    }
+    pub fn read(&self, address: usize) -> Option<&u8> { self.registers.get(&address) }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        if address == Interrupt::JOYPAD_ADDRESS {
+        if address == InterruptHandler::JOYPAD_ADDRESS {
             self.registers.insert(address, value);
             return true
         }
@@ -93,7 +91,7 @@ impl Interrupt {
 
 pub struct InterruptMask(u8);
 
-impl Index<InterruptId> for Interrupt {
+impl Index<InterruptId> for InterruptHandler {
     type Output = InterruptMask;
 
     fn index(&self, id: InterruptId) -> &Self::Output {

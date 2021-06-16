@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut, Range, RangeInclusive};
 
 use crate::memory_map::{MemoryMap};
 use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
-use crate::interrupt::{Interrupt, InterruptId};
+use crate::interrupt::{InterruptHandler, InterruptId};
 use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt, WriteInt};
 use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
 use crate::ppu::TileMapArea::{H9C00, H9800};
@@ -37,7 +37,7 @@ pub struct PPU {
     tile_map_b: [u8; 0xA000 - 0x9C00],
     oam: [u8; 0xFEA0 - 0xFE00],
     registers: [u8; 0xFF4C - 0xFF41],
-    ticks: u16,
+    ticks: usize,
     state: PpuState,
     stat_line: StatInterrupt,
     force_irq: bool,
@@ -85,7 +85,7 @@ impl PPU {
         }
     }
 
-    pub fn render_cycle(&mut self, cpu_cycles: u8) -> RenderCycle {
+    pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
         if !self.lcdc.enabled() {
             *self.ly() = 0;
             self.ticks = 0;
@@ -96,14 +96,14 @@ impl PPU {
         }
 
         let old_mode = self.mode;
+        let mut lyc_stat_check = false;
 
         if self.state == PpuState::LcdOff {
             self.mode = OamSearch;
+            lyc_stat_check = self.lyc_check();
         }
 
-        let mut lyc_stat_check = if self.state == PpuState::LcdOff { self.lyc_check() } else { false };
-
-        self.ticks += (cpu_cycles as u16 * 4);
+        self.ticks += (cpu_cycles as usize * 4);
 
         self.ticks -= match self.mode {
             PpuMode::OamSearch => if self.ticks < 80 { 0 } else {
@@ -175,7 +175,6 @@ impl PPU {
     }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        let mut wrote = true;
         match (address, self.mode) {
             (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
             (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,
@@ -201,9 +200,9 @@ impl PPU {
 
             (0xFF42..=0xFF43, _) | (0xFF45..=0xFF4B, _) => self.registers[address - 0xFF41] = value,
 
-            _ => { wrote = false; }
+            _ => return false
         }
-        wrote
+        true
     }
 
     fn stat(&mut self) -> &mut u8 { &mut self.registers[0x0] }

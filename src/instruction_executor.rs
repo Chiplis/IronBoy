@@ -11,10 +11,15 @@ use InterruptState::*;
 #[deny(unreachable_patterns)]
 pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
     let interrupt_cycles = if handle_interrupts(gb) { 4 } else { 0 };
+    if gb.halted && interrupt_cycles == 0 { return 1 }
+    gb.halted = false;
+
     let instruction = fetch_instruction(gb);
     gb.pc.0 += instruction.size() as u16;
+
     let hl = gb.hl();
     let mut branch_taken = true;
+
     match instruction {
         NOP => {}
 
@@ -375,7 +380,7 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
         }
         DI => { gb.ime = false; }
         EI => { gb.ime_counter = 2 }
-        HALT => {}
+        HALT => gb.halted = true,
         SCF => {
             gb.f.n = false;
             gb.f.h = false;
@@ -437,11 +442,11 @@ fn handle_interrupts(gb: &mut Gameboy) -> bool {
 }
 
 fn trigger_interrupt(gb: &mut Gameboy, interrupt_id: &InterruptId) -> bool {
-    let state = gb.mem.interrupt.state(*interrupt_id);
+    let state = gb.mem.interrupt_handler.get_state(*interrupt_id);
     match state {
         Active => {
             gb.ime = false;
-            gb.mem.interrupt.set(vec![*interrupt_id], false);
+            gb.mem.interrupt_handler.set(vec![*interrupt_id], false);
             let [lo, hi] = gb.pc.0.to_le_bytes();
             gb.sp = StackPointer(gb.sp.to_address() - 1);
             gb.mem *= (gb.sp, hi);

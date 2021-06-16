@@ -28,6 +28,29 @@ pub struct Gameboy<'a> {
     pub ime_counter: i8,
     pub ime: bool,
     pub mem: &'a mut MemoryMap,
+    pub(crate) halted: bool
+}
+
+impl<'a> Gameboy<'a> {
+    pub fn new(mem: &'a mut MemoryMap) -> Self {
+        Self {
+            a: ByteRegister(0x01, RegisterId::A),
+            b: ByteRegister(0x00, RegisterId::B),
+            c: ByteRegister(0x13, RegisterId::C),
+            d: ByteRegister(0x00, RegisterId::D),
+            e: ByteRegister(0xD8, RegisterId::E),
+            h: ByteRegister(0x01, RegisterId::H),
+            l: ByteRegister(0x4D, RegisterId::L),
+            f: FlagRegister { z: true, n: false, h: true, c: true },
+            sp: StackPointer(0xFFFE),
+            pc: ProgramCounter(0x0100),
+            mem,
+            vram: [0; 2 * 8 * 1024],
+            ime_counter: -1,
+            ime: false,
+            halted: false
+        }
+    }
 }
 
 trait Special {}
