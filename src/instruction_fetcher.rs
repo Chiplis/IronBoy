@@ -108,18 +108,12 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
     let ram = &gb.mem;
     let opcode = ram[pc];
     println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {} | line: {}", opcode, gb.pc.0 + 1, gb.sp.to_address(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value(), line);
-    let registers = [gb.b, gb.c, gb.d, gb.e, gb.h, gb.l, gb.a];
+    let mut registers = [gb.b, gb.c, gb.d, gb.e, gb.h, gb.l, gb.a];
 
     let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
     operands.insert(operands.len() - 1, RegisterOperand::HL);
     let mut operand_idx = ((opcode & 0x0F) % 8) as usize;
     let mut register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
-
-    if (0x77_u8..0x80_u8).contains(&opcode) {
-        operands.rotate_right(1);
-        operand_idx = (operand_idx + 1) % operands.len();
-        register_idx = (register_idx - 1) % 7 ;
-    }
 
     match opcode {
         0xCB => {
@@ -195,10 +189,21 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
         0x26 => LD_R8_U8(gb.h, ram[pc + 1]),
         0x2E => LD_R8_U8(gb.l, ram[pc + 1]),
 
-        0x40..=0x75 | 0x77..=0x7F => match operands[operand_idx] {
+        0x40..=0x6F => match operands[operand_idx] {
             RegisterOperand::HL => LD_R8_HL(registers[register_idx]),
             RegisterOperand::Byte(reg) => LD_R8_R8(registers[register_idx], reg)
         },
+
+        0x70..=0x75 => match operands[operand_idx] {
+            RegisterOperand::Byte(reg) => LD_HL_R8(reg),
+            RegisterOperand::HL => panic!()
+        },
+
+        0x78..=0x7D => LD_R8_R8(gb.a, registers[opcode as usize - 0x78]),
+
+        0x77 => LD_HL_R8(gb.a),
+        0x7E => LD_R8_HL(gb.a),
+        0x7F => LD_R8_R8(gb.a, gb.a),
 
         0x80..=0x87 => match operands[operand_idx] {
             RegisterOperand::HL => ADD_A_HL,

@@ -210,7 +210,9 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
         LD_R8_U8(a, b) => gb.get_register(a.1).0 = b,
         LD_R16_U16(a, b) => gb.set_word_register(b, a),
         LD_HL_R8(ByteRegister(n, _)) | LD_HL_N8(n) => { gb.mem *= (hl, n); }
-        LD_R8_HL(a) => gb.get_register(a.1).0 = gb.mem[hl],
+        LD_R8_HL(a) => {
+            gb.get_register(a.1).0 = gb.mem[hl]
+        },
         LD_R16_A(n) => gb.mem *= (n, gb.a),
         LDH_U16_A(n) => gb.mem *= (n, gb.a),
         LDH_C_A => gb.mem *= (gb.c, gb.a),
