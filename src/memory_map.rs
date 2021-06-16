@@ -31,7 +31,7 @@ impl <Address: 'static + Into<u16> + Copy, Value: Into<u8> + Copy> MulAssign<(Ad
 pub struct MemoryMap {
     memory: [u8; 0x10000],
     pub(crate) interrupt: Interrupt,
-    ppu: PPU,
+    pub(crate) ppu: PPU,
     invalid: u8,
     rom_size: usize,
 }
@@ -78,7 +78,7 @@ impl MemoryMap {
             StatTrigger(ModeChange(_, VBlank)) => { self.interrupt.set(vec![VBlankInt, StatInt], true) },
             Normal(ModeChange(_, VBlank)) => { self.interrupt.set(vec![VBlankInt], true) }
             _ => {}
-        }
+        };
     }
 
     fn init_memory(mut mem: &mut MemoryMap, rom: &Vec<u8>) {

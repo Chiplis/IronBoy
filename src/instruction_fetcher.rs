@@ -102,10 +102,12 @@ impl Gameboy<'_> {
 }
 
 #[deny(unreachable_patterns)]
-pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
+pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
     let pc = gb.pc.0;
+    let line = *gb.mem.ppu.ly();
     let ram = &gb.mem;
     let opcode = ram[pc];
+    println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {} | line: {}", opcode, gb.pc.0 + 1, gb.sp.to_address(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value(), line);
     let registers = [gb.b, gb.c, gb.d, gb.e, gb.h, gb.l, gb.a];
 
     let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
@@ -119,7 +121,7 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         register_idx = (register_idx - 1) % 7 ;
     }
 
-    (opcode, match opcode {
+    match opcode {
         0xCB => {
             let cb_opcode = ram[pc + 1] as u8;
 
@@ -398,5 +400,5 @@ pub fn fetch_instruction(gb: &Gameboy) -> (u8, Instruction) {
         0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
             panic!("P: {}, C: {}, N: {}", ram[pc - 1], opcode, ram[pc + 1])
         }
-    })
+    }
 }

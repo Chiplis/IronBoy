@@ -43,8 +43,7 @@ fn main() {
         ime: false,
     };
     loop {
-        let next_instruction = instruction_fetcher::fetch_instruction(&gameboy);
-        let cycles = instruction_executor::execute_instruction(&mut gameboy, next_instruction);
+        let cycles = instruction_executor::execute_instruction(&mut gameboy);
         gameboy.mem.cycle(cycles);
         //thread::sleep(time::Duration::from_millis(100));
     }

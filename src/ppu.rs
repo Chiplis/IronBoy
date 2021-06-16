@@ -147,6 +147,16 @@ impl PPU {
         if trigger_stat_interrupt { StatTrigger(self.state) } else { Normal(self.state) }
     }
 
+    fn stat_interrupts(&mut self, lyc_check: bool) -> [Option<StatInterrupt>; 4] {
+        let stat = *self.stat();
+        [
+            if stat & 0x08 != 0 || self.force_irq { Some(ModeInt(OamSearch)) } else { None },
+            if stat & 0x10 != 0 || self.force_irq { Some(ModeInt(VBlank)) } else { None },
+            if stat & 0x20 != 0 || self.force_irq { Some(ModeInt(HBlank)) } else { None },
+            if lyc_check && (stat & 0x40 != 0 || self.force_irq) { Some(LycInt) } else { None }
+        ]
+    }
+
     pub fn read(&self, address: usize) -> Option<&u8> {
         match (address, self.mode) {
             (0x8000..=0x9FFF, s) if s == PixelTransfer => Some(&0xFF),
@@ -202,7 +212,7 @@ impl PPU {
 
     fn scx(&mut self) -> &mut u8 { &mut self.registers[0x2] }
 
-    fn ly(&mut self) -> &mut u8 { &mut self.registers[0x3] }
+    pub(crate) fn ly(&mut self) -> &mut u8 { &mut self.registers[0x3] }
 
     fn lyc(&mut self) -> &mut u8 { &mut self.registers[0x4] }
 
@@ -217,16 +227,6 @@ impl PPU {
     fn wx(&mut self) -> &mut u8 { &mut self.registers[0xA] }
 
     fn lyc_check(&mut self) -> bool { *self.ly() == *self.lyc() }
-
-    fn stat_interrupts(&mut self, lyc_check: bool) -> [Option<StatInterrupt>; 4] {
-        let stat = *self.stat();
-        [
-            if stat & 0x08 != 0 || self.force_irq { Some(ModeInt(OamSearch)) } else { None },
-            if stat & 0x10 != 0 || self.force_irq { Some(ModeInt(VBlank)) } else { None },
-            if stat & 0x20 != 0 || self.force_irq { Some(ModeInt(HBlank)) } else { None },
-            if lyc_check && (stat & 0x40 != 0 || self.force_irq) { Some(LycInt) } else { None }
-        ]
-    }
 }
 
 struct LcdControl {

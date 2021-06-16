@@ -1,5 +1,5 @@
 use crate::Instruction;
-use crate::instruction_fetcher::Gameboy;
+use crate::instruction_fetcher::{Gameboy, fetch_instruction};
 use crate::register::{ByteRegister, FlagRegister, WordRegister, RegisterId};
 use crate::instruction::Instruction::*;
 use crate::register::WordRegister::StackPointer;
@@ -9,14 +9,12 @@ use crate::interrupt::{InterruptState, InterruptId};
 use InterruptState::*;
 
 #[deny(unreachable_patterns)]
-pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction)) -> u8 {
-    println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {}", op, gb.pc.0 + 1, gb.sp.to_address(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value());
-    if gb.pc.0 == 10280 {
-        print!("")
-    }
+pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
+    let interrupt_cycles = if handle_interrupts(gb) { 4 } else { 0 };
+    let instruction = fetch_instruction(gb);
     gb.pc.0 += instruction.size() as u16;
     let hl = gb.hl();
-    let mut condition = true;
+    let mut branch_taken = true;
     match instruction {
         NOP => {}
 
@@ -119,6 +117,67 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         }
         DEC_R16(reg) => gb.set_word_register(reg.to_address().wrapping_sub(1), reg),
         INC_R16(reg) => gb.set_word_register(reg.to_address().wrapping_add(1), reg),
+        RR_HL | RL_HL | RRC_HL | RLC_HL | RR_R8(_) | RL_R8(_) | RLA | RRA | RLC_R8(_) | RRC_R8(_) | RLCA | RRCA => {
+            let mut value = match instruction {
+                RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => gb.get_register(r.1).0,
+                RLA | RRA | RLCA | RRCA => gb.a.0,
+                RR_HL | RL_HL | RRC_HL | RLC_HL => gb.mem[hl],
+                _ => panic!(),
+            };
+            let carry = match instruction {
+                RLC_R8(_) | RL_R8(_) | RLA | RLCA | RLC_HL | RL_HL => value & 128 != 0,
+                _ => value & 1 != 0,
+            };
+            let mask_condition = match instruction {
+                RRC_R8(_) | RRC_HL | RRCA | RLC_R8(_) | RLC_HL | RLCA => carry,
+                _ => gb.f.c
+            };
+            let mask = if mask_condition {
+                match instruction {
+                    RRC_HL | RRC_R8(_) | RRCA | RR_R8(_) | RRA | RR_HL => 128,
+                    _ => 1
+                }
+            } else { 0 };
+            value = (match instruction {
+                RLC_R8(_) | RL_R8(_) | RLA | RLCA | RLC_HL | RL_HL => value << 1,
+                RRC_HL | RRC_R8(_) | RRCA | RR_R8(_) | RRA | RR_HL => value >> 1,
+                _ => panic!()
+            }) | mask;
+            let z = match instruction {
+                RLA | RRA | RLCA | RRCA => false,
+                _ => value == 0
+            };
+            match instruction {
+                RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => gb.get_register(r.1).0 = value,
+                RLA | RRA | RLCA | RRCA => gb.a.0 = value,
+                RR_HL | RL_HL | RRC_HL | RLC_HL => gb.mem *= (hl, value),
+                _ => panic!()
+            };
+            gb.set_flags(z, false, false, carry);
+        }
+        SRA_R8(_) | SLA_R8(_) | SRL_R8(_) | SRL_HL | SLA_HL | SRA_HL => {
+            let mut value = match instruction {
+                SRL_HL | SRA_HL | SLA_HL => gb.mem[hl],
+                SLA_R8(r) | SRA_R8(r) => gb.get_register(r.1).0,
+                _ => panic!(),
+            };
+            let carry = match instruction {
+                SRA_R8(_) | SRA_HL => value & 1 != 0,
+                _ => value & 128 != 0
+            };
+            value = match instruction {
+                SRA_R8(_) | SRA_HL => ((value as i8) >> 1) as u8,
+                SRL_HL | SRL_R8(_) => value >> 1,
+                SLA_R8(_) | SLA_HL => ((value as i8) << 1) as u8,
+                _ => panic!()
+            };
+            match instruction {
+                SRL_HL | SRA_HL | SLA_HL => gb.mem *= (hl, value),
+                SLA_R8(r) | SRA_R8(r) => gb.get_register(r.1).0 = value,
+                _ => panic!()
+            };
+            gb.set_flags(value == 0, false, false, carry);
+        }
         BIT_U3_R8(_, _) | BIT_U3_HL(_) | RES_U3_R8(_, _) |
         RES_U3_HL(_) | SET_U3_R8(_, _) | SET_U3_HL(_) => {
             match instruction {
@@ -217,6 +276,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.pc.0 = u16::from_le_bytes([lo, hi]);
             gb.set_word_register(gb.sp.to_address().wrapping_add(2), gb.sp);
             gb.ime_counter = 1;
+            gb.ime = true;
         }
         RST(rst_vec) => {
             let [lo, hi] = gb.pc.0.to_le_bytes();
@@ -252,6 +312,7 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
         }
         LD_U8_A(n) => gb.a.0 = n,
         LD_SP_HL => gb.set_word_register(gb.hl().to_address(), gb.sp),
+
         POP_R16(reg) => {
             match reg {
                 WordRegister::Double(ByteRegister(_, high), ByteRegister(_, low)) => {
@@ -324,11 +385,11 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             let hi = gb.mem[gb.sp.to_address().wrapping_add(1)];
             gb.pc.0 = u16::from_le_bytes([lo, hi]);
             gb.set_word_register(gb.sp.to_address().wrapping_add(2), gb.sp);
-        } else { condition = false }
+        } else { branch_taken = false }
 
-        JP_CC_U16(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = n; } else { condition = false }
+        JP_CC_U16(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = n; } else { branch_taken = false }
 
-        JR_CC_I8(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16 } else { condition = false }
+        JR_CC_I8(cc, n) => if gb.cc_flag(cc) { gb.pc.0 = (gb.pc.0 as i16 + n as i16) as u16 } else { branch_taken = false }
 
         CALL_CC_U16(cc, n) => if gb.cc_flag(cc) {
             let [lo, hi] = gb.pc.0.to_le_bytes();
@@ -337,12 +398,11 @@ pub fn execute_instruction(gb: &mut Gameboy, (op, instruction): (u8, Instruction
             gb.sp = StackPointer(gb.sp.to_address() - 1);
             gb.mem *= (gb.sp, lo);
             gb.pc.0 = n;
-        } else { condition = false }
+        } else { branch_taken = false }
 
         STOP => {}
-        _ => panic!()
     };
-    instruction.cycles(condition) + if handle_interrupts(gb) { 4 } else { 0 }
+    instruction.cycles(branch_taken) + interrupt_cycles
 }
 
 fn calc_with_carry<T: Copy>(operands: Vec<T>, acc: &mut T, op: fn(T, T) -> (T, bool)) -> (T, bool) {
@@ -368,10 +428,10 @@ fn handle_interrupts(gb: &mut Gameboy) -> bool {
     if !gb.ime { return false; }
     for interrupt_id in &[VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt] {
         if trigger_interrupt(gb, interrupt_id) {
-            return true
+            return true;
         }
     }
-    return false
+    return false;
 }
 
 fn trigger_interrupt(gb: &mut Gameboy, interrupt_id: &InterruptId) -> bool {
