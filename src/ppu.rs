@@ -4,7 +4,7 @@ use std::ops::{Index, IndexMut, Range, RangeInclusive};
 use crate::memory_map::{MemoryMap};
 use crate::ppu::PpuState::{HBlank, OamSearch, PixelTransfer, VBlank};
 use crate::interrupt::{Interrupt, InterruptId};
-use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt};
+use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt, WriteInt};
 use crate::ppu::RenderResult::LcdOff;
 
 enum PpuRegisterId { LcdControl, LcdStatus, LcdInterrupt, ScrollY, ScrollX, ScanLine, Background }
@@ -35,8 +35,9 @@ pub struct PPU {
     registers: [u8; 0xFF4C - 0xFF40],
     invalid: u8,
     ticks: u16,
-    last_render: RenderResult,
+    state: RenderResult,
     stat_line: StatInterrupt,
+    force_irq: bool,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -71,7 +72,8 @@ impl PPU {
             invalid: 0xFF,
             ticks: 0,
             stat_line: Low,
-            last_render: LcdOff
+            state: LcdOff,
+            force_irq: true,
         }
     }
 
@@ -80,13 +82,13 @@ impl PPU {
             *self.line() = 0;
             self.ticks = 0;
             self.mode = OamSearch;
-            self.last_render = RenderResult::LcdOff;
-            return self.last_render
+            self.state = RenderResult::LcdOff;
+            return self.state;
         }
 
         let old_mode = self.mode;
 
-        let mut lyc_stat_check = if self.last_render == RenderResult::LcdOff { self.lyc_check() } else { false };
+        let mut lyc_stat_check = if self.state == RenderResult::LcdOff { self.lyc_check() } else { false };
 
         self.ticks += (cpu_cycles as u16 * 4);
 
@@ -117,21 +119,23 @@ impl PPU {
         };
 
         let new_interrupts = self.stat_interrupts(lyc_stat_check);
+        self.stat_line = *new_interrupts.iter().find(|i| i.is_some()).map(|i| i.as_ref()).flatten().unwrap_or(&Low);
+
         let trigger_stat_interrupt = match (self.stat_line, new_interrupts) {
             (Low, [.., Some(ModeInt(m))]) if m == self.mode && old_mode != m => true,
             (Low, [.., Some(LycInt)]) => true,
             _ => false
         };
 
-        self.stat_line = *new_interrupts.iter().find(|i| i.is_some()).map(|i| i.as_ref()).flatten().unwrap_or(&Low);
+        self.force_irq = false;
 
-        self.last_render = match (old_mode, self.mode, trigger_stat_interrupt) {
+        self.state = match (old_mode, self.mode, trigger_stat_interrupt) {
             (_, VBlank, _) if old_mode != VBlank => RenderResult::StateChange(old_mode, self.mode),
             (_, _, true) => RenderResult::StatInterrupt,
             _ => RenderResult::StateChange(old_mode, self.mode)
         };
 
-        return self.last_render
+        return self.state;
     }
 
     pub fn read(&self, address: usize) -> Option<&u8> {
@@ -163,19 +167,21 @@ impl PPU {
             (0xFE00..=0xFE9F, _) => self.oam[address - 0xFE00] = value,
 
             (0xFF40, _) => *self.lcdc() = value,
-            (0xFF41, _) => *self.stat() =
-                (value & 0xF8) | match self.mode {
+            (0xFF41, _) => {
+                *self.stat() = (value & 0xF8) | match self.mode {
                     HBlank => 0,
                     VBlank => 1,
                     OamSearch => 2,
                     PixelTransfer => 3
-                } | if self.lyc_check() { 0x04 } else { 0x0 },
+                } | if self.lyc_check() { 0x04 } else { 0x0 };
+                self.force_irq = true
+            }
 
             (0xFF42, _) => *self.scy() = value,
 
             (0xFF43, _) => *self.scx() = value,
 
-            (0xFF44, _) => {},
+            (0xFF44, _) => {}
 
             (0xFF45..=0xFF4B, _) => self.registers[address - 0xFF40] = value,
 
@@ -213,10 +219,10 @@ impl PPU {
     fn stat_interrupts(&mut self, lyc_check: bool) -> [Option<StatInterrupt>; 4] {
         let stat = *self.stat();
         [
-            if stat & 0x08 != 0 { Some(ModeInt(OamSearch)) } else { None },
-            if stat & 0x10 != 0 { Some(ModeInt(VBlank)) } else { None },
-            if stat & 0x20 != 0 { Some(ModeInt(HBlank)) } else { None },
-            if stat & 0x40 != 0 && lyc_check { Some(LycInt) } else { None }
+            if stat & 0x08 != 0 || self.force_irq { Some(ModeInt(OamSearch)) } else { None },
+            if stat & 0x10 != 0 || self.force_irq { Some(ModeInt(VBlank)) } else { None },
+            if stat & 0x20 != 0 || self.force_irq { Some(ModeInt(HBlank)) } else { None },
+            if (stat & 0x40 != 0 && lyc_check) || self.force_irq { Some(LycInt) } else { None }
         ]
     }
 }
