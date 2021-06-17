@@ -11,8 +11,10 @@ use InterruptState::*;
 #[deny(unreachable_patterns)]
 pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
     let interrupt_cycles = if handle_interrupts(gb) { 4 } else { 0 };
-    if gb.halted && interrupt_cycles == 0 { return 1 }
-    gb.halted = false;
+    if gb.halted {
+        gb.halted = interrupt_cycles == 0;
+        return if gb.halted { 1 } else { 4 }
+    }
 
     let instruction = fetch_instruction(gb);
     let (opcode, command) = (instruction.0, instruction.1);
