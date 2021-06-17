@@ -1,11 +1,13 @@
-use Instruction::*;
+use Command::*;
 
 use crate::memory_map::MemoryMap;
 use crate::register::{Bit, ByteRegister, ConditionCode, WordRegister};
 
+pub struct Instruction(pub u8, pub Command);
+
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
-pub enum Instruction {
+pub enum Command {
     ADC_A_R8(ByteRegister),
     ADC_A_HL,
     ADC_A_U8(u8),
@@ -114,7 +116,7 @@ pub enum Instruction {
     STOP,
 }
 #[deny(unreachable_patterns)]
-impl Instruction {
+impl Command {
     pub fn size(&self) -> u8 {
         match self {
             LD_A_U8(_) | ADC_A_U8(_) | ADD_A_U8(_) | AND_A_U8(_) | CP_A_U8(_) | OR_A_U8(_) | SBC_A_U8(_) |

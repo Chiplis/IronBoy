@@ -123,11 +123,11 @@ impl PPU {
                 204
             }
 
-            PpuMode::VBlank => if self.ticks < 204 + 172 + 80 { 0 } else {
+            PpuMode::VBlank => if self.ticks < 456 { 0 } else {
                 *self.ly() = (*self.ly() + 1) % 154;
                 lyc_stat_check = self.lyc_check();
                 self.mode = if *self.ly() == 0 { OamSearch } else { VBlank };
-                204 + 172 + 80
+                456
             }
         };
         self.state = if old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(old_mode, self.mode)};
@@ -211,7 +211,7 @@ impl PPU {
 
     fn scx(&mut self) -> &mut u8 { &mut self.registers[0x2] }
 
-    pub(crate) fn ly(&mut self) -> &mut u8 { &mut self.registers[0x3] }
+    pub fn ly(&mut self) -> &mut u8 { &mut self.registers[0x3] }
 
     fn lyc(&mut self) -> &mut u8 { &mut self.registers[0x4] }
 
@@ -248,7 +248,6 @@ enum ObjSize {
 
 impl LcdControl {
     fn new(register: u8) -> Self { Self { reg: register } }
-
     fn enabled(&self) -> bool { self.reg & 0x80 != 0 }
     fn w_tile_map_area(&self) -> TileMapArea { if self.reg & 0x40 != 0 { H9C00 } else { H9800 } }
     fn window_enable(&self) -> bool { self.reg & 0x20 != 0 && self.reg & 0x01 != 0 }
@@ -257,10 +256,6 @@ impl LcdControl {
     fn obj_size(&self) -> ObjSize { if self.reg & 0x04 != 0 { StackedTile } else { SingleTile } }
     fn obj_enable(&self) -> bool { self.reg & 0x02 != 0 }
     fn bg_window_enable(&self) -> bool { self.reg & 0x01 != 0 }
-    fn get(&self) -> &u8 {
-        &self.reg
-    }
-    fn set(&mut self, value: u8) {
-        self.reg = value
-    }
+    fn get(&self) -> &u8 { &self.reg }
+    fn set(&mut self, value: u8) { self.reg = value }
 }

@@ -1,7 +1,7 @@
-use crate::Instruction;
+use crate::Command;
 use crate::instruction_fetcher::{Gameboy, fetch_instruction};
 use crate::register::{ByteRegister, FlagRegister, WordRegister, RegisterId};
-use crate::instruction::Instruction::*;
+use crate::instruction::Command::*;
 use crate::register::WordRegister::StackPointer;
 use std::cmp::{min, max};
 use crate::interrupt::InterruptId::{VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt};
@@ -15,12 +15,21 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
     gb.halted = false;
 
     let instruction = fetch_instruction(gb);
-    gb.pc.0 += instruction.size() as u16;
+    let (opcode, command) = (instruction.0, instruction.1);
+
+    println!("op: {} | pc: {} | sp: {} | a: {} b: {} c: {} d: {} e: {} h: {} l: {} | f: {} | ly: {}", opcode, gb.pc.0 + 1, gb.sp.to_address(), gb.a.0, gb.b.0, gb.c.0, gb.d.0, gb.e.0, gb.h.0, gb.l.0, gb.f.value(), *gb.mem.ppu.ly());
+
+    gb.pc.0 += command.size() as u16;
+
+    execute_command(gb, command, interrupt_cycles)
+}
+
+fn execute_command(gb: &mut Gameboy, command: Command, interrupt_cycles: u8) -> u8 {
 
     let hl = gb.hl();
     let mut branch_taken = true;
 
-    match instruction {
+    match command {
         NOP => {}
 
         ADD_A_R8(ByteRegister(n, _)) | ADD_A_U8(n) => {
@@ -35,7 +44,7 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
             gb.a.0 = add;
         }
         ADC_A_HL | ADD_A_HL => {
-            let carry = if let ADD_A_HL = instruction { 1 } else { if gb.f.c { 1 } else { 0 } };
+            let carry = if let ADD_A_HL = command { 1 } else { if gb.f.c { 1 } else { 0 } };
             let (add, new_carry) = calc_with_carry(vec![gb.a.0, gb.mem[hl], carry], &mut 0, |a, b| a.overflowing_add(b));
             gb.set_flags(add == 0, false, half_carry_8_add(gb.a.0, gb.mem[hl], carry), new_carry);
             gb.a.0 = add;
@@ -89,7 +98,7 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
             gb.set_flags(gb.a.0 == 0, true, half_carry_8_sub(gb.a.0, n, carry), new_carry);
         }
         SBC_A_HL | SUB_A_HL => {
-            let carry = if let SUB_A_HL = instruction { 1 } else { if gb.f.c { 1 } else { 0 } };
+            let carry = if let SUB_A_HL = command { 1 } else { if gb.f.c { 1 } else { 0 } };
             let (sub, new_carry) = calc_with_carry(vec![gb.a.0, gb.mem[hl], carry], &mut 0, |a, b| a.overflowing_sub(b));
             gb.a.0 = sub;
             gb.set_flags(gb.a.0 == 0, true, half_carry_8_sub(gb.a.0, gb.mem[hl], carry), new_carry);
@@ -123,36 +132,36 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
         DEC_R16(reg) => gb.set_word_register(reg.to_address().wrapping_sub(1), reg),
         INC_R16(reg) => gb.set_word_register(reg.to_address().wrapping_add(1), reg),
         RR_HL | RL_HL | RRC_HL | RLC_HL | RR_R8(_) | RL_R8(_) | RLA | RRA | RLC_R8(_) | RRC_R8(_) | RLCA | RRCA => {
-            let mut value = match instruction {
+            let mut value = match command {
                 RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => gb.get_register(r.1).0,
                 RLA | RRA | RLCA | RRCA => gb.a.0,
                 RR_HL | RL_HL | RRC_HL | RLC_HL => gb.mem[hl],
                 _ => panic!(),
             };
-            let carry = match instruction {
+            let carry = match command {
                 RLC_R8(_) | RL_R8(_) | RLA | RLCA | RLC_HL | RL_HL => value & 128 != 0,
                 _ => value & 1 != 0,
             };
-            let mask_condition = match instruction {
+            let mask_condition = match command {
                 RRC_R8(_) | RRC_HL | RRCA | RLC_R8(_) | RLC_HL | RLCA => carry,
                 _ => gb.f.c
             };
             let mask = if mask_condition {
-                match instruction {
+                match command {
                     RRC_HL | RRC_R8(_) | RRCA | RR_R8(_) | RRA | RR_HL => 128,
                     _ => 1
                 }
             } else { 0 };
-            value = (match instruction {
+            value = (match command {
                 RLC_R8(_) | RL_R8(_) | RLA | RLCA | RLC_HL | RL_HL => value << 1,
                 RRC_HL | RRC_R8(_) | RRCA | RR_R8(_) | RRA | RR_HL => value >> 1,
                 _ => panic!()
             }) | mask;
-            let z = match instruction {
+            let z = match command {
                 RLA | RRA | RLCA | RRCA => false,
                 _ => value == 0
             };
-            match instruction {
+            match command {
                 RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => gb.get_register(r.1).0 = value,
                 RLA | RRA | RLCA | RRCA => gb.a.0 = value,
                 RR_HL | RL_HL | RRC_HL | RLC_HL => gb.mem *= (hl, value),
@@ -161,22 +170,22 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
             gb.set_flags(z, false, false, carry);
         }
         SRA_R8(_) | SLA_R8(_) | SRL_R8(_) | SRL_HL | SLA_HL | SRA_HL => {
-            let mut value = match instruction {
+            let mut value = match command {
                 SRL_HL | SRA_HL | SLA_HL => gb.mem[hl],
                 SLA_R8(r) | SRA_R8(r) => gb.get_register(r.1).0,
                 _ => panic!(),
             };
-            let carry = match instruction {
+            let carry = match command {
                 SRA_R8(_) | SRA_HL => value & 1 != 0,
                 _ => value & 128 != 0
             };
-            value = match instruction {
+            value = match command {
                 SRA_R8(_) | SRA_HL => ((value as i8) >> 1) as u8,
                 SRL_HL | SRL_R8(_) => value >> 1,
                 SLA_R8(_) | SLA_HL => ((value as i8) << 1) as u8,
                 _ => panic!()
             };
-            match instruction {
+            match command {
                 SRL_HL | SRA_HL | SLA_HL => gb.mem *= (hl, value),
                 SLA_R8(r) | SRA_R8(r) => gb.get_register(r.1).0 = value,
                 _ => panic!()
@@ -185,7 +194,7 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
         }
         BIT_U3_R8(_, _) | BIT_U3_HL(_) | RES_U3_R8(_, _) |
         RES_U3_HL(_) | SET_U3_R8(_, _) | SET_U3_HL(_) => {
-            match instruction {
+            match command {
                 BIT_U3_R8(bit, ByteRegister(n, _)) => gb.f.z = n & bit.0 == 0,
                 BIT_U3_HL(bit) => gb.f.z = gb.mem[hl] & bit.0 == 0,
                 RES_U3_R8(bit, ByteRegister(_, id)) => {
@@ -310,7 +319,7 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
                 half_carry_16_add(gb.sp.to_address(), (n as u8 & !0x80) as u16, 0)
             };
             gb.set_flags(false, false, half_carry, carry);
-            gb.set_word_register(add, if let ADD_SP_I8(n) = instruction { gb.sp } else { gb.hl() })
+            gb.set_word_register(add, if let ADD_SP_I8(n) = command { gb.sp } else { gb.hl() })
         }
         LD_U16_SP(n) => {
             let [lo, hi] = gb.sp.to_address().to_le_bytes();
@@ -409,7 +418,7 @@ pub fn execute_instruction(gb: &mut Gameboy) -> u8 {
 
         STOP => {}
     };
-    instruction.cycles(branch_taken) + interrupt_cycles
+    command.cycles(branch_taken) + interrupt_cycles
 }
 
 fn calc_with_carry<T: Copy>(operands: Vec<T>, acc: &mut T, op: fn(T, T) -> (T, bool)) -> (T, bool) {

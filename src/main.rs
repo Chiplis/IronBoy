@@ -1,4 +1,4 @@
-use instruction::Instruction;
+use instruction::Command;
 
 use crate::instruction_fetcher::{fetch_instruction, Gameboy};
 use crate::register::{FlagRegister, ProgramCounter, RegisterId, ByteRegister};
@@ -16,7 +16,7 @@ mod ppu;
 mod interrupt;
 mod timer;
 
-fn execute(gameboy: Gameboy, instruction: Instruction) -> Gameboy {
+fn execute(gameboy: Gameboy, instruction: Command) -> Gameboy {
     match instruction {
         _ => panic!(),
     }
