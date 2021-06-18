@@ -78,11 +78,6 @@ impl InterruptHandler {
     pub fn read(&self, address: usize) -> Option<&u8> { self.registers.get(&address) }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        if address == InterruptHandler::JOYPAD_ADDRESS {
-            self.registers.insert(address, value);
-            return true
-        }
-
         if !self.registers.contains_key(&address) { return false }
         self.registers.insert(address, value);
         true

@@ -5,7 +5,6 @@ use minifb::{Key, Window, WindowOptions};
 use gameboy::Gameboy;
 use instruction::Command;
 
-use crate::instruction_fetcher::fetch_instruction;
 use crate::memory_map::MemoryMap;
 use crate::register::{ByteRegister, FlagRegister, ProgramCounter, RegisterId};
 use crate::register::WordRegister::StackPointer;
@@ -13,7 +12,6 @@ use crate::register::WordRegister::StackPointer;
 mod instruction_fetcher;
 mod instruction;
 mod register;
-mod instruction_executor;
 mod memory_map;
 mod ppu;
 mod interrupt;
@@ -27,7 +25,7 @@ fn main() {
 
     let mut gameboy = Gameboy::new(mem);
     loop {
-        let cycles = instruction_executor::execute_instruction(&mut gameboy);
+        let cycles = gameboy.cycle();
         gameboy.mem.cycle(cycles as usize);
         //thread::sleep(time::Duration::from_millis(100));
     }
