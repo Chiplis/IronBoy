@@ -20,9 +20,9 @@ pub struct InstructionFetcher;
 
 impl InstructionFetcher {
     #[deny(unreachable_patterns)]
-    pub fn fetch_instruction(pc: u16, r: &Register, ram: &MemoryMap) -> Instruction {
+    pub fn fetch_instruction(pc: u16, reg: &Register, ram: &MemoryMap) -> Instruction {
         let opcode = ram[pc];
-        let mut registers = [r[B], r[C], r[D], r[E], r[H], r[L], r[A]];
+        let mut registers = [reg[B], reg[C], reg[D], reg[E], reg[H], reg[L], reg[A]];
 
         let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
         operands.insert(operands.len() - 1, RegisterOperand::HL);
@@ -96,12 +96,12 @@ impl InstructionFetcher {
                 }
             }
 
-            0x06 => LD_R8_U8(r[B], ram[pc + 1]),
-            0x0E => LD_R8_U8(r[C], ram[pc + 1]),
-            0x16 => LD_R8_U8(r[D], ram[pc + 1]),
-            0x1E => LD_R8_U8(r[E], ram[pc + 1]),
-            0x26 => LD_R8_U8(r[H], ram[pc + 1]),
-            0x2E => LD_R8_U8(r[L], ram[pc + 1]),
+            0x06 => LD_R8_U8(reg[B], ram[pc + 1]),
+            0x0E => LD_R8_U8(reg[C], ram[pc + 1]),
+            0x16 => LD_R8_U8(reg[D], ram[pc + 1]),
+            0x1E => LD_R8_U8(reg[E], ram[pc + 1]),
+            0x26 => LD_R8_U8(reg[H], ram[pc + 1]),
+            0x2E => LD_R8_U8(reg[L], ram[pc + 1]),
 
             0x40..=0x6F => match operands[operand_idx] {
                 RegisterOperand::HL => LD_R8_HL(registers[register_idx]),
@@ -113,11 +113,11 @@ impl InstructionFetcher {
                 RegisterOperand::HL => panic!()
             },
 
-            0x78..=0x7D => LD_R8_R8(r[A], registers[opcode as usize - 0x78]),
+            0x78..=0x7D => LD_R8_R8(reg[A], registers[opcode as usize - 0x78]),
 
-            0x77 => LD_HL_R8(r[A]),
-            0x7E => LD_R8_HL(r[A]),
-            0x7F => LD_R8_R8(r[A], r[A]),
+            0x77 => LD_HL_R8(reg[A]),
+            0x7E => LD_R8_HL(reg[A]),
+            0x7F => LD_R8_R8(reg[A], reg[A]),
 
             0x80..=0x87 => match operands[operand_idx] {
                 RegisterOperand::HL => ADD_A_HL,
@@ -175,15 +175,15 @@ impl InstructionFetcher {
 
             0x36 => LDH_HL_U8(ram[pc + 1]),
 
-            0x0A => LD_A_R16(r.bc()),
-            0x1A => LD_A_R16(r.de()),
+            0x0A => LD_A_R16(reg.bc()),
+            0x1A => LD_A_R16(reg.de()),
 
             0xFA => LDH_A_U16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
             0x3E => LD_A_U8(ram[pc + 1]),
 
-            0x02 => LD_R16_A(r.bc()),
-            0x12 => LD_R16_A(r.de()),
+            0x02 => LD_R16_A(reg.bc()),
+            0x12 => LD_R16_A(reg.de()),
 
             0xEA => LDH_U16_A(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
@@ -198,10 +198,10 @@ impl InstructionFetcher {
             0xE0 => LDH_U8_A(ram[pc + 1]),
             0xF0 => LDH_A_U8(ram[pc + 1]),
 
-            0x01 => LD_R16_U16(r.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-            0x11 => LD_R16_U16(r.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-            0x21 => LD_R16_U16(r.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-            0x31 => LD_R16_U16(r.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+            0x01 => LD_R16_U16(reg.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+            0x11 => LD_R16_U16(reg.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+            0x21 => LD_R16_U16(reg.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+            0x31 => LD_R16_U16(reg.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
             0xF9 => LD_SP_HL,
             0xF8 => LD_HL_SP_I8(ram[pc + 1] as i8),
@@ -209,14 +209,14 @@ impl InstructionFetcher {
             0x08 => LD_U16_SP(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
             0xF5 => PUSH_AF,
-            0xC5 => PUSH_R16(r.bc()),
-            0xD5 => PUSH_R16(r.de()),
-            0xE5 => PUSH_R16(r.hl()),
+            0xC5 => PUSH_R16(reg.bc()),
+            0xD5 => PUSH_R16(reg.de()),
+            0xE5 => PUSH_R16(reg.hl()),
 
-            0xC1 => POP_R16(r.bc()),
-            0xD1 => POP_R16(r.de()),
-            0xE1 => POP_R16(r.hl()),
-            0xF1 => POP_R16(r.af()),
+            0xC1 => POP_R16(reg.bc()),
+            0xD1 => POP_R16(reg.de()),
+            0xE1 => POP_R16(reg.hl()),
+            0xF1 => POP_R16(reg.af()),
 
             0xC6 => ADD_A_U8(ram[pc + 1]),
             0xCE => ADC_A_U8(ram[pc + 1]),
@@ -227,20 +227,20 @@ impl InstructionFetcher {
             0xEE => XOR_A_U8(ram[pc + 1]),
             0xFE => CP_A_U8(ram[pc + 1]),
 
-            0x09 => ADD_HL_R16(r.bc()),
-            0x19 => ADD_HL_R16(r.de()),
-            0x29 => ADD_HL_R16(r.hl()),
-            0x39 => ADD_HL_R16(r.sp),
+            0x09 => ADD_HL_R16(reg.bc()),
+            0x19 => ADD_HL_R16(reg.de()),
+            0x29 => ADD_HL_R16(reg.hl()),
+            0x39 => ADD_HL_R16(reg.sp),
 
-            0x03 => INC_R16(r.bc()),
-            0x13 => INC_R16(r.de()),
-            0x23 => INC_R16(r.hl()),
-            0x33 => INC_R16(r.sp),
+            0x03 => INC_R16(reg.bc()),
+            0x13 => INC_R16(reg.de()),
+            0x23 => INC_R16(reg.hl()),
+            0x33 => INC_R16(reg.sp),
 
-            0x0B => DEC_R16(r.bc()),
-            0x1B => DEC_R16(r.de()),
-            0x2B => DEC_R16(r.hl()),
-            0x3B => DEC_R16(r.sp),
+            0x0B => DEC_R16(reg.bc()),
+            0x1B => DEC_R16(reg.de()),
+            0x2B => DEC_R16(reg.hl()),
+            0x3B => DEC_R16(reg.sp),
 
             0xE8 => ADD_SP_I8(ram[pc + 1] as i8),
 

@@ -159,14 +159,14 @@ impl PPU {
 
     pub fn read(&self, address: usize) -> Option<&u8> {
         match (address, self.mode) {
-            (0x8000..=0x9FFF, s) if s == PixelTransfer => Some(&0xFF),
+            (0x8000..=0x9FFF, PixelTransfer) => Some(&0xFF),
             (0x8000..=0x87FF, _) => Some(&self.tile_block_a[(address - 0x8000) as usize]),
             (0x8800..=0x8FFF, _) => Some(&self.tile_block_b[(address - 0x8800) as usize]),
             (0x9000..=0x97FF, _) => Some(&self.tile_block_c[(address - 0x9000) as usize]),
             (0x9800..=0x9BFF, _) => Some(&self.tile_map_a[(address - 0x9800) as usize]),
             (0x9C00..=0x9FFF, _) => Some(&self.tile_map_b[(address - 0x9C00) as usize]),
 
-            (0xFE00..=0xFE9F, s) if s == OamSearch || s == PixelTransfer => Some(&0xFF),
+            (0xFE00..=0xFE9F, PixelTransfer | OamSearch) => Some(&0xFF),
             (0xFE00..=0xFE9F, _) => Some(&self.oam[(address - 0xFE00) as usize]),
             (0xFF40, _) => Some(self.lcdc.get()),
             (0xFF41..=0xFF4B, _) => Some(&self.registers[(address - 0xFF41) as usize]),
@@ -182,7 +182,7 @@ impl PPU {
             (0x9800..=0x9BFF, _) => self.tile_map_a[address - 0x9800] = value,
             (0x9C00..=0x9FFF, _) => self.tile_map_b[address - 0x9C00] = value,
 
-            (0xFE00..=0xFE9F, m) if m == OamSearch || m == PixelTransfer => {}
+            (0xFE00..=0xFE9F, OamSearch | PixelTransfer) => {}
             (0xFE00..=0xFE9F, _) => self.oam[address - 0xFE00] = value,
 
             (0xFF40, _) => self.lcdc.set(value),
