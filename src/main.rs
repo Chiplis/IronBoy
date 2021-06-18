@@ -16,12 +16,6 @@ mod ppu;
 mod interrupt;
 mod timer;
 
-fn execute(gameboy: Gameboy, instruction: Command) -> Gameboy {
-    match instruction {
-        _ => panic!(),
-    }
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let rom = std::fs::read(args.get(1).unwrap()).unwrap();

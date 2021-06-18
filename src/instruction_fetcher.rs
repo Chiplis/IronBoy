@@ -53,10 +53,6 @@ impl<'a> Gameboy<'a> {
     }
 }
 
-trait Special {}
-
-impl Special for (ByteRegister, ByteRegister) {}
-
 impl Gameboy<'_> {
     pub fn af(&self) -> WordRegister {
         WordRegister::AccFlag(self.a, self.f)
