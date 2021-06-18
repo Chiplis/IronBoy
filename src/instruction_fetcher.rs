@@ -1,133 +1,28 @@
-use crate::Command;
-use crate::register::{Bit, WordRegister, RegisterId, FlagRegister, ProgramCounter, ByteRegister, ConditionCode};
-use crate::instruction::Command::*;
-use crate::instruction::{RstVec, Instruction};
-use crate::memory_map::MemoryMap;
-use crate::register::WordRegister::StackPointer;
-use std::iter::FromIterator;
-use std::ops::{Div, IndexMut, Index};
 use std::cmp::max;
+use std::iter::FromIterator;
+use std::ops::{Div, Index, IndexMut};
+
+use crate::Command;
+use crate::gameboy::Gameboy;
+use crate::instruction::{Instruction, RstVec};
+use crate::instruction::Command::*;
+use crate::memory_map::MemoryMap;
+use crate::register::{Bit, ByteRegister, ConditionCode, FlagRegister, ProgramCounter, RegisterId, WordRegister};
 use crate::register::RegisterId::*;
+use crate::register::WordRegister::StackPointer;
 
 enum RegisterOperand {
     HL,
     Byte(ByteRegister),
 }
 
-pub struct Gameboy {
-    pub registers: [ByteRegister; 7],
-    pub f: FlagRegister,
-    pub pc: ProgramCounter,
-    pub sp: WordRegister,
-    pub vram: [u8; 2 * 8 * 1024],
-    pub ime_counter: i8,
-    pub ime: bool,
-    pub mem: MemoryMap,
-    pub(crate) halted: bool
-}
-
-impl Gameboy {
-    pub fn new(mem: MemoryMap) -> Self {
-        Self {
-            registers: [
-                ByteRegister(0x01, RegisterId::A),
-                ByteRegister(0x00, RegisterId::B),
-                ByteRegister(0x13, RegisterId::C),
-                ByteRegister(0x00, RegisterId::D),
-                ByteRegister(0xD8, RegisterId::E),
-                ByteRegister(0x01, RegisterId::H),
-                ByteRegister(0x4D, RegisterId::L)
-            ],
-            f: FlagRegister { z: true, n: false, h: true, c: true },
-            sp: StackPointer(0xFFFE),
-            pc: ProgramCounter(0x0100),
-            mem,
-            vram: [0; 2 * 8 * 1024],
-            ime_counter: -1,
-            ime: false,
-            halted: false
-        }
-    }
-}
-
-impl Gameboy {
-    pub fn af(&self) -> WordRegister {
-        WordRegister::AccFlag(self[A], self.f)
-    }
-    pub fn bc(&self) -> WordRegister {
-        WordRegister::Double(self[B], self[C])
-    }
-    pub fn de(&self) -> WordRegister {
-        WordRegister::Double(self[D], self[E])
-    }
-
-    pub fn hl(&self) -> WordRegister {
-        WordRegister::Double(self[H], self[L])
-    }
-
-    pub fn set_word_register(&mut self, value: u16, reg: WordRegister) {
-        let [lo, hi] = value.to_le_bytes();
-        match reg {
-            WordRegister::AccFlag(_, _) => {
-                self[A].0 = hi;
-                self.set_flag(lo);
-            }
-            WordRegister::Double(a, b) => {
-                self.get_register(a.1).0 = hi;
-                self.get_register(b.1).0 = lo;
-            }
-            WordRegister::StackPointer(_) => self.sp = StackPointer(value)
-        };
-    }
-
-    pub fn cc_flag(&mut self, cc: ConditionCode) -> bool {
-        match cc {
-            ConditionCode::Z => self.f.z,
-            ConditionCode::NZ => !self.f.z,
-            ConditionCode::C => self.f.c,
-            ConditionCode::NC => !self.f.c
-        }
-    }
-
-    pub fn set_flags(&mut self, z: bool, n: bool, h: bool, c: bool) {
-        self.f.z = z;
-        self.f.n = n;
-        self.f.c = c;
-        self.f.h = h;
-    }
-
-    pub fn set_flag(&mut self, flag: u8) {
-        let flags = flag & 0xF0;
-        self.f.z = flags & 0x80 == 0x80;
-        self.f.n = flags & 0x40 == 0x40;
-        self.f.c = flags & 0x20 == 0x20;
-        self.f.h = flags & 0x10 == 0x10;
-    }
-    pub fn get_register(&mut self, id: RegisterId) -> &mut ByteRegister { &mut self.registers[id as usize] }
-}
-
-impl Index<RegisterId> for Gameboy {
-    type Output = ByteRegister;
-
-    fn index(&self, index: RegisterId) -> &Self::Output {
-        &self.registers[index as usize]
-    }
-}
-
-impl IndexMut<RegisterId> for Gameboy {
-    fn index_mut(&mut self, index: RegisterId) -> &mut Self::Output {
-        &mut self.registers[index as usize]
-    }
-}
-
 
 #[deny(unreachable_patterns)]
-pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
-    let pc = gb.pc.0;
-    let line = *gb.mem.ppu.ly();
+pub fn fetch_instruction(gb: &Gameboy) -> Instruction {
+    let pc = gb.registers.pc.0;
     let ram = &gb.mem;
     let opcode = ram[pc];
-    let mut registers = [gb[RegisterId::B], gb[RegisterId::C], gb[RegisterId::D], gb[RegisterId::E], gb[RegisterId::H], gb[RegisterId::L], gb[RegisterId::A]];
+    let mut registers = [gb[B], gb[C], gb[D], gb[E], gb[H], gb[L], gb[A]];
 
     let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
     operands.insert(operands.len() - 1, RegisterOperand::HL);
@@ -201,12 +96,12 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
             }
         }
 
-        0x06 => LD_R8_U8(gb[RegisterId::B], ram[pc + 1]),
-        0x0E => LD_R8_U8(gb[RegisterId::C], ram[pc + 1]),
-        0x16 => LD_R8_U8(gb[RegisterId::D], ram[pc + 1]),
-        0x1E => LD_R8_U8(gb[RegisterId::E], ram[pc + 1]),
-        0x26 => LD_R8_U8(gb[RegisterId::H], ram[pc + 1]),
-        0x2E => LD_R8_U8(gb[RegisterId::L], ram[pc + 1]),
+        0x06 => LD_R8_U8(gb[B], ram[pc + 1]),
+        0x0E => LD_R8_U8(gb[C], ram[pc + 1]),
+        0x16 => LD_R8_U8(gb[D], ram[pc + 1]),
+        0x1E => LD_R8_U8(gb[E], ram[pc + 1]),
+        0x26 => LD_R8_U8(gb[H], ram[pc + 1]),
+        0x2E => LD_R8_U8(gb[L], ram[pc + 1]),
 
         0x40..=0x6F => match operands[operand_idx] {
             RegisterOperand::HL => LD_R8_HL(registers[register_idx]),
@@ -218,11 +113,11 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
             RegisterOperand::HL => panic!()
         },
 
-        0x78..=0x7D => LD_R8_R8(gb[RegisterId::A], registers[opcode as usize - 0x78]),
+        0x78..=0x7D => LD_R8_R8(gb[A], registers[opcode as usize - 0x78]),
 
-        0x77 => LD_HL_R8(gb[RegisterId::A]),
-        0x7E => LD_R8_HL(gb[RegisterId::A]),
-        0x7F => LD_R8_R8(gb[RegisterId::A], gb[RegisterId::A]),
+        0x77 => LD_HL_R8(gb[A]),
+        0x7E => LD_R8_HL(gb[A]),
+        0x7F => LD_R8_R8(gb[A], gb[A]),
 
         0x80..=0x87 => match operands[operand_idx] {
             RegisterOperand::HL => ADD_A_HL,
@@ -280,15 +175,15 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
 
         0x36 => LDH_HL_U8(ram[pc + 1]),
 
-        0x0A => LD_A_R16(gb.bc()),
-        0x1A => LD_A_R16(gb.de()),
+        0x0A => LD_A_R16(gb.registers.bc()),
+        0x1A => LD_A_R16(gb.registers.de()),
 
         0xFA => LDH_A_U16(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0x3E => LD_A_U8(ram[pc + 1]),
 
-        0x02 => LD_R16_A(gb.bc()),
-        0x12 => LD_R16_A(gb.de()),
+        0x02 => LD_R16_A(gb.registers.bc()),
+        0x12 => LD_R16_A(gb.registers.de()),
 
         0xEA => LDH_U16_A(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
@@ -303,10 +198,10 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
         0xE0 => LDH_U8_A(ram[pc + 1]),
         0xF0 => LDH_A_U8(ram[pc + 1]),
 
-        0x01 => LD_R16_U16(gb.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x11 => LD_R16_U16(gb.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x21 => LD_R16_U16(gb.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
-        0x31 => LD_R16_U16(gb.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x01 => LD_R16_U16(gb.registers.bc(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x11 => LD_R16_U16(gb.registers.de(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x21 => LD_R16_U16(gb.registers.hl(), u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
+        0x31 => LD_R16_U16(gb.registers.sp, u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF9 => LD_SP_HL,
         0xF8 => LD_HL_SP_I8(ram[pc + 1] as i8),
@@ -314,14 +209,14 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
         0x08 => LD_U16_SP(u16::from_le_bytes([ram[pc + 1], ram[pc + 2]])),
 
         0xF5 => PUSH_AF,
-        0xC5 => PUSH_R16(gb.bc()),
-        0xD5 => PUSH_R16(gb.de()),
-        0xE5 => PUSH_R16(gb.hl()),
+        0xC5 => PUSH_R16(gb.registers.bc()),
+        0xD5 => PUSH_R16(gb.registers.de()),
+        0xE5 => PUSH_R16(gb.registers.hl()),
 
-        0xC1 => POP_R16(gb.bc()),
-        0xD1 => POP_R16(gb.de()),
-        0xE1 => POP_R16(gb.hl()),
-        0xF1 => POP_R16(gb.af()),
+        0xC1 => POP_R16(gb.registers.bc()),
+        0xD1 => POP_R16(gb.registers.de()),
+        0xE1 => POP_R16(gb.registers.hl()),
+        0xF1 => POP_R16(gb.registers.af()),
 
         0xC6 => ADD_A_U8(ram[pc + 1]),
         0xCE => ADC_A_U8(ram[pc + 1]),
@@ -332,20 +227,20 @@ pub fn fetch_instruction(gb: &mut Gameboy) -> Instruction {
         0xEE => XOR_A_U8(ram[pc + 1]),
         0xFE => CP_A_U8(ram[pc + 1]),
 
-        0x09 => ADD_HL_R16(gb.bc()),
-        0x19 => ADD_HL_R16(gb.de()),
-        0x29 => ADD_HL_R16(gb.hl()),
-        0x39 => ADD_HL_R16(gb.sp),
+        0x09 => ADD_HL_R16(gb.registers.bc()),
+        0x19 => ADD_HL_R16(gb.registers.de()),
+        0x29 => ADD_HL_R16(gb.registers.hl()),
+        0x39 => ADD_HL_R16(gb.registers.sp),
 
-        0x03 => INC_R16(gb.bc()),
-        0x13 => INC_R16(gb.de()),
-        0x23 => INC_R16(gb.hl()),
-        0x33 => INC_R16(gb.sp),
+        0x03 => INC_R16(gb.registers.bc()),
+        0x13 => INC_R16(gb.registers.de()),
+        0x23 => INC_R16(gb.registers.hl()),
+        0x33 => INC_R16(gb.registers.sp),
 
-        0x0B => DEC_R16(gb.bc()),
-        0x1B => DEC_R16(gb.de()),
-        0x2B => DEC_R16(gb.hl()),
-        0x3B => DEC_R16(gb.sp),
+        0x0B => DEC_R16(gb.registers.bc()),
+        0x1B => DEC_R16(gb.registers.de()),
+        0x2B => DEC_R16(gb.registers.hl()),
+        0x3B => DEC_R16(gb.registers.sp),
 
         0xE8 => ADD_SP_I8(ram[pc + 1] as i8),
 

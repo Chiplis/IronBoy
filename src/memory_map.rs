@@ -57,17 +57,10 @@ impl MemoryMap {
     fn read<T: 'static + Into<usize> + Display + Copy>(&self, address: T) -> &u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
-        let value = match self.ppu.read(translated_address) {
-            Some(value) => value,
-            None => match self.interrupt_handler.read(translated_address) {
-                Some(value) => value,
-                None => match self.timer.read(translated_address) {
-                    Some(value) => value,
-                    None => &self.memory[translated_address]
-                }
-            }
-        };
-        value
+        self.ppu.read(translated_address)
+            .or(self.interrupt_handler.read(translated_address))
+            .or(self.timer.read(translated_address))
+            .unwrap_or(&self.memory[translated_address])
     }
 
     fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {

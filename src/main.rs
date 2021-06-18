@@ -1,11 +1,14 @@
+use std::{env, thread, time};
+
+use minifb::{Key, Window, WindowOptions};
+
+use gameboy::Gameboy;
 use instruction::Command;
 
-use crate::instruction_fetcher::{fetch_instruction, Gameboy};
-use crate::register::{FlagRegister, ProgramCounter, RegisterId, ByteRegister};
-use std::{thread, time, env};
+use crate::instruction_fetcher::fetch_instruction;
 use crate::memory_map::MemoryMap;
+use crate::register::{ByteRegister, FlagRegister, ProgramCounter, RegisterId};
 use crate::register::WordRegister::StackPointer;
-use minifb::{Key, WindowOptions, Window};
 
 mod instruction_fetcher;
 mod instruction;
@@ -15,6 +18,7 @@ mod memory_map;
 mod ppu;
 mod interrupt;
 mod timer;
+mod gameboy;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
