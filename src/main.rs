@@ -19,7 +19,7 @@ mod timer;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let rom = std::fs::read(args.get(1).unwrap()).unwrap();
-    let mem = &mut MemoryMap::new(&rom);
+    let mem = MemoryMap::new(&rom);
 
     let mut gameboy = Gameboy::new(mem);
     loop {

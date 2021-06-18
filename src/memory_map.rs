@@ -22,7 +22,7 @@ impl <Address: 'static + Into<u16>> Index<Address> for MemoryMap {
     }
 }
 
-impl <Address: 'static + Into<u16> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for &mut MemoryMap {
+impl <Address: 'static + Into<u16> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         self.write(translated_address, value.into());
@@ -51,8 +51,7 @@ impl MemoryMap {
             rom_size: rom.len() as usize,
             invalid: 0xFF,
         };
-        MemoryMap::init_memory(&mut mem, rom);
-        mem
+        MemoryMap::init_memory(mem, rom)
     }
 
     fn read<T: 'static + Into<usize> + Display + Copy>(&self, address: T) -> &u8 {
@@ -92,7 +91,7 @@ impl MemoryMap {
         };
     }
 
-    fn init_memory(mut mem: &mut MemoryMap, rom: &Vec<u8>) {
+    fn init_memory(mut mem: MemoryMap, rom: &Vec<u8>) -> MemoryMap {
         for (index, value) in rom.iter().enumerate() {
             mem.memory[index] = *value
         }
@@ -128,5 +127,6 @@ impl MemoryMap {
         mem *= (0xFF4A as u16, 0);
         mem *= (0xFF4B as u16, 0);
         mem *= (0xFF00 as u16, 0xFF);
+        mem
     }
 }
