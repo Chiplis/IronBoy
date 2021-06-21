@@ -133,15 +133,15 @@ impl Command {
     }
 
     #[deny(unreachable_patterns)]
-    pub fn cycles(&self, condition: bool) -> u8 {
+    pub fn cycles(&self, branch: bool) -> u8 {
         match self {
             DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
             DEC_R8(..) | LD_R8_R8(..) | ADD_A_R8(..) | SUB_A_R8(..) |
             SBC_A_R8(..) | AND_A_R8(..) | XOR_A_R8(..) | OR_A_R8(..) | CP_A_R8(..) |
-            NOP | RRCA | STOP | RLA | RRA => 1,
+            ADC_A_R8(..) | NOP | RRCA | STOP | RLA | RRA => 1,
 
             CP_A_HL | INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | XOR_A_HL | AND_A_HL | LD_HL_R8(..) |
-            ADC_A_R8(..) | LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_U8(..) |
+            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_U8(..) |
             SUB_A_U8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_U8(..) | ADD_A_U8(..) | CP_A_U8(..) |
             SRL_R8(..) | OR_A_U8(..) | XOR_A_U8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
             ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
@@ -159,10 +159,10 @@ impl Command {
 
             CALL_U16(..) => 6,
 
-            JR_CC_I8(..) => if condition { 3 } else { 2 },
-            JP_CC_U16(..) => if condition { 4 } else { 3 },
-            RET_CC(..) => if condition { 5 } else { 2 },
-            CALL_CC_U16(..) => if condition { 6 } else { 3 },
+            JR_CC_I8(..) => if branch { 3 } else { 2 },
+            JP_CC_U16(..) => if branch { 4 } else { 3 },
+            RET_CC(..) => if branch { 5 } else { 2 },
+            CALL_CC_U16(..) => if branch { 6 } else { 3 },
         }
     }
 }

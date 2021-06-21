@@ -32,16 +32,18 @@ pub struct InterruptHandler {
     invalid: [u8; 1]
 }
 
+pub const IE_ADDRESS: usize = 0xFFFF;
+pub const IF_ADDRESS: usize = 0xFF0F;
+const JOYPAD_ADDRESS: usize = 0xFF00;
+
 impl InterruptHandler {
-    const IE_ADDRESS: usize = 0xFFFF;
-    const IF_ADDRESS: usize = 0xFF0F;
-    const JOYPAD_ADDRESS: usize = 0xFF00;
+
 
     pub fn new() -> Self {
         let mut registers = HashMap::new();
-        registers.insert(InterruptHandler::IF_ADDRESS, 0x0);
-        registers.insert(InterruptHandler::IE_ADDRESS, 0x0);
-        registers.insert(InterruptHandler::JOYPAD_ADDRESS, 0xEF);
+        registers.insert(IF_ADDRESS, 0x0);
+        registers.insert(IE_ADDRESS, 0x0);
+        registers.insert(JOYPAD_ADDRESS, 0xEF);
         let vblank = InterruptMask(0x01);
         let stat = InterruptMask(0x02);
         let timer = InterruptMask(0x04);
@@ -52,8 +54,8 @@ impl InterruptHandler {
     }
 
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
-        let ie_flag = self.registers[&InterruptHandler::IE_ADDRESS];
-        let if_flag = self.registers[&InterruptHandler::IF_ADDRESS];
+        let ie_flag = self.registers[&IE_ADDRESS];
+        let if_flag = self.registers[&IF_ADDRESS];
         let enabled = ie_flag & self[interrupt].0 != 0;
         let requested = if_flag & self[interrupt].0 != 0;
         let active = requested && enabled;
@@ -69,13 +71,13 @@ impl InterruptHandler {
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
         if set {
-            interrupts.iter().for_each(|i| *self.registers.get_mut(&InterruptHandler::IF_ADDRESS).unwrap() |= self[*i].0)
+            interrupts.iter().for_each(|i| *self.registers.get_mut(&IF_ADDRESS).unwrap() |= self[*i].0)
         } else {
-            interrupts.iter().for_each(|i| *self.registers.get_mut(&InterruptHandler::IF_ADDRESS).unwrap() &= !self[*i].0)
+            interrupts.iter().for_each(|i| *self.registers.get_mut(&IF_ADDRESS).unwrap() &= !self[*i].0)
         }
     }
 
-    pub fn read(&self, address: usize) -> Option<&u8> { self.registers.get(&address) }
+    pub fn read(&self, address: usize) -> Option<u8> { self.registers.get(&address).map(|v| *v) }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
         if !self.registers.contains_key(&address) { return false }

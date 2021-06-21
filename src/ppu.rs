@@ -10,6 +10,8 @@ use crate::ppu::TileMapArea::{H9C00, H9800};
 use crate::ppu::ObjSize::{StackedTile, SingleTile};
 use crate::ppu::AddressingMode::{H8800, H8000};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
+use std::collections::VecDeque;
+use minifb::{Key, WindowOptions, Window, ScaleMode, Scale, InputCallback};
 
 enum PpuRegisterId { LcdControl, LcdStatus, LcdInterrupt, ScrollY, ScrollX, ScanLine, Background }
 
@@ -41,7 +43,10 @@ pub struct PPU {
     state: PpuState,
     stat_line: StatInterrupt,
     force_irq: bool,
-    lcdc: LcdControl
+    lcdc: LcdControl,
+    pixels: Box<[u32]>,
+    pub window: Window,
+    pub(crate) last_ticks: usize,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -53,7 +58,7 @@ pub enum PpuState {
 
 pub enum RenderCycle {
     Normal(PpuState),
-    StatTrigger(PpuState)
+    StatTrigger(PpuState),
 }
 
 #[derive(Clone, Copy)]
@@ -67,6 +72,22 @@ enum StatInterrupt {
 #[deny(unreachable_patterns)]
 impl PPU {
     pub fn new() -> Self {
+        let lcdc = LcdControl::new(0);
+        let fb = [0_u32; 166 * 144];
+        let mut window = Window::new(
+            "Test - ESC to exit",
+            160,
+            144,
+            WindowOptions {
+                borderless: false,
+                transparency: false,
+                title: true,
+                resize: true,
+                scale: Scale::X1,
+                scale_mode: ScaleMode::Stretch,
+                topmost: false,
+                none: false,
+            }).unwrap();
         PPU {
             pixels_processed: 0,
             mode: PpuMode::OamSearch,
@@ -77,17 +98,20 @@ impl PPU {
             tile_map_b: [0; 1024],
             oam: [0; 160],
             registers: [0; 11],
-            lcdc: LcdControl::new(0),
+            lcdc,
             ticks: 0,
             stat_line: Low,
             state: LcdOff,
             force_irq: true,
+            last_ticks: 0,
+            pixels: Box::new(fb),
+            window,
         }
     }
 
     pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
         if !self.lcdc.enabled() {
-            *self.ly() = 0;
+            *self.ly_mut() = 0;
             self.ticks = 0;
             self.mode = HBlank;
             self.state = PpuState::LcdOff;
@@ -103,6 +127,7 @@ impl PPU {
             lyc_stat_check = self.lyc_check();
         }
 
+        self.last_ticks = cpu_cycles as usize * 4;
         self.ticks += (cpu_cycles as usize * 4);
 
         self.ticks -= match self.mode {
@@ -117,20 +142,26 @@ impl PPU {
             }
 
             PpuMode::HBlank => if self.ticks < 204 { 0 } else {
-                *self.ly() += 1;
+                *self.ly_mut() += 1;
                 lyc_stat_check = self.lyc_check();
-                self.mode = if *self.ly() == 144 { VBlank } else { OamSearch };
+                self.mode = if *self.ly() == 144 {
+                    self.window.update_with_buffer(&self.pixels, 160, 144).unwrap();
+                    VBlank
+                } else {
+                    self.draw_scanline();
+                    OamSearch
+                };
                 204
             }
 
             PpuMode::VBlank => if self.ticks < 456 { 0 } else {
-                *self.ly() = (*self.ly() + 1) % 154;
+                *self.ly_mut() = (*self.ly() + 1) % 154;
                 lyc_stat_check = self.lyc_check();
                 self.mode = if *self.ly() == 0 { OamSearch } else { VBlank };
                 456
             }
         };
-        self.state = if old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(old_mode, self.mode)};
+        self.state = if old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(old_mode, self.mode) };
 
         self.cycle_result(old_mode, lyc_stat_check)
     }
@@ -148,7 +179,7 @@ impl PPU {
     }
 
     fn stat_interrupts(&mut self, lyc_check: bool) -> [Option<StatInterrupt>; 4] {
-        let stat = *self.stat();
+        let stat = *self.stat_mut();
         [
             if stat & 0x08 != 0 || self.force_irq { Some(ModeInt(OamSearch)) } else { None },
             if stat & 0x10 != 0 || self.force_irq { Some(ModeInt(VBlank)) } else { None },
@@ -157,24 +188,25 @@ impl PPU {
         ]
     }
 
-    pub fn read(&self, address: usize) -> Option<&u8> {
+    pub fn read(&self, address: usize) -> Option<u8> {
         match (address, self.mode) {
-            (0x8000..=0x9FFF, PixelTransfer) => Some(&0xFF),
-            (0x8000..=0x87FF, _) => Some(&self.tile_block_a[(address - 0x8000) as usize]),
-            (0x8800..=0x8FFF, _) => Some(&self.tile_block_b[(address - 0x8800) as usize]),
-            (0x9000..=0x97FF, _) => Some(&self.tile_block_c[(address - 0x9000) as usize]),
-            (0x9800..=0x9BFF, _) => Some(&self.tile_map_a[(address - 0x9800) as usize]),
-            (0x9C00..=0x9FFF, _) => Some(&self.tile_map_b[(address - 0x9C00) as usize]),
+            (0x8000..=0x9FFF, PixelTransfer) => Some(0xFF),
+            (0x8000..=0x87FF, _) => Some(self.tile_block_a[(address - 0x8000) as usize]),
+            (0x8800..=0x8FFF, _) => Some(self.tile_block_b[(address - 0x8800) as usize]),
+            (0x9000..=0x97FF, _) => Some(self.tile_block_c[(address - 0x9000) as usize]),
+            (0x9800..=0x9BFF, _) => Some(self.tile_map_a[(address - 0x9800) as usize]),
+            (0x9C00..=0x9FFF, _) => Some(self.tile_map_b[(address - 0x9C00) as usize]),
 
-            (0xFE00..=0xFE9F, PixelTransfer | OamSearch) => Some(&0xFF),
-            (0xFE00..=0xFE9F, _) => Some(&self.oam[(address - 0xFE00) as usize]),
+            (0xFE00..=0xFE9F, PixelTransfer | OamSearch) => Some(0xFF),
+            (0xFE00..=0xFE9F, _) => Some(self.oam[(address - 0xFE00) as usize]),
             (0xFF40, _) => Some(self.lcdc.get()),
-            (0xFF41..=0xFF4B, _) => Some(&self.registers[(address - 0xFF41) as usize]),
+            (0xFF41, _) => Some(self.stat()),
+            (0xFF42..=0xFF4B, _) => Some(self.registers[(address - 0xFF41) as usize]),
             _ => None
         }
     }
 
-    pub fn write(&mut self, address: usize, value: u8) -> bool {
+    pub fn write(&mut self, ram: Box<[u8]>, address: usize, value: u8) -> bool {
         match (address, self.mode) {
             (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
             (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,
@@ -187,75 +219,296 @@ impl PPU {
 
             (0xFF40, _) => self.lcdc.set(value),
             (0xFF41, _) => {
-                *self.stat() = (value & 0xF8) | match self.mode {
-                    HBlank => 0,
-                    VBlank => 1,
-                    OamSearch => 2,
-                    PixelTransfer => 3
-                } | if self.lyc_check() { 0x04 } else { 0x0 };
+                *self.stat_mut() = value;
                 self.force_irq = true
             }
 
             (0xFF44, _) => {}
 
-            (0xFF42..=0xFF43, _) | (0xFF45..=0xFF4B, _) => self.registers[address - 0xFF41] = value,
+            (0xFF46, _) => {
+                for i in 0..self.oam.len() {
+                    self.oam[i] = ram[(value as usize * 0x100 + i as usize)]
+                }
+                self.registers[address - 0xFF41] = value
+            }
+
+            (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, _) => self.registers[address - 0xFF41] = value,
 
             _ => return false
         }
         true
     }
 
-    fn stat(&mut self) -> &mut u8 { &mut self.registers[0x0] }
+    fn stat(&self) -> u8 {
+        self.registers[0] & 0xF8 | match self.mode {
+            HBlank => 0,
+            VBlank => 1,
+            OamSearch => 2,
+            PixelTransfer => 3
+        } | if self.lyc_check() { 0x04 } else { 0x0 }
+    }
 
-    fn scy(&mut self) -> &mut u8 { &mut self.registers[0x1] }
+    fn stat_mut(&mut self) -> &mut u8 { &mut self.registers[0] }
 
-    fn scx(&mut self) -> &mut u8 { &mut self.registers[0x2] }
+    fn scy(&self) -> &u8 { &self.registers[1] }
 
-    pub fn ly(&mut self) -> &mut u8 { &mut self.registers[0x3] }
+    fn scx(&self) -> &u8 { &self.registers[2] }
 
-    fn lyc(&mut self) -> &mut u8 { &mut self.registers[0x4] }
+    pub fn ly(&self) -> &u8 { &self.registers[3] }
 
-    fn bgp(&mut self) -> &mut u8 { &mut self.registers[0x6] }
+    pub fn ly_mut(&mut self) -> &mut u8 { &mut self.registers[3] }
 
-    fn obp0(&mut self) -> &mut u8 { &mut self.registers[0x7] }
+    fn lyc(&self) -> &u8 { &self.registers[4] }
 
-    fn obp1(&mut self) -> &mut u8 { &mut self.registers[0x8] }
+    fn bgp(&self) -> &u8 { &self.registers[6] }
 
-    fn wy(&mut self) -> &mut u8 { &mut self.registers[0x9] }
+    fn obp0(&self) -> &u8 { &self.registers[7] }
 
-    fn wx(&mut self) -> &mut u8 { &mut self.registers[0xA] }
+    fn obp1(&self) -> &u8 { &self.registers[8] }
 
-    fn lyc_check(&mut self) -> bool { *self.ly() == *self.lyc() }
+    fn wy(&self) -> &u8 { &self.registers[9] }
+
+    fn wx(&self) -> &u8 { &self.registers[10] }
+
+    fn lyc_check(&self) -> bool { *self.ly() == *self.lyc() }
+
+    fn render_background_window(&mut self) {
+        let scx = *self.scx();
+        let scy = *self.scy();
+        let wx = self.wx().wrapping_sub(7);
+        let wy = *self.wy();
+        let ly = *self.ly();
+
+
+        let use_window = wy <= ly && self.lcdc.window_enabled();
+
+        let background_area = if use_window { self.lcdc.window_tile_map_area() } else { self.lcdc.background_tile_map_area() } as usize;
+
+        let vertical_position = if use_window { ly.wrapping_sub(wy) } else { scy.wrapping_add(ly) } as usize;
+
+        let tile_row = (vertical_position / 8) as usize * 32;
+
+        for pixel in 0..160 {
+            let horizontal_position = if use_window && pixel >= wx { pixel.wrapping_sub(wx) } else { pixel.wrapping_add(scx) };
+
+            let tile_col = (horizontal_position / 8) as usize;
+
+            let tile_address = (background_area + tile_row + tile_col);
+
+            let tile_offset: i16 = if self.lcdc.addressing_mode() == H8000 {
+                self.read(tile_address).unwrap() as u16 as i16
+            } else {
+                self.read(tile_address).unwrap() as i8 as i16
+            };
+
+            let tile_location = if self.lcdc.addressing_mode() == H8000 {
+                self.lcdc.addressing_mode() as usize + (tile_offset as usize * 16)
+            } else {
+                self.lcdc.addressing_mode() as usize + ((tile_offset + 128) * 16) as usize
+            };
+
+            let line: usize = (vertical_position % 8) * 2;
+            let data1 = self.read((tile_location + line) as usize).unwrap();
+            let data2 = self.read((tile_location + line + 1) as usize).unwrap();
+
+            let color_bit = ((horizontal_position as i32 % 8) - 7) * -1;
+
+            let color_num = ((data2 >> color_bit) & 0b1) << 1;
+            let color_num = color_num | ((data1 >> color_bit) & 0b1);
+
+            let color = self.get_color(color_num, *self.bgp());
+            self.set_pixel(pixel as u32, ly as u32, color)
+        }
+    }
+
+    fn draw_scanline(&mut self) {
+        if self.lcdc.background_window_enabled() { self.render_background_window() }
+        if self.lcdc.sprite_enabled() { self.render_sprites() }
+    }
+
+    fn render_sprites(&mut self) {
+
+        for sprite in 0..40 {
+            let index: u8 = sprite * 4;
+
+            let vertical_position = self.oam[index as usize].wrapping_sub(16);
+            let horizontal_position = self.oam[(index + 1) as usize].wrapping_sub(8);
+            let tile_location = self.oam[(index + 2) as usize] as u16;
+            let attributes = self.oam[(index + 3) as usize];
+            let flipped_vertically = (attributes & 0x40) != 0;
+            let flipped_horizontally = (attributes & 0x20) != 0;
+            let ly = *self.ly();
+
+            let tile_length = if self.lcdc.object_size() == ObjSize::StackedTile { 16 } else { 8 };
+
+            if ly >= vertical_position && ly < (vertical_position.wrapping_add(tile_length)) {
+                let line: i32 = ly as i32 - vertical_position as i32;
+
+                let line = (if flipped_vertically {
+                    (line - tile_length as i32) * -1
+                } else {
+                    line
+                }) as u16;
+
+                let line = (line * 2);
+
+                let data_address = 0x8000 + ((tile_location * 16) + line) as usize;
+
+                let data1 = self.read(data_address).unwrap();
+                let data2 = self.read(data_address + 1).unwrap();
+
+                for tile_pixel in (0..8).rev() {
+                    let color_bit = tile_pixel as i32;
+                    let color_bit = if flipped_horizontally {
+                        (color_bit - 7) * -1
+                    } else {
+                        color_bit
+                    };
+
+                    let color_num = ((data2 >> color_bit) & 0b1) << 1;
+                    let color_num = color_num | ((data1 >> color_bit) & 0b1);
+
+                    let palette_num = if (attributes & 0x10) != 0 {
+                        *self.obp1()
+                    } else {
+                        *self.obp0()
+                    };
+
+                    if color_num == 0 {
+                        continue;
+                    }
+                    let color = self.get_color(color_num, palette_num);
+
+                    let x_pix = (0 as u8).wrapping_sub(tile_pixel as u8);
+                    let x_pix = x_pix.wrapping_add(7);
+
+                    let pixel = horizontal_position.wrapping_add(x_pix);
+
+                    if ly > 143 || pixel > 159 {
+                        continue;
+                    }
+
+                    let obj_to_bg_pri = (attributes & 0x80) != 0;
+                    self.set_sprite_pixel(pixel as u32, ly as u32, obj_to_bg_pri, color)
+                }
+            }
+        }
+    }
+
+    fn get_color(&self, color_id: u8, palette_num: u8) -> Color {
+        let (hi, lo) = match color_id {
+            0 => (1, 0),
+            1 => (3, 2),
+            2 => (5, 4),
+            3 => (7, 6),
+            _ => panic!("Invalid color id: 0x{:x}", color_id),
+        };
+
+        let color = ((palette_num >> hi) & 0b1) << 1;
+        let color = color | ((palette_num >> lo) & 0b1);
+
+        match color {
+            0 => WHITE,
+            1 => LIGHT_GRAY,
+            2 => DARK_GRAY,
+            3 => BLACK,
+            _ => panic!("Invalid color: 0x{:x}", color),
+        }
+    }
+
+    fn set_sprite_pixel(&mut self, x: u32, y: u32, pri: bool, color: Color) {
+        let offset = ((y * 160) + x) as usize;
+        let pixel = Color {
+            a: (self.pixels[offset] >> 0x18) as u8,
+            r: (self.pixels[offset] >> 0x10) as u8,
+            g: (self.pixels[offset] >> 0x08) as u8,
+            b: self.pixels[offset] as u8,
+        };
+
+        if pixel != WHITE && pri {
+            return;
+        } else {
+            self.set_pixel(x, y, color)
+        }
+    }
+
+    fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
+        let offset = ((y * 160) + x) as usize;
+
+        let c = ((color.a as u32) << 24) | ((color.r as u32) << 16) | ((color.g as u32) << 8) |
+            (color.b as u32);
+
+        self.pixels[offset] = c
+    }
+
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct Color {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+const WHITE: Color = Color {
+    r: 224,
+    g: 248,
+    b: 208,
+    a: 255,
+};
+const LIGHT_GRAY: Color = Color {
+    r: 136,
+    g: 192,
+    b: 112,
+    a: 255,
+};
+const DARK_GRAY: Color = Color {
+    r: 39,
+    g: 80,
+    b: 70,
+    a: 255,
+};
+const BLACK: Color = Color {
+    r: 8,
+    g: 24,
+    b: 32,
+    a: 255,
+};
+
+#[derive(PartialEq, Ord, PartialOrd, Eq)]
 struct LcdControl {
     reg: u8,
 }
 
+#[derive(PartialEq, Ord, PartialOrd, Eq)]
 enum TileMapArea {
-    H9800,
-    H9C00,
+    H9800 = 0x9800,
+    H9C00 = 0x9C00,
 }
 
+#[derive(PartialEq, Ord, PartialOrd, Eq)]
 enum AddressingMode {
-    H8000,
-    H8800
+    H8000 = 0x8000,
+    H8800 = 0x8800,
 }
 
+#[derive(PartialEq, Ord, PartialOrd, Eq)]
 enum ObjSize {
-    SingleTile, StackedTile
+    SingleTile,
+    StackedTile,
 }
 
 impl LcdControl {
     fn new(register: u8) -> Self { Self { reg: register } }
     fn enabled(&self) -> bool { self.reg & 0x80 != 0 }
-    fn w_tile_map_area(&self) -> TileMapArea { if self.reg & 0x40 != 0 { H9C00 } else { H9800 } }
-    fn window_enable(&self) -> bool { self.reg & 0x20 != 0 && self.reg & 0x01 != 0 }
-    fn addressing_mode(&self) -> AddressingMode { if self.reg & 0x10 != 0 { H8800 } else {H8000} }
-    fn bg_tile_map_area(&self) -> TileMapArea { if self.reg & 0x08 != 0 { H9C00 } else { H9800 } }
-    fn obj_size(&self) -> ObjSize { if self.reg & 0x04 != 0 { StackedTile } else { SingleTile } }
-    fn obj_enable(&self) -> bool { self.reg & 0x02 != 0 }
-    fn bg_window_enable(&self) -> bool { self.reg & 0x01 != 0 }
-    fn get(&self) -> &u8 { &self.reg }
+    fn window_tile_map_area(&self) -> TileMapArea { if self.reg & 0x40 != 0 { H9C00 } else { H9800 } }
+    fn window_enabled(&self) -> bool { self.reg & 0x20 != 0 && self.reg & 0x01 != 0 }
+    fn addressing_mode(&self) -> AddressingMode { if self.reg & 0x10 != 0 { H8000 } else { H8800 } }
+    fn background_tile_map_area(&self) -> TileMapArea { if self.reg & 0x08 != 0 { H9C00 } else { H9800 } }
+    fn object_size(&self) -> ObjSize { if self.reg & 0x04 != 0 { StackedTile } else { SingleTile } }
+    fn sprite_enabled(&self) -> bool { self.reg & 0x02 != 0 }
+    fn background_window_enabled(&self) -> bool { self.reg & 0x01 != 0 }
+    fn get(&self) -> u8 { self.reg }
     fn set(&mut self, value: u8) { self.reg = value }
 }

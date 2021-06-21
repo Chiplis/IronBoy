@@ -13,16 +13,12 @@ use crate::ppu::RenderCycle::{StatTrigger, Normal};
 use crate::ppu::PpuState::ModeChange;
 use PpuMode::VBlank;
 use crate::timer::{Timer, TimerInterrupt};
+use crate::input::Input;
+use minifb::InputCallback;
+use std::cell::{RefCell, RefMut};
 
-impl <Address: 'static + Into<u16>> Index<Address> for MemoryMap {
-    type Output = u8;
-    fn index(&self, address: Address) -> &Self::Output {
-        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
-        self.read(translated_address)
-    }
-}
 
-impl <Address: 'static + Into<u16> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
+impl <Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         self.write(translated_address, value.into());
@@ -36,11 +32,12 @@ pub struct MemoryMap {
     pub timer: Timer,
     invalid: u8,
     rom_size: usize,
+    rom_name: String
 }
 
 impl MemoryMap {
-    pub fn new(rom: &Vec<u8>) -> MemoryMap {
-        let ppu = PPU::new();
+    pub fn new(rom: &Vec<u8>, rom_name: &String) -> MemoryMap {
+        let mut ppu = PPU::new();
         let interrupt = InterruptHandler::new();
         let timer = Timer::new();
         let mut mem = MemoryMap {
@@ -49,26 +46,32 @@ impl MemoryMap {
             timer,
             memory: [0; 0x10000],
             rom_size: rom.len() as usize,
+            rom_name: rom_name.to_owned(),
             invalid: 0xFF,
         };
         MemoryMap::init_memory(mem, rom)
     }
 
-    fn read<T: 'static + Into<usize> + Display + Copy>(&self, address: T) -> &u8 {
+    pub(crate) fn read<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         self.ppu.read(translated_address)
             .or(self.interrupt_handler.read(translated_address))
             .or(self.timer.read(translated_address))
-            .unwrap_or(&self.memory[translated_address])
+            .unwrap_or(self.memory[translated_address])
     }
 
-    fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
+    pub(crate) fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
-        if !(self.ppu.write(address.into(), value)
+        if address.into() == 0xDFFD {
+            print!("")
+        }
+        if !(self.ppu.write(Box::new(self.memory), address.into(), value)
             || self.timer.write(address.into(), value)
             || self.interrupt_handler.write(address.into(), value)) {
-            if address.into() >= self.rom_size { self.memory[address.into()] = value }
+            if address.into() >= self.rom_size || self.rom_name.contains("cpu_instrs.gb") {
+                self.memory[address.into()] = value
+            }
         }
     }
 

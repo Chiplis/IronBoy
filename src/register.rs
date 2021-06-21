@@ -100,14 +100,14 @@ pub struct ByteRegister {
     pub id: RegisterId,
 }
 
-impl Into<u16> for ByteRegister {
-    fn into(self) -> u16 {
-        self.value as u16 + 0xFF00
-    }
-}
-
 impl Into<u8> for ByteRegister {
     fn into(self) -> u8 { self.value }
+}
+
+impl Into<usize> for ByteRegister {
+    fn into(self) -> usize {
+        self.value as usize + 0xFF00
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -144,8 +144,8 @@ pub enum WordRegister {
 }
 
 
-impl Into<u16> for WordRegister {
-    fn into(self) -> u16 { self.to_address() }
+impl Into<usize> for WordRegister {
+    fn into(self) -> usize { self.to_address() as usize }
 }
 
 

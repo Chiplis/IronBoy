@@ -51,12 +51,12 @@ impl Timer {
         return None;
     }
 
-    pub fn read(&self, address: usize) -> Option<&u8> {
+    pub fn read(&self, address: usize) -> Option<u8> {
         match address {
-            Timer::DIVIDER => Some(&self.divider),
-            Timer::TIMA => Some(&self.tima),
-            Timer::TMA => Some(&self.tma),
-            Timer::TAC => Some(&self.tac),
+            Timer::DIVIDER => Some(self.divider),
+            Timer::TIMA => Some(self.tima),
+            Timer::TMA => Some(self.tma),
+            Timer::TAC => Some(self.tac),
             _ => None
         }
     }
@@ -72,7 +72,7 @@ impl Timer {
             Timer::TAC => self.tac = value,
             _ => return false
         };
-        return true;
+        true
     }
 
     fn timer_enabled(&self) -> bool { self.tac & 0x04 != 0 }
