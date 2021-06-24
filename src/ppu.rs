@@ -327,28 +327,26 @@ impl PPU {
     }
 
     fn render_sprites(&mut self) {
+        let ly = *self.ly();
+        let tile_length = self.lcdc.object_size() as u8;
+
+        if ly > 143 { return; }
 
         for sprite_index in (0..160).step_by(4) {
             let sprite = Sprite::new(self, sprite_index);
-            let ly = *self.ly();
-
-            let tile_length = if self.lcdc.object_size() == ObjSize::StackedTile { 16 } else { 8 };
 
             if ly >= sprite.vertical_position && ly < (sprite.vertical_position.wrapping_add(tile_length)) {
                 let line: i32 = ly as i32 - sprite.vertical_position as i32;
-
                 let line = (if sprite.attributes.flipped_vertically {
                     (line - tile_length as i32) * -1
                 } else {
                     line
-                }) as u16;
-
-                let line = (line * 2);
+                }) as u16 * 2;
 
                 let data_address = 0x8000 + ((sprite.location * 16) + line) as usize;
 
-                let data1 = self.read(data_address).unwrap();
-                let data2 = self.read(data_address + 1).unwrap();
+                let pixel_data_left = self.read(data_address).unwrap();
+                let pixel_data_right = self.read(data_address + 1).unwrap();
 
                 for tile_pixel in (0..8).rev() {
                     let color_bit = tile_pixel as i32;
@@ -358,22 +356,17 @@ impl PPU {
                         color_bit
                     };
 
-                    let color_num = ((data2 >> color_bit) & 0b1) << 1;
-                    let color_num = color_num | ((data1 >> color_bit) & 0b1);
+                    let color_num = (((pixel_data_right >> color_bit) & 0b1) << 1) | ((pixel_data_left >> color_bit) & 0b1);
 
-                    if color_num == 0 {
-                        continue;
-                    }
+                    if color_num == 0 { continue; }
+
                     let color = self.get_color(color_num, sprite.attributes.palette);
 
-                    let x_pix = (0 as u8).wrapping_sub(tile_pixel as u8);
-                    let x_pix = x_pix.wrapping_add(7);
+                    let x_pix = 0_u8.wrapping_sub(tile_pixel as u8).wrapping_add(7);
 
                     let pixel = sprite.horizontal_position.wrapping_add(x_pix);
 
-                    if ly > 143 || pixel > 159 {
-                        continue;
-                    }
+                    if pixel > 159 { continue; }
 
                     self.set_sprite_pixel(pixel as u32, ly as u32, sprite.attributes.obj_to_background_priority, color)
                 }
@@ -419,14 +412,10 @@ impl PPU {
     }
 
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
-        let offset = ((y * 160) + x) as usize;
+        let offset = (y * 160 + x) as usize;
 
-        let c = ((color.a as u32) << 24) | ((color.r as u32) << 16) | ((color.g as u32) << 8) |
-            (color.b as u32);
-
-        self.pixels[offset] = c
+        self.pixels[offset] = ((color.a as u32) << 24) | ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
     }
-
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -481,8 +470,8 @@ enum AddressingMode {
 
 #[derive(PartialEq, Ord, PartialOrd, Eq)]
 enum ObjSize {
-    SingleTile,
-    StackedTile,
+    SingleTile = 8,
+    StackedTile = 16,
 }
 
 impl LcdControl {
@@ -500,12 +489,11 @@ impl LcdControl {
 }
 
 
-
 struct Sprite {
     vertical_position: u8,
     horizontal_position: u8,
     location: u16,
-    attributes: SpriteAttributes
+    attributes: SpriteAttributes,
 }
 
 impl Sprite {
@@ -514,7 +502,7 @@ impl Sprite {
             vertical_position: ppu.oam[index].wrapping_sub(16),
             horizontal_position: ppu.oam[index + 1].wrapping_sub(8),
             location: ppu.oam[index + 2] as u16,
-            attributes: SpriteAttributes::new(&ppu, ppu.oam[index + 3])
+            attributes: SpriteAttributes::new(&ppu, ppu.oam[index + 3]),
         }
     }
 }
@@ -523,7 +511,7 @@ struct SpriteAttributes {
     flipped_vertically: bool,
     flipped_horizontally: bool,
     obj_to_background_priority: bool,
-    palette: u8
+    palette: u8,
 }
 
 impl SpriteAttributes {
@@ -532,7 +520,7 @@ impl SpriteAttributes {
             flipped_vertically: attrs & 0x40 != 0,
             flipped_horizontally: attrs & 0x20 != 0,
             obj_to_background_priority: attrs & 0x80 != 0,
-            palette: *if attrs & 0x10 != 0 { ppu.obp1() } else { ppu.obp0() }
+            palette: *if attrs & 0x10 != 0 { ppu.obp1() } else { ppu.obp0() },
         }
     }
 }

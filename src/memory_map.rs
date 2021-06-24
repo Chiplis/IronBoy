@@ -30,25 +30,19 @@ pub struct MemoryMap {
     pub interrupt_handler: InterruptHandler,
     pub ppu: PPU,
     pub timer: Timer,
-    invalid: u8,
     rom_size: usize,
     rom_name: String
 }
 
 impl MemoryMap {
     pub fn new(rom: &Vec<u8>, rom_name: &String) -> MemoryMap {
-        let mut ppu = PPU::new();
-        let interrupt = InterruptHandler::new();
+        let ppu = PPU::new();
+        let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new();
-        let mut mem = MemoryMap {
-            ppu,
-            interrupt_handler: interrupt,
-            timer,
-            memory: [0; 0x10000],
-            rom_size: rom.len() as usize,
-            rom_name: rom_name.to_owned(),
-            invalid: 0xFF,
-        };
+        let rom_size = rom.len() as usize;
+        let rom_name = rom_name.to_owned();
+        let memory = [0; 0x10000];
+        let mut mem = MemoryMap { ppu, interrupt_handler, timer, memory, rom_name, rom_size };
         MemoryMap::init_memory(mem, rom)
     }
 
