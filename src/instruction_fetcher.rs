@@ -26,8 +26,8 @@ impl InstructionFetcher {
 
         let mut operands = Vec::from_iter(register_ids.iter().map(|r| RegisterOperand::Byte(*r)));
         operands.insert(operands.len() - 1, RegisterOperand::HL);
-        let mut operand_idx = ((opcode & 0x0F) % 8) as usize;
-        let mut register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
+        let operand_idx = ((opcode & 0x0F) % 8) as usize;
+        let register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
 
         Instruction(if opcode == 0xCB { ram.read(pc+1) } else { opcode }, match opcode {
             0xCB => {

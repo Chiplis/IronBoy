@@ -4,32 +4,26 @@ use minifb::{InputCallback, Key};
 use crate::memory_map::MemoryMap;
 use core::time;
 use std::thread;
+use std::sync::mpsc::{Sender, Receiver};
 
-pub struct Input {
+pub struct InputReceiver {
     trigger_interrupt: bool,
-    register: u8
+    register: u8,
+    input_receiver: Receiver<char>
 }
 
+pub struct InputSender {
+    sender: Sender<char>
+}
 
-impl InputCallback for &mut Input {
+impl InputSender {
+    pub(crate) fn new(sender: Sender<char>) -> Self { Self { sender } }
+}
+
+impl InputCallback for InputSender {
     fn add_char(&mut self, uni_char: u32) {
         match char::from_u32(uni_char) {
-            Some('d' | 'c') => {
-                self.trigger_interrupt = true;
-                self.register = self.register & !0x01
-            }
-            Some('a' | 'z') => {
-                self.trigger_interrupt = true;
-                self.register = self.register & !0x02
-            }
-            Some('w' | 'l') => {
-                self.trigger_interrupt = true;
-                self.register = self.register & !0x04
-            }
-            Some('s' | 'k') => {
-                self.trigger_interrupt = true;
-                self.register = self.register & !0x08
-            }
+            Some(n @ ('d' | 'c' | 'a' | 'z' | 'w' | 'l' | 's' | 'k')) => { self.sender.send(n); },
             _ => {}
         }
     }
@@ -37,14 +31,24 @@ impl InputCallback for &mut Input {
 
 pub struct InputInterrupt();
 
-impl Input {
+impl InputReceiver {
 
-    pub fn new() -> Self {
-        Self { register: 0xEF, trigger_interrupt: false }
+    pub fn new(input_receiver: Receiver<char>) -> Self {
+        Self { input_receiver, register: 0xEF, trigger_interrupt: false }
     }
 
     pub fn input_cycle(&mut self) -> Option<InputInterrupt> {
         let mut interrupt = None;
+        for r in &mut self.input_receiver.try_iter() {
+            self.trigger_interrupt = true;
+            match r {
+                'd' | 'c' => self.register &= !0x01,
+                'a' | 'z' => self.register &= !0x02,
+                'w' | 'l' => self.register &= !0x04,
+                's' | 'k' => self.register &= !0x08,
+                _ => self.trigger_interrupt = false
+            }
+        }
         if self.trigger_interrupt {
             self.trigger_interrupt = false;
             interrupt = Some(InputInterrupt())

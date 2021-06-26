@@ -13,12 +13,12 @@ use crate::ppu::RenderCycle::{StatTrigger, Normal};
 use crate::ppu::PpuState::ModeChange;
 use PpuMode::VBlank;
 use crate::timer::{Timer, TimerInterrupt};
-use crate::input::Input;
+use crate::input::{InputReceiver, InputSender};
 use minifb::InputCallback;
 use std::cell::{RefCell, RefMut};
 
 
-impl <Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
+impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         self.write(translated_address, value.into());
@@ -30,19 +30,24 @@ pub struct MemoryMap {
     pub interrupt_handler: InterruptHandler,
     pub ppu: PPU,
     pub timer: Timer,
+    pub input_receiver: InputReceiver,
     rom_size: usize,
-    rom_name: String
+    rom_name: String,
 }
 
 impl MemoryMap {
     pub fn new(rom: &Vec<u8>, rom_name: &String) -> MemoryMap {
-        let ppu = PPU::new();
+        let mut ppu = PPU::new();
+        let (input_send, input_recv) = std::sync::mpsc::channel();
+        let input_sender = Box::new(InputSender::new(input_send));
+        let input_receiver = InputReceiver::new(input_recv);
+        ppu.window.set_input_callback(input_sender);
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new();
         let rom_size = rom.len() as usize;
         let rom_name = rom_name.to_owned();
         let memory = [0; 0x10000];
-        let mut mem = MemoryMap { ppu, interrupt_handler, timer, memory, rom_name, rom_size };
+        let mut mem = MemoryMap { input_receiver, ppu, interrupt_handler, timer, memory, rom_name, rom_size };
         MemoryMap::init_memory(mem, rom)
     }
 
@@ -57,34 +62,36 @@ impl MemoryMap {
 
     pub(crate) fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
-        if address.into() == 0xDFFD {
-            print!("")
-        }
-        if !(self.ppu.write(Box::new(self.memory), address.into(), value)
-            || self.timer.write(address.into(), value)
-            || self.interrupt_handler.write(address.into(), value)) {
-            if address.into() >= self.rom_size || self.rom_name.contains("cpu_instrs.gb") {
-                self.memory[address.into()] = value
+        let address = address.into();
+        if !(self.ppu.write(self.memory, address, value)
+            || self.timer.write(address, value)
+            || self.interrupt_handler.write(address, value)) {
+            if address >= self.rom_size || self.rom_name.contains("cpu_instrs.gb") {
+                self.memory[address] = value
             }
         }
     }
 
     pub fn cycle(&mut self, cpu_cycles: usize) {
-        match self.ppu.render_cycle(cpu_cycles) {
-            StatTrigger(ModeChange(_, VBlank)) => { self.interrupt_handler.set(vec![VBlankInt, StatInt], true) },
-            Normal(ModeChange(_, VBlank)) => { self.interrupt_handler.set(vec![VBlankInt], true) }
-            _ => {}
-        };
-        match self.timer.timer_cycle(cpu_cycles) {
-            Some(TimerInterrupt()) => { self.interrupt_handler.set(vec![TimerInt], true) },
-            None => {}
-        };
+        let mut interrupts = vec![];
+        interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles) {
+            StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
+            Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
+            _ => vec![]
+        });
+        interrupts.append(&mut match self.timer.timer_cycle(cpu_cycles) {
+            Some(_) => vec![TimerInt],
+            None => vec![],
+        });
+        interrupts.append(&mut match self.input_receiver.input_cycle() {
+            Some(_) => vec![JoypadInt],
+            _ => vec![]
+        });
+        self.interrupt_handler.set(interrupts, true);
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &Vec<u8>) -> MemoryMap {
-        for (index, value) in rom.iter().enumerate() {
-            mem.memory[index] = *value
-        }
+        for (index, value) in rom.iter().enumerate() { mem.memory[index] = *value }
         mem *= (0xFF05 as u16, 0);
         mem *= (0xFF06 as u16, 0);
         mem *= (0xFF07 as u16, 0);

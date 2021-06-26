@@ -206,7 +206,7 @@ impl PPU {
         }
     }
 
-    pub fn write(&mut self, ram: Box<[u8]>, address: usize, value: u8) -> bool {
+    pub fn write(&mut self, ram: [u8; 0x10000], address: usize, value: u8) -> bool {
         match (address, self.mode) {
             (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
             (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,
