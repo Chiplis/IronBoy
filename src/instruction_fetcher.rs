@@ -13,7 +13,7 @@ use crate::register::WordRegister::StackPointer;
 
 enum RegisterOperand {
     HL,
-    Byte(ByteRegister),
+    Byte(RegisterId),
 }
 
 pub struct InstructionFetcher;
@@ -22,9 +22,9 @@ impl InstructionFetcher {
     #[deny(unreachable_patterns)]
     pub fn fetch_instruction(pc: u16, reg: &Register, ram: &MemoryMap) -> Instruction {
         let opcode = ram.read(pc);
-        let mut registers = [reg[B], reg[C], reg[D], reg[E], reg[H], reg[L], reg[A]];
+        let register_ids = [B, C, D, E, H, L, A];
 
-        let mut operands = Vec::from_iter(registers.iter().map(|r| RegisterOperand::Byte(*r)));
+        let mut operands = Vec::from_iter(register_ids.iter().map(|r| RegisterOperand::Byte(*r)));
         operands.insert(operands.len() - 1, RegisterOperand::HL);
         let mut operand_idx = ((opcode & 0x0F) % 8) as usize;
         let mut register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
@@ -42,134 +42,134 @@ impl InstructionFetcher {
                 match cb_opcode {
                     0x00..=0x07 => match operands[bit_idx] {
                         RegisterOperand::HL => RLC_HL,
-                        RegisterOperand::Byte(reg) => RLC_R8(reg),
+                        RegisterOperand::Byte(id) => RLC_R8(id),
                     },
 
                     0x08..=0x0F => match operands[bit_idx] {
                         RegisterOperand::HL => RRC_HL,
-                        RegisterOperand::Byte(reg) => RRC_R8(reg),
+                        RegisterOperand::Byte(id) => RRC_R8(id),
                     },
 
                     0x10..=0x17 => match operands[bit_idx] {
                         RegisterOperand::HL => RL_HL,
-                        RegisterOperand::Byte(reg) => RL_R8(reg),
+                        RegisterOperand::Byte(id) => RL_R8(id),
                     },
 
                     0x18..=0x1F => match operands[bit_idx] {
                         RegisterOperand::HL => RR_HL,
-                        RegisterOperand::Byte(reg) => RR_R8(reg),
+                        RegisterOperand::Byte(id) => RR_R8(id),
                     },
 
                     0x20..=0x27 => match operands[bit_idx] {
                         RegisterOperand::HL => SLA_HL,
-                        RegisterOperand::Byte(reg) => SLA_R8(reg),
+                        RegisterOperand::Byte(id) => SLA_R8(id),
                     },
 
                     0x28..=0x2F => match operands[bit_idx] {
                         RegisterOperand::HL => SRA_HL,
-                        RegisterOperand::Byte(reg) => SRA_R8(reg),
+                        RegisterOperand::Byte(id) => SRA_R8(id),
                     },
 
                     0x30..=0x37 => match operands[bit_idx] {
                         RegisterOperand::HL => SWAP_HL,
-                        RegisterOperand::Byte(reg) => SWAP_R8(reg),
+                        RegisterOperand::Byte(id) => SWAP_R8(id),
                     },
 
                     0x38..=0x3F => match operands[bit_idx] {
                         RegisterOperand::HL => SRL_HL,
-                        RegisterOperand::Byte(reg) => SRL_R8(reg),
+                        RegisterOperand::Byte(id) => SRL_R8(id),
                     },
                     0x40..=0x7F => match operands[bit_idx] {
                         RegisterOperand::HL => BIT_U3_HL(Bit(mask[bit])),
-                        RegisterOperand::Byte(reg) => BIT_U3_R8(Bit(mask[bit]), reg)
+                        RegisterOperand::Byte(id) => BIT_U3_R8(Bit(mask[bit]), id)
                     },
 
                     0x80..=0xBF => match operands[bit_idx] {
                         RegisterOperand::HL => RES_U3_HL(Bit(mask[bit])),
-                        RegisterOperand::Byte(reg) => RES_U3_R8(Bit(mask[bit]), reg),
+                        RegisterOperand::Byte(id) => RES_U3_R8(Bit(mask[bit]), id),
                     },
 
                     0xC0..=0xFF => match operands[bit_idx] {
                         RegisterOperand::HL => SET_U3_HL(Bit(mask[bit])),
-                        RegisterOperand::Byte(reg) => SET_U3_R8(Bit(mask[bit]), reg),
+                        RegisterOperand::Byte(id) => SET_U3_R8(Bit(mask[bit]), id),
                     },
                 }
             }
 
-            0x06 => LD_R8_U8(reg[B], ram.read(pc + 1)),
-            0x0E => LD_R8_U8(reg[C], ram.read(pc + 1)),
-            0x16 => LD_R8_U8(reg[D], ram.read(pc + 1)),
-            0x1E => LD_R8_U8(reg[E], ram.read(pc + 1)),
-            0x26 => LD_R8_U8(reg[H], ram.read(pc + 1)),
-            0x2E => LD_R8_U8(reg[L], ram.read(pc + 1)),
+            0x06 => LD_R8_U8(B, ram.read(pc + 1)),
+            0x0E => LD_R8_U8(C, ram.read(pc + 1)),
+            0x16 => LD_R8_U8(D, ram.read(pc + 1)),
+            0x1E => LD_R8_U8(E, ram.read(pc + 1)),
+            0x26 => LD_R8_U8(H, ram.read(pc + 1)),
+            0x2E => LD_R8_U8(L, ram.read(pc + 1)),
 
             0x40..=0x6F => match operands[operand_idx] {
-                RegisterOperand::HL => LD_R8_HL(registers[register_idx]),
-                RegisterOperand::Byte(reg) => LD_R8_R8(registers[register_idx], reg)
+                RegisterOperand::HL => LD_R8_HL(register_ids[register_idx]),
+                RegisterOperand::Byte(id) => LD_R8_R8(register_ids[register_idx], id)
             },
 
             0x70..=0x75 => match operands[operand_idx] {
-                RegisterOperand::Byte(reg) => LD_HL_R8(reg),
+                RegisterOperand::Byte(id) => LD_HL_R8(id),
                 RegisterOperand::HL => panic!()
             },
 
-            0x78..=0x7D => LD_R8_R8(reg[A], registers[opcode as usize - 0x78]),
+            0x78..=0x7D => LD_R8_R8(A, register_ids[opcode as usize - 0x78]),
 
-            0x77 => LD_HL_R8(reg[A]),
-            0x7E => LD_R8_HL(reg[A]),
-            0x7F => LD_R8_R8(reg[A], reg[A]),
+            0x77 => LD_HL_R8(A),
+            0x7E => LD_R8_HL(A),
+            0x7F => LD_R8_R8(A, A),
 
             0x80..=0x87 => match operands[operand_idx] {
                 RegisterOperand::HL => ADD_A_HL,
-                RegisterOperand::Byte(reg) => ADD_A_R8(reg),
+                RegisterOperand::Byte(id) => ADD_A_R8(id),
             },
 
             0x88..=0x8F => match operands[operand_idx] {
                 RegisterOperand::HL => ADC_A_HL,
-                RegisterOperand::Byte(reg) => ADC_A_R8(reg),
+                RegisterOperand::Byte(id) => ADC_A_R8(id),
             },
 
             0x90..=0x97 => match operands[operand_idx] {
                 RegisterOperand::HL => SUB_A_HL,
-                RegisterOperand::Byte(reg) => SUB_A_R8(reg),
+                RegisterOperand::Byte(id) => SUB_A_R8(id),
             },
 
             0x98..=0x9F => match operands[operand_idx] {
                 RegisterOperand::HL => SBC_A_HL,
-                RegisterOperand::Byte(reg) => SBC_A_R8(reg),
+                RegisterOperand::Byte(id) => SBC_A_R8(id),
             },
 
             0xA0..=0xA7 => match operands[operand_idx] {
                 RegisterOperand::HL => AND_A_HL,
-                RegisterOperand::Byte(reg) => AND_A_R8(reg),
+                RegisterOperand::Byte(id) => AND_A_R8(id),
             },
 
             0xA8..=0xAF => match operands[operand_idx] {
                 RegisterOperand::HL => XOR_A_HL,
-                RegisterOperand::Byte(reg) => XOR_A_R8(reg),
+                RegisterOperand::Byte(id) => XOR_A_R8(id),
             },
 
             0xB0..=0xB7 => match operands[operand_idx] {
                 RegisterOperand::HL => OR_A_HL,
-                RegisterOperand::Byte(reg) => OR_A_R8(reg),
+                RegisterOperand::Byte(id) => OR_A_R8(id),
             },
 
             0xB8..=0xBF => match operands[operand_idx] {
                 RegisterOperand::HL => CP_A_HL,
-                RegisterOperand::Byte(reg) => CP_A_R8(reg),
+                RegisterOperand::Byte(id) => CP_A_R8(id),
             },
 
             0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
                 match operands[(opcode as usize - 4) / 8] {
                     RegisterOperand::HL => INCH_HL,
-                    RegisterOperand::Byte(reg) => INC_R8(reg),
+                    RegisterOperand::Byte(id) => INC_R8(id),
                 }
             }
 
             0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
                 match operands[(opcode as usize - 5) / 8] {
                     RegisterOperand::HL => DECH_HL,
-                    RegisterOperand::Byte(reg) => DEC_R8(reg),
+                    RegisterOperand::Byte(id) => DEC_R8(id),
                 }
             }
 

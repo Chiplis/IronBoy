@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use crate::memory_map::MemoryMap;
 use crate::register::{ByteRegister, ConditionCode, FlagRegister, ProgramCounter, RegisterId, WordRegister, Register};
-use crate::register::RegisterId::{A, B, C, D, E, H, L};
+use crate::register::RegisterId::*;
 use crate::register::WordRegister::StackPointer;
 use crate::interrupt::InterruptState::*;
 use crate::interrupt::IF_ADDRESS;
@@ -120,12 +120,23 @@ impl Gameboy {
         match command {
             NOP => {}
 
-            ADD_A_R8(ByteRegister { value: n, id: _ }) | ADD_A_U8(n) => {
+            ADD_A_R8(id) => {
+                let (add, carry) = calc_with_carry(vec![self[A].value, self[id].value, 0], |a, b| a.overflowing_add(b));
+                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, self[id].value, 0), carry);
+                self[A].value = add;
+            }
+            ADD_A_U8(n) => {
                 let (add, carry) = calc_with_carry(vec![self[A].value, n, 0], |a, b| a.overflowing_add(b));
                 self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, n, 0), carry);
                 self[A].value = add;
             }
-            ADC_A_R8(ByteRegister { value: n, id: _ }) | ADC_A_U8(n) => {
+            ADC_A_R8(id) => {
+                let carry = if self.reg.flags.c { 1 } else { 0 };
+                let (add, new_carry) = calc_with_carry(vec![self[A].value, self[id].value, carry], |a, b| a.overflowing_add(b));
+                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, self[id].value, carry), new_carry);
+                self[A].value = add;
+            }
+            ADC_A_U8(n) => {
                 let carry = if self.reg.flags.c { 1 } else { 0 };
                 let (add, new_carry) = calc_with_carry(vec![self[A].value, n, carry], |a, b| a.overflowing_add(b));
                 self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, n, carry), new_carry);
@@ -137,7 +148,11 @@ impl Gameboy {
                 self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, self.mem.read(hl), carry), new_carry);
                 self[A].value = add;
             }
-            AND_A_R8(ByteRegister { value: n, id: _ }) | AND_A_U8(n) => {
+            AND_A_R8(id) => {
+                self[A].value &= self[id].value;
+                self.reg.set_flags(self[A].value == 0, false, true, false);
+            }
+            AND_A_U8(n) => {
                 self[A].value &= n;
                 self.reg.set_flags(self[A].value == 0, false, true, false);
             }
@@ -145,28 +160,35 @@ impl Gameboy {
                 self[A].value &= self.mem.read(hl);
                 self.reg.set_flags(self[A].value == 0, false, true, false);
             }
-            CP_A_R8(ByteRegister { value: n, id: _ }) | CP_A_U8(n) =>
-                self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value),
+            CP_A_R8(id) => {
+                let n = self[id].value;
+                self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value)
+            },
+            CP_A_U8(n) => self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value),
             CP_A_HL => {
                 let n = self.mem.read(hl);
                 self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value);
             }
 
-            DEC_R8(ByteRegister { value: _, id: id }) => {
+            DEC_R8(id) => {
                 let reg = self[id].value;
                 self[id].value = reg.wrapping_sub(1);
                 let z = self[id].value == 0;
                 self.reg.set_flags(z, true, half_carry_8_sub(reg, 1, 0), self.reg.flags.c);
             }
 
-            INC_R8(ByteRegister { value: _, id: id }) => {
+            INC_R8(id) => {
                 let reg = self[id].value;
                 self[id].value = reg.wrapping_add(1);
                 let z = self[id].value == 0;
                 let hc = half_carry_8_add(reg, 1, 0);
                 self.reg.set_flags(z, false, hc, self.reg.flags.c);
             }
-            OR_A_R8(ByteRegister { value: n, id: _ }) | OR_A_U8(n) => {
+            OR_A_R8(id)  => {
+                self[A].value |= self[id].value;
+                self.reg.set_flags(self[A].value == 0, false, false, false);
+            }
+            OR_A_U8(n) => {
                 self[A].value |= n;
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
@@ -174,15 +196,23 @@ impl Gameboy {
                 self[A].value |= self.mem.read(hl);
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
-            SUB_A_R8(ByteRegister { value: n, id: _ }) | SUB_A_U8(n) => {
-                if let command = SUB_A_U8(n) {
-                    print!("")
-                }
+            SUB_A_R8(id) => {
+                let (sub, c) = calc_with_carry(vec![self[A].value, self[id].value, 0], |a, b| a.overflowing_sub(b));
+                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, self[id].value, 0), c);
+                self[A].value = sub;
+            }
+            SUB_A_U8(n) => {
                 let (sub, c) = calc_with_carry(vec![self[A].value, n, 0], |a, b| a.overflowing_sub(b));
                 self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, n, 0), c);
                 self[A].value = sub;
             }
-            SBC_A_R8(ByteRegister { value: n, id: _ }) | SBC_A_U8(n) => {
+            SBC_A_R8(id) => {
+                let carry = if self.reg.flags.c { 1 } else { 0 };
+                let (sub, new_carry) = calc_with_carry(vec![self[A].value, self[id].value, carry], |a, b| a.overflowing_sub(b));
+                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, self[id].value, carry), new_carry);
+                self[A].value = sub;
+            }
+            SBC_A_U8(n) => {
                 let carry = if self.reg.flags.c { 1 } else { 0 };
                 let (sub, new_carry) = calc_with_carry(vec![self[A].value, n, carry], |a, b| a.overflowing_sub(b));
                 self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, n, carry), new_carry);
@@ -194,7 +224,11 @@ impl Gameboy {
                 self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, self.mem.read(hl), carry), new_carry);
                 self[A].value = sub;
             }
-            XOR_A_R8(ByteRegister { value: n, id: _ }) | XOR_A_U8(n) => {
+            XOR_A_R8(id) => {
+                self[A].value ^= self[id].value;
+                self.reg.set_flags(self[A].value == 0, false, false, false);
+            }
+            XOR_A_U8(n) => {
                 self[A].value ^= n;
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
@@ -224,7 +258,7 @@ impl Gameboy {
             INC_R16(reg) => self.reg.set_word_register(reg.to_address().wrapping_add(1), reg),
             RR_HL | RL_HL | RRC_HL | RLC_HL | RR_R8(_) | RL_R8(_) | RLA | RRA | RLC_R8(_) | RRC_R8(_) | RLCA | RRCA => {
                 let mut value = match command {
-                    RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => self[r.id].value,
+                    RL_R8(id) | RR_R8(id) | RLC_R8(id) | RRC_R8(id) => self[id].value,
                     RLA | RRA | RLCA | RRCA => self[A].value,
                     RR_HL | RL_HL | RRC_HL | RLC_HL => self.mem.read(hl),
                     _ => panic!(),
@@ -253,7 +287,7 @@ impl Gameboy {
                     _ => value == 0
                 };
                 match command {
-                    RL_R8(r) | RR_R8(r) | RLC_R8(r) | RRC_R8(r) => self[r.id].value = value,
+                    RL_R8(id) | RR_R8(id) | RLC_R8(id) | RRC_R8(id) => self[id].value = value,
                     RLA | RRA | RLCA | RRCA => self[A].value = value,
                     RR_HL | RL_HL | RRC_HL | RLC_HL => self.mem *= (hl, value),
                     _ => panic!()
@@ -263,7 +297,7 @@ impl Gameboy {
             SRA_R8(_) | SLA_R8(_) | SRL_R8(_) | SRL_HL | SLA_HL | SRA_HL => {
                 let mut value = match command {
                     SRL_HL | SRA_HL | SLA_HL => self.mem.read(hl),
-                    SLA_R8(r) | SRA_R8(r) | SRL_R8(r) => self[r.id].value,
+                    SLA_R8(id) | SRA_R8(id) | SRL_R8(id) => self[id].value,
                     _ => panic!(),
                 };
                 let carry = match command {
@@ -278,13 +312,13 @@ impl Gameboy {
                 };
                 match command {
                     SRL_HL | SRA_HL | SLA_HL => self.mem *= (hl, value),
-                    SLA_R8(r) | SRA_R8(r) | SRL_R8(r) => self[r.id].value = value,
+                    SLA_R8(id) | SRA_R8(id) | SRL_R8(id) => self[id].value = value,
                     _ => panic!()
                 };
                 self.reg.set_flags(value == 0, false, false, carry);
             }
-            BIT_U3_R8(bit, ByteRegister { value: n, id: _ }) => {
-                self.reg.flags.z = (n & bit.0) ^ bit.0 == bit.0;
+            BIT_U3_R8(bit, id) => {
+                self.reg.flags.z = (self[id].value & bit.0) ^ bit.0 == bit.0;
                 self.reg.flags.n = false;
                 self.reg.flags.h = true;
             }
@@ -293,29 +327,28 @@ impl Gameboy {
                 self.reg.flags.n = false;
                 self.reg.flags.h = true;
             }
-            RES_U3_R8(bit, ByteRegister { value: _, id: id }) => {
+            RES_U3_R8(bit, id) => {
                 self[id].value &= !bit.0
             }
             RES_U3_HL(bit) => {
                 self.mem *= (hl, self.mem.read(hl) & !bit.0)
             }
-            SET_U3_R8(bit, ByteRegister { value: _, id: id }) => self[id].value |= bit.0,
+            SET_U3_R8(bit, id) => self[id].value |= bit.0,
             SET_U3_HL(bit) => { self.mem *= (hl, self.mem.read(hl) | bit.0) }
-            SWAP_R8(ByteRegister { value: n, id: id }) => {
-                self.reg.set_flags(n == 0, false, false, false);
-                self[id].value = n.rotate_left(4);
+            SWAP_R8(id) => {
+                self.reg.set_flags(self[id].value == 0, false, false, false);
+                self[id].value = self[id].value.rotate_left(4);
             }
             SWAP_HL => {
                 self.reg.set_flags(hl.to_address() == 0, false, false, false);
                 self.reg.set_word_register(hl.to_address().rotate_left(8), self.reg.hl());
             }
-            LD_R8_R8(a, b) => self[a.id].value = b.value,
-            LD_R8_U8(a, b) => self[a.id].value = b,
+            LD_R8_R8(a, b) => self[a].value = self[b].value,
+            LD_R8_U8(a, b) => self[a].value = b,
             LD_R16_U16(a, b) => self.reg.set_word_register(b, a),
-            LD_HL_R8(ByteRegister { value: n, id: _ }) | LD_HL_N8(n) => { self.mem *= (hl, n); }
-            LD_R8_HL(a) => {
-                self[a.id].value = self.mem.read(hl)
-            }
+            LD_HL_R8(id) => { self.mem *= (hl, self[id].value); }
+            LD_HL_N8(n) => { self.mem *= (hl, n); }
+            LD_R8_HL(id) => { self[id].value = self.mem.read(hl) }
             LD_R16_A(n) => self.mem *= (n, self[A]),
             LDH_U16_A(n) => self.mem *= (n, self[A]),
             LDH_C_A => self.mem *= (self[C], self[A]),
