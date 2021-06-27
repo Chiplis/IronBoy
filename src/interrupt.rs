@@ -28,13 +28,11 @@ pub struct InterruptHandler {
     stat: InterruptMask,
     serial: InterruptMask,
     timer: InterruptMask,
-    joypad: InterruptMask,
-    invalid: [u8; 1]
+    joypad: InterruptMask
 }
 
 pub const IE_ADDRESS: usize = 0xFFFF;
 pub const IF_ADDRESS: usize = 0xFF0F;
-const JOYPAD_ADDRESS: usize = 0xFF00;
 
 impl InterruptHandler {
 
@@ -43,14 +41,12 @@ impl InterruptHandler {
         let mut registers = HashMap::new();
         registers.insert(IF_ADDRESS, 0x0);
         registers.insert(IE_ADDRESS, 0x0);
-        registers.insert(JOYPAD_ADDRESS, 0xEF);
         let vblank = InterruptMask(0x01);
         let stat = InterruptMask(0x02);
         let timer = InterruptMask(0x04);
         let serial = InterruptMask(0x08);
         let joypad = InterruptMask(0x10);
-        let invalid = [1_u8; 1];
-        InterruptHandler { registers, vblank, stat, timer, serial, joypad, invalid}
+        InterruptHandler { registers, vblank, stat, timer, serial, joypad }
     }
 
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {

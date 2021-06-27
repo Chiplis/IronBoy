@@ -19,7 +19,7 @@ mod ppu;
 mod interrupt;
 mod timer;
 mod gameboy;
-mod input;
+mod joypad;
 
 const FREQUENCY: u32 = 4194304;
 

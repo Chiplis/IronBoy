@@ -19,7 +19,7 @@ pub struct Gameboy {
     pub ei_counter: i8,
     pub ime: bool,
     pub mem: MemoryMap,
-    pub(crate) halted: bool,
+    pub halted: bool,
     halt_bug: bool
 }
 

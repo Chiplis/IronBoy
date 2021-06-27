@@ -13,14 +13,6 @@ use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use std::collections::VecDeque;
 use minifb::{Key, WindowOptions, Window, ScaleMode, Scale, InputCallback};
 
-enum PpuRegisterId { LcdControl, LcdStatus, LcdInterrupt, ScrollY, ScrollX, ScanLine, Background }
-
-enum PpuRegisterAccess { R, W, RW }
-
-type PpuRegisterAddress = u16;
-
-struct PpuRegister(PpuRegisterAddress, u8, PpuRegisterId, PpuRegisterAccess);
-
 #[derive(PartialEq, Copy, Clone)]
 pub enum PpuMode {
     OamSearch,
@@ -46,7 +38,7 @@ pub struct PPU {
     lcdc: LcdControl,
     pixels: Box<[u32]>,
     pub window: Window,
-    pub(crate) last_ticks: usize,
+    pub last_ticks: usize,
 }
 
 #[derive(PartialEq, Clone, Copy)]

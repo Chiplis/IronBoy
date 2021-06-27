@@ -150,7 +150,7 @@ impl Into<usize> for WordRegister {
 
 
 impl WordRegister {
-    pub(crate) fn to_address(self) -> u16 {
+    pub fn to_address(self) -> u16 {
         match self {
             WordRegister::Double(h, l) => u16::from_le_bytes([l.value, h.value]),
             WordRegister::AccFlag(a, FlagRegister { z, n, h, c }) => {
