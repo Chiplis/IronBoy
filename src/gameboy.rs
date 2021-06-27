@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::memory_map::MemoryMap;
-use crate::register::{ByteRegister, RegisterId, WordRegister, Register};
+use crate::register::{ByteRegister, RegisterId, WordRegister, Register, ProgramCounter};
 use crate::register::RegisterId::*;
 use crate::register::WordRegister::StackPointer;
 use crate::interrupt::InterruptState::*;
@@ -20,8 +20,7 @@ pub struct Gameboy {
     pub ime: bool,
     pub mem: MemoryMap,
     pub halted: bool,
-    halt_bug: bool,
-    halt_bug_pc: usize,
+    bugged_pc: Option<ProgramCounter>,
 }
 
 impl Gameboy {
@@ -32,8 +31,7 @@ impl Gameboy {
             ei_counter: -1,
             ime: false,
             halted: false,
-            halt_bug: false,
-            halt_bug_pc: 0,
+            bugged_pc: None,
         }
     }
 }
@@ -69,19 +67,22 @@ impl Gameboy {
 
         let command_cycles = self.handle_command(command);
 
-        if self.halt_bug {
-            self.mem.memory.remove(self.halt_bug_pc);
-            if self.halt_bug_pc < self.reg.pc.0 as usize {
-                self.reg.pc.0 -= 1
-            }
-            self.halt_bug = false;
+        match self.bugged_pc {
+            Some(ProgramCounter(pc)) => {
+                self.mem.memory.remove(pc as usize);
+                if pc < self.reg.pc.0 {
+                    self.reg.pc.0 -= 1
+                }
+            },
+            None => {}
         }
+
+        self.bugged_pc = None;
 
         if !self.ime && self.halted && self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0  {
             self.halted = false;
-            self.halt_bug = true;
-            self.halt_bug_pc = self.reg.pc.0 as usize;
-            self.mem.memory.insert(self.halt_bug_pc, self.mem.read(self.halt_bug_pc))
+            self.bugged_pc = Some(self.reg.pc);
+            self.mem.memory.insert(self.reg.pc.0 as usize, self.mem.read(self.reg.pc.0))
         }
 
         command_cycles + interrupt_cycles
