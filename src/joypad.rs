@@ -1,7 +1,4 @@
-use minifb::{Key, Window, KeyRepeat};
-use crate::memory_map::MemoryMap;
-use core::time;
-use std::thread;
+use minifb::{Key, Window};
 use crate::joypad::SelectedButtons::{Direction, Action};
 use std::ops::BitXor;
 
@@ -21,7 +18,7 @@ impl Joypad {
     pub fn new() -> Self { Self { action_buttons: 0x0F, direction_buttons: 0x0F, selected_buttons: Action } }
 
     pub fn input_cycle(&mut self, window: &Window) -> Vec<InputInterrupt> {
-        if window.is_key_down(Key::Escape) { return std::process::exit(0); }
+        if window.is_key_down(Key::Escape) { std::process::exit(0) }
 
         let previous_buttons = *self.buttons();
 

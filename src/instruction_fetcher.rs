@@ -1,15 +1,11 @@
 use std::cmp::max;
 use std::iter::FromIterator;
-use std::ops::{Div, Index, IndexMut};
 
-use crate::Command;
-use crate::gameboy::Gameboy;
 use crate::instruction::{Instruction, RstVec};
 use crate::instruction::Command::*;
 use crate::memory_map::MemoryMap;
-use crate::register::{Bit, ByteRegister, ConditionCode, FlagRegister, ProgramCounter, RegisterId, WordRegister, Register};
+use crate::register::{Bit, ConditionCode, RegisterId, Register};
 use crate::register::RegisterId::*;
-use crate::register::WordRegister::StackPointer;
 
 enum RegisterOperand {
     HL,

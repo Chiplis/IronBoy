@@ -1,7 +1,6 @@
 use Command::*;
 
-use crate::memory_map::MemoryMap;
-use crate::register::{Bit, ByteRegister, ConditionCode, WordRegister, RegisterId};
+use crate::register::{Bit, ConditionCode, WordRegister, RegisterId};
 
 pub struct Instruction(pub u8, pub Command);
 
@@ -69,11 +68,9 @@ pub enum Command {
     LD_R8_U8(RegisterId, u8),
     LD_R16_U16(WordRegister, u16),
     LD_HL_R8(RegisterId),
-    LD_HL_N8(u8),
     LD_R8_HL(RegisterId),
     LD_R16_A(WordRegister),
     LDH_U16_A(u16),
-    LD_U8_A(u8),
     LDH_U8_A(u8),
     LDH_C_A,
     LD_A_R16(WordRegister),
@@ -97,7 +94,6 @@ pub enum Command {
     RET,
     RETI,
     RST(RstVec),
-    ADD_HL_SP,
     ADD_SP_I8(i8),
     LD_U16_SP(u16),
     LD_HL_SP_I8(i8),
@@ -123,7 +119,7 @@ impl Command {
             SUB_A_U8(_) | XOR_A_U8(_) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
             SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(_) | SWAP_HL | RL_R8(_) | RL_HL | RLC_R8(_) |
             RLC_HL | RR_R8(_) | RR_HL | RRC_R8(_) | RRC_HL | SLA_R8(_) | SLA_HL | SRA_R8(_) |
-            SRA_HL | SRL_R8(_) | SRL_HL | LD_R8_U8(..) | LD_HL_N8(..) | JR_I8(_) | JR_CC_I8(..) |
+            SRA_HL | SRL_R8(_) | SRL_HL | LD_R8_U8(..) | JR_I8(_) | JR_CC_I8(..) |
             LDH_A_U8(_) | LDH_U8_A(_) | ADD_SP_I8(_) | LD_HL_SP_I8(_) | LDH_HL_U8(..) => 2,
 
             LDH_U16_A(_) | LDH_A_U16(_) | LD_R16_U16(..) | CALL_U16(_) | CALL_CC_U16(..) |
@@ -144,11 +140,11 @@ impl Command {
             LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_U8(..) |
             SUB_A_U8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_U8(..) | ADD_A_U8(..) | CP_A_U8(..) |
             SRL_R8(..) | OR_A_U8(..) | XOR_A_U8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
-            ADD_A_HL | ADC_A_HL | SBC_A_HL | ADD_HL_SP | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
+            ADD_A_HL | ADC_A_HL | SBC_A_HL | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
             RLC_R8(..) | RL_R8(..) | SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) |
             RR_R8(..) | SRA_R8(..) | RRC_R8(..) | AND_A_U8(..) => 2,
 
-            POP_R16(..) | LD_HL_N8(..) | LD_U8_A(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) |
+            POP_R16(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) |
             DECH_HL | INCH_HL | LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
 
             LDH_U16_A(..) | PUSH_AF | RETI | RET | JP_U16(..) | PUSH_R16(..) |

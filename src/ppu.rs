@@ -1,17 +1,11 @@
-use std::cmp::max;
-use std::ops::{Index, IndexMut, Range, RangeInclusive};
-
-use crate::memory_map::{MemoryMap};
 use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
-use crate::interrupt::{InterruptHandler, InterruptId};
-use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt, WriteInt};
+use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt};
 use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
 use crate::ppu::TileMapArea::{H9C00, H9800};
 use crate::ppu::ObjSize::{StackedTile, SingleTile};
 use crate::ppu::AddressingMode::{H8800, H8000};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
-use std::collections::VecDeque;
-use minifb::{Key, WindowOptions, Window, ScaleMode, Scale, InputCallback};
+use minifb::{WindowOptions, Window, ScaleMode, Scale};
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum PpuMode {
@@ -22,7 +16,6 @@ pub enum PpuMode {
 }
 
 pub struct PPU {
-    pixels_processed: u16,
     mode: PpuMode,
     tile_block_a: [u8; 0x8800 - 0x8000],
     tile_block_b: [u8; 0x9000 - 0x8800],
@@ -57,7 +50,6 @@ pub enum RenderCycle {
 enum StatInterrupt {
     ModeInt(PpuMode),
     LycInt,
-    WriteInt,
     Low,
 }
 
@@ -66,7 +58,7 @@ impl PPU {
     pub fn new() -> Self {
         let lcdc = LcdControl::new(0);
         let fb = [0_u32; 166 * 144];
-        let mut window = Window::new(
+        let window = Window::new(
             "Test - ESC to exit",
             160,
             144,
@@ -81,7 +73,6 @@ impl PPU {
                 none: false,
             }).unwrap();
         PPU {
-            pixels_processed: 0,
             mode: PpuMode::OamSearch,
             tile_block_a: [0; 2048],
             tile_block_b: [0; 2048],
@@ -120,7 +111,7 @@ impl PPU {
         }
 
         self.last_ticks = cpu_cycles as usize * 4;
-        self.ticks += (cpu_cycles as usize * 4);
+        self.ticks += self.last_ticks;
 
         self.ticks -= match self.mode {
             PpuMode::OamSearch => if self.ticks < 80 { 0 } else {
@@ -285,7 +276,7 @@ impl PPU {
 
             let tile_col = (horizontal_position / 8) as usize;
 
-            let tile_address = (background_area + tile_row + tile_col);
+            let tile_address = background_area + tile_row + tile_col;
 
             let tile_offset: i16 = if self.lcdc.addressing_mode() == H8000 {
                 self.read(tile_address).unwrap() as u16 as i16

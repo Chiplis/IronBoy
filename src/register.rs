@@ -1,5 +1,5 @@
 use std::ops::{Index, IndexMut};
-use crate::register::WordRegister::{AccFlag, Double, StackPointer};
+use crate::register::WordRegister::{StackPointer};
 use crate::register::RegisterId::{A, B, D, H, L, E, C};
 
 #[derive(Copy, Clone, Debug)]
@@ -11,7 +11,6 @@ pub enum RegisterId {
     E,
     H,
     L,
-    F,
 }
 
 pub struct Register {

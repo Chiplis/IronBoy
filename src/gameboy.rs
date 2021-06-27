@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::memory_map::MemoryMap;
-use crate::register::{ByteRegister, ConditionCode, FlagRegister, ProgramCounter, RegisterId, WordRegister, Register};
+use crate::register::{ByteRegister, RegisterId, WordRegister, Register};
 use crate::register::RegisterId::*;
 use crate::register::WordRegister::StackPointer;
 use crate::interrupt::InterruptState::*;
@@ -12,7 +12,7 @@ use crate::instruction::Command;
 use crate::instruction::Command::*;
 use std::cmp::max;
 use crate::interrupt::InterruptId::{VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt};
-use crate::interrupt::{InterruptId, InterruptHandler};
+use crate::interrupt::{InterruptId};
 
 pub struct Gameboy {
     pub reg: Register,
@@ -347,7 +347,6 @@ impl Gameboy {
             LD_R8_U8(a, b) => self[a].value = b,
             LD_R16_U16(a, b) => self.reg.set_word_register(b, a),
             LD_HL_R8(id) => { self.mem *= (hl, self[id].value); }
-            LD_HL_N8(n) => { self.mem *= (hl, n); }
             LD_R8_HL(id) => { self[id].value = self.mem.read(hl) }
             LD_R16_A(n) => self.mem *= (n, self[A]),
             LDH_U16_A(n) => self.mem *= (n, self[A]),
@@ -424,25 +423,19 @@ impl Gameboy {
                 self.mem *= (self.reg.sp, lo);
                 self.reg.pc.0 = rst_vec as u16
             }
-            ADD_HL_SP => {
-                let (add, carry) = self.reg.hl().to_address().overflowing_add(self.reg.sp.to_address());
-                self.reg.set_flags(add == 0, true, half_carry_16_add(self.reg.hl().to_address(), self.reg.sp.to_address(), 0), carry);
-                self.reg.set_word_register(add, self.reg.hl());
-            }
             ADD_SP_I8(n) | LD_HL_SP_I8(n) => {
                 let a = self.reg.sp.to_address();
                 let b = n as i8 as i16 as u16;
                 let h = (a & 0x000F) + (b & 0x000F) > 0x000F;
                 let c = (a & 0x00FF) + (b & 0x00FF) > 0x00FF;
                 self.reg.set_flags(false, false, h, c);
-                self.reg.set_word_register(a.wrapping_add(b), if let ADD_SP_I8(n) = command { self.reg.sp } else { self.reg.hl() })
+                self.reg.set_word_register(a.wrapping_add(b), if let ADD_SP_I8(_) = command { self.reg.sp } else { self.reg.hl() })
             }
             LD_U16_SP(n) => {
                 let [lo, hi] = self.reg.sp.to_address().to_le_bytes();
                 self.mem *= (n, lo);
                 self.mem *= (n + 1, hi);
             }
-            LD_U8_A(n) => self[A].value = n,
             LD_SP_HL => self.reg.set_word_register(self.reg.hl().to_address(), self.reg.sp),
 
             POP_R16(reg) => {
@@ -453,7 +446,7 @@ impl Gameboy {
                             self.reg.set_word_register(self.reg.sp.to_address().wrapping_add(1), self.reg.sp);
                         }
                     }
-                    WordRegister::AccFlag(mut a, mut f) => {
+                    WordRegister::AccFlag(_, _) => {
                         self.reg.flags.set(self.mem.read(self.reg.sp));
                         self[A].value =self.mem.read(self.reg.sp.to_address().wrapping_add(1));
                         self.reg.set_word_register(self.reg.sp.to_address().wrapping_add(2), self.reg.sp);
@@ -473,7 +466,6 @@ impl Gameboy {
                     WordRegister::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
                         for id in &[high, low] {
                             self.reg.set_word_register(self.reg.sp.to_address().wrapping_sub(1), self.reg.sp);
-                            let sp = self.reg.sp.to_address();
                             let value = self[*id].value;
                             self.mem *= (self.reg.sp, value);
                         }
@@ -573,6 +565,4 @@ fn half_carry_8_add(a: u8, b: u8, c: u8) -> bool { (a & 0xF) + (b & 0xF) + c > 0
 
 fn half_carry_8_sub(a: u8, b: u8, c: u8) -> bool { (a & 0x0F) < (b & 0x0F) + c }
 
-fn half_carry_16_add(a: u16, b: u16, c: u16) -> bool { (a & 0x07FF) + (b & 0x07FF) > 0x07FF }
-
-fn half_carry_16_sub(a: u16, b: u16, c: u16) -> bool { ((a & 0xFF).wrapping_sub(b.wrapping_add(c) & 0xFF)) & 0x10 == 0x1000 }
+fn half_carry_16_add(a: u16, b: u16, c: u16) -> bool { (a & 0x07FF) + (b & 0x07FF) + c > 0x07FF }

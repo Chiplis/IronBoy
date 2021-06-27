@@ -1,5 +1,5 @@
 use crate::interrupt::InterruptId::{VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt};
-use std::ops::{Range, RangeInclusive, Index};
+use std::ops::{Index};
 use std::collections::HashMap;
 use crate::interrupt::InterruptState::{Enabled, Requested, Active, Inactive, Priority};
 
