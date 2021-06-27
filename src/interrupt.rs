@@ -39,8 +39,8 @@ impl InterruptHandler {
 
     pub fn new() -> Self {
         let mut registers = HashMap::new();
-        registers.insert(IF_ADDRESS, 0x0);
-        registers.insert(IE_ADDRESS, 0x0);
+        registers.insert(IF_ADDRESS, 0x00);
+        registers.insert(IE_ADDRESS, 0x00);
         let vblank = InterruptMask(0x01);
         let stat = InterruptMask(0x02);
         let timer = InterruptMask(0x04);
@@ -77,7 +77,7 @@ impl InterruptHandler {
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
         if !self.registers.contains_key(&address) { return false }
-        self.registers.insert(address, value);
+        self.registers.insert(address, value | 0xE0);
         true
     }
 }

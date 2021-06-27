@@ -55,11 +55,11 @@ enum StatInterrupt {
 
 #[deny(unreachable_patterns)]
 impl PPU {
-    pub fn new() -> Self {
+    pub fn new(rom_name: &String) -> Self {
         let lcdc = LcdControl::new(0);
         let fb = [0_u32; 166 * 144];
         let window = Window::new(
-            "Test - ESC to exit",
+            format!("{} - ESC to exit", rom_name).as_str(),
             160,
             144,
             WindowOptions {
@@ -189,7 +189,7 @@ impl PPU {
         }
     }
 
-    pub fn write(&mut self, ram: [u8; 0x10000], address: usize, value: u8) -> bool {
+    pub fn write(&mut self, ram: &Vec<u8>, address: usize, value: u8) -> bool {
         match (address, self.mode) {
             (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
             (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,

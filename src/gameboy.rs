@@ -20,7 +20,8 @@ pub struct Gameboy {
     pub ime: bool,
     pub mem: MemoryMap,
     pub halted: bool,
-    halt_bug: bool
+    halt_bug: bool,
+    halt_bug_pc: usize,
 }
 
 impl Gameboy {
@@ -31,7 +32,8 @@ impl Gameboy {
             ei_counter: -1,
             ime: false,
             halted: false,
-            halt_bug: false
+            halt_bug: false,
+            halt_bug_pc: 0,
         }
     }
 }
@@ -64,14 +66,22 @@ impl Gameboy {
     }
 
     fn execute_instruction(&mut self, command: Command, interrupt_cycles: u8) -> u8 {
+
         let command_cycles = self.handle_command(command);
 
-        if !self.ime && self.halted && self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0  {
-            self.halt_bug = true;
-            self.halted = false;
-        } else if self.halt_bug {
-            self.reg.pc.0 -= 1;
+        if self.halt_bug {
+            self.mem.memory.remove(self.halt_bug_pc);
+            if self.halt_bug_pc < self.reg.pc.0 as usize {
+                self.reg.pc.0 -= 1
+            }
             self.halt_bug = false;
+        }
+
+        if !self.ime && self.halted && self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0  {
+            self.halted = false;
+            self.halt_bug = true;
+            self.halt_bug_pc = self.reg.pc.0 as usize;
+            self.mem.memory.insert(self.halt_bug_pc, self.mem.read(self.halt_bug_pc))
         }
 
         command_cycles + interrupt_cycles
@@ -495,11 +505,9 @@ impl Gameboy {
                 self.reg.flags.z = self[A].value == 0;
                 self.reg.flags.h = false;
             }
-            DI => { self.ime = false; }
-            EI => { self.ei_counter = 2 }
-            HALT => {
-                self.halted = true;
-            }
+            DI => self.ime = false,
+            EI => self.ei_counter = 2,
+            HALT => self.halted = true,
             SCF => {
                 self.reg.flags.n = false;
                 self.reg.flags.h = false;

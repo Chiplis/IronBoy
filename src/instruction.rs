@@ -144,8 +144,8 @@ impl Command {
             RLC_R8(..) | RL_R8(..) | SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) |
             RR_R8(..) | SRA_R8(..) | RRC_R8(..) | AND_A_U8(..) => 2,
 
-            POP_R16(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) |
-            DECH_HL | INCH_HL | LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
+            POP_R16(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) | DECH_HL | INCH_HL |
+            LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
 
             LDH_U16_A(..) | PUSH_AF | RETI | RET | JP_U16(..) | PUSH_R16(..) |
             ADD_SP_I8(..) | RST(..) | LDH_A_U16(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |

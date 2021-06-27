@@ -17,7 +17,7 @@ impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(A
 }
 
 pub struct MemoryMap {
-    memory: [u8; 0x10000],
+    pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PPU,
     timer: Timer,
@@ -28,13 +28,13 @@ pub struct MemoryMap {
 
 impl MemoryMap {
     pub fn new(rom: &Vec<u8>, rom_name: &String) -> MemoryMap {
-        let ppu = PPU::new();
+        let ppu = PPU::new(rom_name);
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new();
         let rom_size = rom.len() as usize;
         let rom_name = rom_name.to_owned();
-        let memory = [0; 0x10000];
+        let memory = vec![0; 0x10000];
         let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size };
         MemoryMap::init_memory(mem, rom)
     }
@@ -52,7 +52,7 @@ impl MemoryMap {
     pub fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
         let address = address.into();
-        if !(self.ppu.write(self.memory, address, value)
+        if !(self.ppu.write(&self.memory, address, value)
             || self.timer.write(address, value)
             || self.interrupt_handler.write(address, value)
             || self.joypad.write(address, value)) {
