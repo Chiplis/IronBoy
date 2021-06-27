@@ -30,6 +30,7 @@ impl Timer {
 
     pub fn timer_cycle(&mut self, cpu_cycles: usize) -> Option<TimerInterrupt> {
         self.divider_ticks += cpu_cycles * 4;
+        let mut interrupt = None;
 
         if self.divider_ticks >= 256 {
             self.divider_ticks -= 256;
@@ -38,17 +39,17 @@ impl Timer {
 
         if self.timer_enabled() {
             self.timer_ticks += cpu_cycles * 4;
-            if self.timer_ticks >= self.timer_frequency() {
+            while self.timer_ticks >= self.timer_frequency() {
                 self.timer_ticks -= self.timer_frequency();
                 let (new_tima, overflow) = self.tima.overflowing_add(1);
                 self.tima = if overflow { self.old_tma } else { new_tima };
-                if overflow { return Some(TimerInterrupt()); }
+                if overflow { interrupt = Some(TimerInterrupt()) }
             }
         }
 
         self.old_tma = self.tma;
 
-        return None;
+        interrupt
     }
 
     pub fn read(&self, address: usize) -> Option<u8> {
