@@ -254,7 +254,7 @@ impl InstructionFetcher {
             0x1F => RRA,
 
             0x10 => {
-                let opcode = ram.read(pc + 1);
+                let opcode = ram.memory[pc as usize + 1];
                 match opcode {
                     0x00 => STOP,
                     _ => panic!("Invalid opcode after STOP: {}", opcode),

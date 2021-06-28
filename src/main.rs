@@ -31,12 +31,11 @@ fn main() {
         while elapsed_cycles < FREQUENCY / 60 {
             let cycles = gameboy.cycle() as u16;
             elapsed_cycles += cycles as u32 * 4;
-            let mem_cycles = cycles as i32 - gameboy.mem.writes as i32 - gameboy.mem.reads as i32;
-            if mem_cycles < 0 {
-                panic!("Negative cycle count after considering reads/writes")
+            let mem_cycles = cycles as i32 - gameboy.mem.micro_ops as i32;
+            if mem_cycles != 0 {
+                panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.micro_ops)
             }
-            gameboy.mem.reads = 0;
-            gameboy.mem.writes = 0;
+            gameboy.mem.micro_ops = 0;
             gameboy.mem.cycle(mem_cycles as usize);
         }
         let cycles_time: f64 = cycle_duration * elapsed_cycles as f64;

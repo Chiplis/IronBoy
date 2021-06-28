@@ -5,7 +5,7 @@ use crate::register::{Bit, ConditionCode, WordRegister, RegisterId};
 pub struct Instruction(pub u8, pub Command);
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Command {
     ADC_A_R8(RegisterId),
     ADC_A_HL,
@@ -111,6 +111,7 @@ pub enum Command {
     SCF,
     STOP,
 }
+
 #[deny(unreachable_patterns)]
 impl Command {
     pub fn size(&self) -> u8 {
@@ -161,9 +162,16 @@ impl Command {
             CALL_CC_U16(..) => if branch { 6 } else { 3 },
         }
     }
+
+    pub fn can_branch(&self) -> bool {
+        match self {
+            JR_CC_I8(..) | JP_CC_U16(..) | RET_CC(..) | CALL_CC_U16(..) => true,
+            _ => false
+        }
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RstVec {
     X00 = 0x00,
     X08 = 0x08,

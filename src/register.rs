@@ -1,8 +1,9 @@
 use std::ops::{Index, IndexMut};
 use crate::register::WordRegister::{StackPointer};
 use crate::register::RegisterId::{A, B, D, H, L, E, C};
+use crate::memory_map::MemoryMap;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegisterId {
     A,
     B,
@@ -47,14 +48,34 @@ impl Register {
         let [lo, hi] = value.to_le_bytes();
         match reg {
             WordRegister::AccFlag(_, _) => {
-                self[A].value = hi;
                 self.set_flag(lo);
+                self[A].value = hi;
             }
             WordRegister::Double(a, b) => {
-                self[a.id].value = hi;
                 self[b.id].value = lo;
+                self[a.id].value = hi;
             }
             WordRegister::StackPointer(_) => self.sp = StackPointer(value)
+        };
+    }
+
+    pub fn set_word_register_with_callback(&mut self, value: u16, reg: WordRegister, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
+        let [lo, hi] = value.to_le_bytes();
+        match reg {
+            WordRegister::AccFlag(_, _) => {
+                self.set_flag(lo);
+                callback(mem);
+                self[A].value = hi;
+            }
+            WordRegister::Double(a, b) => {
+                self[b.id].value = lo;
+                callback(mem);
+                self[a.id].value = hi;
+            }
+            WordRegister::StackPointer(_) => {
+                self.sp = StackPointer(value);
+                callback(mem);
+            }
         };
     }
 
@@ -93,7 +114,7 @@ impl IndexMut<RegisterId> for Register {
 }
 
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ByteRegister {
     pub value: u8,
     pub id: RegisterId,
@@ -109,7 +130,7 @@ impl Into<usize> for ByteRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct FlagRegister {
     pub z: bool,
     pub n: bool,
@@ -135,7 +156,7 @@ impl FlagRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum WordRegister {
     Double(ByteRegister, ByteRegister),
     AccFlag(ByteRegister, FlagRegister),
@@ -161,13 +182,13 @@ impl WordRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Bit(pub u8);
 
 #[derive(Copy, Clone, Debug)]
 pub struct ProgramCounter(pub u16);
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ConditionCode {
     Z,
     NZ,

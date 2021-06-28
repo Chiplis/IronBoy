@@ -1,4 +1,4 @@
-use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
+use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank, DmaTransfer};
 use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt};
 use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
 use crate::ppu::TileMapArea::{H9C00, H9800};
@@ -13,10 +13,13 @@ pub enum PpuMode {
     PixelTransfer,
     HBlank,
     VBlank,
+    DmaTransfer,
 }
 
 pub struct PPU {
-    mode: PpuMode,
+    pub(crate) mode: PpuMode,
+    dma_index: usize,
+    dma_offset: usize,
     tile_block_a: [u8; 0x8800 - 0x8000],
     tile_block_b: [u8; 0x9000 - 0x8800],
     tile_block_c: [u8; 0x9800 - 0x9000],
@@ -32,6 +35,7 @@ pub struct PPU {
     pixels: Box<[u32]>,
     pub window: Window,
     pub last_ticks: usize,
+    pub old_mode: PpuMode,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -67,7 +71,7 @@ impl PPU {
                 transparency: false,
                 title: true,
                 resize: true,
-                scale: Scale::X1,
+                scale: Scale::X4,
                 scale_mode: ScaleMode::Stretch,
                 topmost: false,
                 none: false,
@@ -87,12 +91,15 @@ impl PPU {
             state: LcdOff,
             force_irq: true,
             last_ticks: 0,
+            dma_index: 0,
+            dma_offset: 0,
             pixels: Box::new(fb),
+            old_mode: PpuMode::OamSearch,
             window,
         }
     }
 
-    pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
+    pub fn render_cycle(&mut self, cpu_cycles: usize, ram: &Vec<u8>) -> RenderCycle {
         if !self.lcdc.enabled() {
             *self.ly_mut() = 0;
             self.ticks = 0;
@@ -102,7 +109,7 @@ impl PPU {
             return Normal(self.state);
         }
 
-        let old_mode = self.mode;
+        self.old_mode = if self.mode != PpuMode::DmaTransfer { self.mode } else { self.old_mode };
         let mut lyc_stat_check = false;
 
         if self.state == PpuState::LcdOff {
@@ -114,6 +121,11 @@ impl PPU {
         self.ticks += self.last_ticks;
 
         self.ticks -= match self.mode {
+            PpuMode::DmaTransfer => {
+                self.dma_transfer(ram);
+                0
+            }
+
             PpuMode::OamSearch => if self.ticks < 80 { 0 } else {
                 self.mode = PixelTransfer;
                 80
@@ -144,9 +156,9 @@ impl PPU {
                 456
             }
         };
-        self.state = if old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(old_mode, self.mode) };
+        self.state = if self.old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(self.old_mode, self.mode) };
 
-        self.cycle_result(old_mode, lyc_stat_check)
+        self.cycle_result(self.old_mode, lyc_stat_check)
     }
 
     fn cycle_result(&mut self, old_mode: PpuMode, lyc_stat_check: bool) -> RenderCycle {
@@ -179,9 +191,10 @@ impl PPU {
             (0x9000..=0x97FF, _) => Some(self.tile_block_c[(address - 0x9000) as usize]),
             (0x9800..=0x9BFF, _) => Some(self.tile_map_a[(address - 0x9800) as usize]),
             (0x9C00..=0x9FFF, _) => Some(self.tile_map_b[(address - 0x9C00) as usize]),
-
-            (0xFE00..=0xFE9F, PixelTransfer | OamSearch) => Some(0xFF),
-            (0xFE00..=0xFE9F, _) => Some(self.oam[(address - 0xFE00) as usize]),
+            (0xFE00..=0xFE9F, VBlank | HBlank) => Some(self.oam[(address - 0xFE00) as usize]),
+            (0xFE00..=0xFE9F, _) => {
+                Some(0xFF)
+            },
             (0xFF40, _) => Some(self.lcdc.get()),
             (0xFF41, _) => Some(self.stat()),
             (0xFF42..=0xFF4B, _) => Some(self.registers[(address - 0xFF41) as usize]),
@@ -197,7 +210,6 @@ impl PPU {
             (0x9800..=0x9BFF, _) => self.tile_map_a[address - 0x9800] = value,
             (0x9C00..=0x9FFF, _) => self.tile_map_b[address - 0x9C00] = value,
 
-            (0xFE00..=0xFE9F, OamSearch | PixelTransfer) => {}
             (0xFE00..=0xFE9F, _) => self.oam[address - 0xFE00] = value,
 
             (0xFF40, _) => self.lcdc.set(value),
@@ -209,11 +221,11 @@ impl PPU {
             (0xFF44, _) => {}
 
             (0xFF46, _) => {
-                for i in 0..self.oam.len() {
-                    self.oam[i] = ram[(value as usize * 0x100 + i as usize)]
-                }
-                self.registers[address - 0xFF41] = value
-            }
+                self.dma_index = 0;
+                self.dma_offset = value as usize;
+                self.dma_transfer(ram);
+                self.registers[address - 0xFF41] = value;
+            },
 
             (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, _) => self.registers[address - 0xFF41] = value,
 
@@ -222,12 +234,26 @@ impl PPU {
         true
     }
 
+    fn dma_transfer(&mut self, ram: &Vec<u8>) {
+        self.mode = DmaTransfer;
+
+        while self.ticks as i32 - 4 >= 0 && self.dma_index < self.oam.len() {
+            self.oam[self.dma_index] = ram[self.dma_offset * 0x100 + self.dma_index];
+            self.ticks -= 4;
+            self.dma_index += 1;
+        }
+        if self.dma_index == self.oam.len() {
+            self.mode = self.old_mode;
+        }
+    }
+
     fn stat(&self) -> u8 {
-        self.registers[0] & 0xF8 | match self.mode {
+        self.registers[0] & 0xF8 | match if self.mode != DmaTransfer { self.mode } else { self.old_mode } {
             HBlank => 0,
             VBlank => 1,
             OamSearch => 2,
-            PixelTransfer => 3
+            PixelTransfer => 3,
+            DmaTransfer => unreachable!()
         } | if self.lyc_check() { 0x04 } else { 0x0 }
     }
 
