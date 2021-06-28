@@ -29,9 +29,15 @@ fn main() {
     let mut start = Instant::now();
     loop {
         while elapsed_cycles < FREQUENCY / 60 {
-            let cycles = gameboy.cycle() as u32;
-            elapsed_cycles += cycles * 4;
-            gameboy.mem.cycle(cycles as usize);
+            let cycles = gameboy.cycle() as u16;
+            elapsed_cycles += cycles as u32 * 4;
+            let mem_cycles = cycles as i32 - gameboy.mem.writes as i32 - gameboy.mem.reads as i32;
+            if mem_cycles < 0 {
+                panic!("Negative cycle count after considering reads/writes")
+            }
+            gameboy.mem.reads = 0;
+            gameboy.mem.writes = 0;
+            gameboy.mem.cycle(mem_cycles as usize);
         }
         let cycles_time: f64 = cycle_duration * elapsed_cycles as f64;
         let sleep_time = cycles_time - start.elapsed().as_secs_f64();

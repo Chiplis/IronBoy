@@ -16,7 +16,7 @@ pub struct InstructionFetcher;
 
 impl InstructionFetcher {
     #[deny(unreachable_patterns)]
-    pub fn fetch_instruction(pc: u16, reg: &Register, ram: &MemoryMap) -> Instruction {
+    pub fn fetch_instruction(pc: u16, reg: &Register, ram: &mut MemoryMap) -> Instruction {
         let opcode = ram.read(pc);
         let register_ids = [B, C, D, E, H, L, A];
 
@@ -25,7 +25,7 @@ impl InstructionFetcher {
         let operand_idx = ((opcode & 0x0F) % 8) as usize;
         let register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
 
-        Instruction(if opcode == 0xCB { ram.read(pc+1) } else { opcode }, match opcode {
+        Instruction(opcode, match opcode {
             0xCB => {
                 let cb_opcode = ram.read(pc + 1) as u8;
 

@@ -39,20 +39,19 @@ impl Gameboy {
 impl Gameboy {
     #[deny(unreachable_patterns)]
     pub fn cycle(&mut self) -> u8 {
-        let interrupt_cycles = if self.handle_interrupts() { 4 } else { 0 };
+        let interrupt_cycles = if self.handle_interrupts() { 5 } else { 0 };
         if self.halted {
             self.halted = interrupt_cycles == 0;
             if self.halted && !self.ime {
                 if self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0 {
                     self.halted = false;
-                    return 1
                 }
             }
-            return 1
+            return 1 + interrupt_cycles
         }
         if interrupt_cycles != 0 { return interrupt_cycles };
 
-        let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &self.mem);
+        let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &mut self.mem);
         let (opcode, command) = (instruction.0, instruction.1);
         let line = *self.mem.ppu.ly();
         let log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.to_address(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
@@ -82,9 +81,9 @@ impl Gameboy {
         if !self.ime && self.halted && self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0  {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);
-            self.mem.memory.insert(self.reg.pc.0 as usize, self.mem.read(self.reg.pc.0))
+            let x = self.mem.read(self.reg.pc.0);
+            self.mem.memory.insert(self.reg.pc.0 as usize, x);
         }
-
         command_cycles + interrupt_cycles
     }
 
@@ -155,8 +154,9 @@ impl Gameboy {
             }
             ADC_A_HL | ADD_A_HL => {
                 let carry = if let ADD_A_HL = command { 0 } else { if self.reg.flags.c { 1 } else { 0 } };
-                let (add, new_carry) = calc_with_carry(vec![self[A].value, self.mem.read(hl), carry], |a, b| a.overflowing_add(b));
-                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, self.mem.read(hl), carry), new_carry);
+                let old = self.mem.read(hl);
+                let (add, new_carry) = calc_with_carry(vec![self[A].value, old, carry], |a, b| a.overflowing_add(b));
+                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, old, carry), new_carry);
                 self[A].value = add;
             }
             AND_A_R8(id) => {
@@ -231,8 +231,9 @@ impl Gameboy {
             }
             SBC_A_HL | SUB_A_HL => {
                 let carry = if let SUB_A_HL = command { 1 } else { if self.reg.flags.c { 1 } else { 0 } };
-                let (sub, new_carry) = calc_with_carry(vec![self[A].value, self.mem.read(hl), carry], |a, b| a.overflowing_sub(b));
-                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, self.mem.read(hl), carry), new_carry);
+                let old = self.mem.read(hl);
+                let (sub, new_carry) = calc_with_carry(vec![self[A].value, old, carry], |a, b| a.overflowing_sub(b));
+                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, old, carry), new_carry);
                 self[A].value = sub;
             }
             XOR_A_R8(id) => {
@@ -257,13 +258,13 @@ impl Gameboy {
                 let old = self.mem.read(hl);
                 self.mem *= (hl, old.wrapping_sub(1));
                 let hc = half_carry_8_sub(old, 1, 0);
-                self.reg.set_flags(self.mem.read(hl) == 0, true, hc, self.reg.flags.c);
+                self.reg.set_flags(old.wrapping_sub(1) == 0, true, hc, self.reg.flags.c);
             }
             INCH_HL => {
                 let old = self.mem.read(hl);
                 self.mem *= (hl, old.wrapping_add(1));
                 let hc = half_carry_8_add(old, 1, 0);
-                self.reg.set_flags(self.mem.read(hl) == 0, false, hc, self.reg.flags.c);
+                self.reg.set_flags(old.wrapping_add(1) == 0, false, hc, self.reg.flags.c);
             }
             DEC_R16(reg) => self.reg.set_word_register(reg.to_address().wrapping_sub(1), reg),
             INC_R16(reg) => self.reg.set_word_register(reg.to_address().wrapping_add(1), reg),
@@ -342,17 +343,22 @@ impl Gameboy {
                 self[id].value &= !bit.0
             }
             RES_U3_HL(bit) => {
-                self.mem *= (hl, self.mem.read(hl) & !bit.0)
+                let x = self.mem.read(hl);
+                self.mem *= (hl, x & !bit.0)
             }
             SET_U3_R8(bit, id) => self[id].value |= bit.0,
-            SET_U3_HL(bit) => { self.mem *= (hl, self.mem.read(hl) | bit.0) }
+            SET_U3_HL(bit) => {
+                let x = self.mem.read(hl);
+                self.mem *= (hl, x | bit.0)
+            }
             SWAP_R8(id) => {
                 self.reg.set_flags(self[id].value == 0, false, false, false);
                 self[id].value = self[id].value.rotate_left(4);
             }
             SWAP_HL => {
-                self.reg.set_flags(hl.to_address() == 0, false, false, false);
-                self.reg.set_word_register(hl.to_address().rotate_left(8), self.reg.hl());
+                let x = self.mem.read(hl);
+                self.mem *= (hl, x.rotate_left(4));
+                self.reg.set_flags(x == 0, false, false, false);
             }
             LD_R8_R8(a, b) => self[a].value = self[b].value,
             LD_R8_U8(a, b) => self[a].value = b,
@@ -369,15 +375,7 @@ impl Gameboy {
                 let x = self.mem.read(n);
                 self[A].value = x;
             }
-            LDH_U8_A(n) => {
-                if n == 0 {
-                    let v = (self.mem.read(n) & 0xCF) | (self[A].value & 0x30);
-                    self.mem *= (n, v)
-                } else {
-                    let x = self[A].value;
-                    self.mem *= (n, x);
-                }
-            }
+            LDH_U8_A(n) => self.mem *= (n, self[A].value),
             LDH_HL_U8(n) => self.mem *= (hl, n),
             LDH_A_C => self[A].value = self.mem.read(self[C]),
             LD_A_HLD => {

@@ -24,6 +24,8 @@ pub struct MemoryMap {
     joypad: Joypad,
     rom_size: usize,
     rom_name: String,
+    pub(crate) reads: u16,
+    pub writes: u16,
 }
 
 impl MemoryMap {
@@ -35,23 +37,28 @@ impl MemoryMap {
         let rom_size = rom.len() as usize;
         let rom_name = rom_name.to_owned();
         let memory = vec![0; 0x10000];
-        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size };
+        let (reads, writes) = (0, 0);
+        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, reads, writes };
         MemoryMap::init_memory(mem, rom)
     }
 
-    pub fn read<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
+    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
-        self.ppu.read(translated_address)
+        self.reads += 1;
+        let ret = self.ppu.read(translated_address)
             .or(self.interrupt_handler.read(translated_address))
             .or(self.timer.read(translated_address))
             .or(self.joypad.read(translated_address))
-            .unwrap_or(self.memory[translated_address])
+            .unwrap_or(self.memory[translated_address]);
+        self.cycle(1);
+        ret
     }
 
     pub fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
         let address = address.into();
+        self.writes += 1;
         if !(self.ppu.write(&self.memory, address, value)
             || self.timer.write(address, value)
             || self.interrupt_handler.write(address, value)
@@ -60,6 +67,7 @@ impl MemoryMap {
                 self.memory[address] = value
             }
         }
+        self.cycle(1);
     }
 
     pub fn cycle(&mut self, cpu_cycles: usize) {
@@ -114,6 +122,8 @@ impl MemoryMap {
         mem *= (0xFF4A as u16, 0);
         mem *= (0xFF4B as u16, 0);
         mem *= (0xFF00 as u16, 0xFF);
+        mem.writes = 0;
+        mem.reads = 0;
         mem
     }
 }
