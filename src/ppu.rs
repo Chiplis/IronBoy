@@ -240,7 +240,7 @@ impl PPU {
             (0xFF46, _) => {
                 self.dma_index = 0;
                 self.dma_offset = value as usize;
-                self.dma_cycle();
+                self.mode = DmaTransfer(Started);
                 self.registers[address - 0xFF41] = value;
             }
 

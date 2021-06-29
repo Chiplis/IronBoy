@@ -64,7 +64,6 @@ impl MemoryMap {
     pub fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
         let address = address.into();
-        self.micro_cycle();
         if !(self.ppu.write(address, value)
             || self.timer.write(address, value)
             || self.interrupt_handler.write(address, value)
@@ -73,6 +72,7 @@ impl MemoryMap {
                 self.memory[address] = value
             }
         }
+        self.micro_cycle();
     }
 
     pub fn micro_cycle(&mut self) {
