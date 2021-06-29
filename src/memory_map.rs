@@ -1,7 +1,7 @@
 use std::ops::{MulAssign};
 use crate::interrupt::{InterruptHandler};
 use crate::interrupt::InterruptId::{JoypadInt, StatInt, TimerInt, VBlankInt};
-use crate::ppu::{PPU, PpuMode};
+use crate::ppu::{PPU, PpuMode, DmaState};
 use std::any::{Any, TypeId};
 use crate::ppu::RenderCycle::{StatTrigger, Normal};
 use crate::ppu::PpuState::ModeChange;
@@ -9,6 +9,7 @@ use PpuMode::VBlank;
 use crate::timer::{Timer};
 use crate::joypad::{Joypad};
 use crate::ppu::PpuMode::DmaTransfer;
+use DmaState::{InProgress, Finished, Started};
 
 impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
@@ -26,6 +27,7 @@ pub struct MemoryMap {
     rom_size: usize,
     rom_name: String,
     pub micro_ops: u16,
+    dma_transfer: usize,
 }
 
 impl MemoryMap {
@@ -38,26 +40,32 @@ impl MemoryMap {
         let rom_name = rom_name.to_owned();
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
-        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops };
+        let dma_index = 0;
+        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_transfer: dma_index };
         MemoryMap::init_memory(mem, rom)
     }
 
-    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
+    fn read_mem<T: 'static + Into<usize> + Copy>(&mut self, address: T, trigger_cycle: bool) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
-        let ret = self.ppu.read(translated_address)
+        let read = self.ppu.read(translated_address)
             .or(self.interrupt_handler.read(translated_address))
             .or(self.timer.read(translated_address))
             .or(self.joypad.read(translated_address))
             .unwrap_or(self.memory[translated_address]);
-        self.micro_cycle();
-        ret
+        if trigger_cycle { self.micro_cycle() };
+        read
+    }
+
+    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
+        self.read_mem(address, true)
     }
 
     pub fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
         let address = address.into();
-        if !(self.ppu.write(&self.memory, address, value)
+        self.micro_cycle();
+        if !(self.ppu.write(address, value)
             || self.timer.write(address, value)
             || self.interrupt_handler.write(address, value)
             || self.joypad.write(address, value)) {
@@ -65,18 +73,29 @@ impl MemoryMap {
                 self.memory[address] = value
             }
         }
-        self.micro_cycle();
     }
 
     pub fn micro_cycle(&mut self) {
         self.micro_ops += 1;
+        if let DmaTransfer(InProgress | Finished) = self.ppu.mode {
+            self.dma_transfer();
+        }
         self.cycle(1);
+    }
+
+    fn dma_transfer(&mut self) {
+        while self.dma_transfer < self.ppu.dma_index {
+            self.ppu.oam[self.dma_transfer] = self.read_mem(self.ppu.dma_offset * 0x100 + self.dma_transfer, false);
+            self.dma_transfer += 1;
+        }
     }
 
     pub fn cycle(&mut self, cpu_cycles: usize) {
         let mut interrupts = vec![];
-        interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles, &self.memory) {
+        interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles) {
+            StatTrigger(ModeChange(DmaTransfer(_), VBlank)) => vec![StatInt],
             StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
+            Normal(ModeChange(DmaTransfer(_), VBlank)) => vec![],
             Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
             StatTrigger(_) => vec![StatInt],
             _ => vec![]

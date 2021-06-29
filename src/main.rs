@@ -36,7 +36,6 @@ fn main() {
                 panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.micro_ops)
             }
             gameboy.mem.micro_ops = 0;
-            gameboy.mem.cycle(mem_cycles as usize);
         }
         let cycles_time: f64 = cycle_duration * elapsed_cycles as f64;
         let sleep_time = cycles_time - start.elapsed().as_secs_f64();

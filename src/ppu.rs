@@ -6,6 +6,12 @@ use crate::ppu::ObjSize::{StackedTile, SingleTile};
 use crate::ppu::AddressingMode::{H8800, H8000};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use minifb::{WindowOptions, Window, ScaleMode, Scale};
+use DmaState::{Started, InProgress, Finished};
+
+#[derive(PartialEq, Copy, Clone)]
+pub enum DmaState {
+    Started, InProgress, Finished
+}
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum PpuMode {
@@ -13,19 +19,19 @@ pub enum PpuMode {
     PixelTransfer,
     HBlank,
     VBlank,
-    DmaTransfer,
+    DmaTransfer(DmaState),
 }
 
 pub struct PPU {
     pub(crate) mode: PpuMode,
-    dma_index: usize,
-    dma_offset: usize,
+    pub(crate) dma_index: usize,
+    pub(crate) dma_offset: usize,
     tile_block_a: [u8; 0x8800 - 0x8000],
     tile_block_b: [u8; 0x9000 - 0x8800],
     tile_block_c: [u8; 0x9800 - 0x9000],
     tile_map_a: [u8; 0x9C00 - 0x9800],
     tile_map_b: [u8; 0xA000 - 0x9C00],
-    oam: [u8; 0xFEA0 - 0xFE00],
+    pub(crate) oam: [u8; 0xFEA0 - 0xFE00],
     registers: [u8; 0xFF4C - 0xFF41],
     ticks: usize,
     state: PpuState,
@@ -99,7 +105,7 @@ impl PPU {
         }
     }
 
-    pub fn render_cycle(&mut self, cpu_cycles: usize, ram: &Vec<u8>) -> RenderCycle {
+    pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
         if !self.lcdc.enabled() {
             *self.ly_mut() = 0;
             self.ticks = 0;
@@ -109,7 +115,10 @@ impl PPU {
             return Normal(self.state);
         }
 
-        self.old_mode = if self.mode != PpuMode::DmaTransfer { self.mode } else { self.old_mode };
+        self.old_mode = match self.mode {
+            DmaTransfer(_) => self.old_mode,
+            _ => self.mode
+        };
         let mut lyc_stat_check = false;
 
         if self.state == PpuState::LcdOff {
@@ -121,9 +130,15 @@ impl PPU {
         self.ticks += self.last_ticks;
 
         self.ticks -= match self.mode {
-            PpuMode::DmaTransfer => {
-                self.dma_transfer(ram);
+            PpuMode::DmaTransfer(Started | InProgress) => {
+                self.dma_cycle();
                 0
+            }
+
+            PpuMode::DmaTransfer(Finished) => {
+                    self.mode = self.old_mode;
+                    self.dma_index = 0;
+                    0
             }
 
             PpuMode::OamSearch => if self.ticks < 80 { 0 } else {
@@ -191,10 +206,12 @@ impl PPU {
             (0x9000..=0x97FF, _) => Some(self.tile_block_c[(address - 0x9000) as usize]),
             (0x9800..=0x9BFF, _) => Some(self.tile_map_a[(address - 0x9800) as usize]),
             (0x9C00..=0x9FFF, _) => Some(self.tile_map_b[(address - 0x9C00) as usize]),
-            (0xFE00..=0xFE9F, VBlank | HBlank) => Some(self.oam[(address - 0xFE00) as usize]),
+            (0xFE00..=0xFE9F, VBlank | HBlank) => {
+                Some(self.oam[(address - 0xFE00) as usize])
+            }
             (0xFE00..=0xFE9F, _) => {
                 Some(0xFF)
-            },
+            }
             (0xFF40, _) => Some(self.lcdc.get()),
             (0xFF41, _) => Some(self.stat()),
             (0xFF42..=0xFF4B, _) => Some(self.registers[(address - 0xFF41) as usize]),
@@ -202,7 +219,7 @@ impl PPU {
         }
     }
 
-    pub fn write(&mut self, ram: &Vec<u8>, address: usize, value: u8) -> bool {
+    pub fn write(&mut self, address: usize, value: u8) -> bool {
         match (address, self.mode) {
             (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
             (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,
@@ -223,9 +240,9 @@ impl PPU {
             (0xFF46, _) => {
                 self.dma_index = 0;
                 self.dma_offset = value as usize;
-                self.dma_transfer(ram);
+                self.dma_cycle();
                 self.registers[address - 0xFF41] = value;
-            },
+            }
 
             (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, _) => self.registers[address - 0xFF41] = value,
 
@@ -234,26 +251,37 @@ impl PPU {
         true
     }
 
-    fn dma_transfer(&mut self, ram: &Vec<u8>) {
-        self.mode = DmaTransfer;
+    fn dma_cycle(&mut self) {
+        match self.mode {
+            DmaTransfer(InProgress) => {},
+            _ => if self.ticks >= 4 {
+                self.ticks -= 4;
+                self.mode = DmaTransfer(InProgress);
+                return;
+            } else {
+                self.mode = DmaTransfer(Started)
+            }
+        };
 
-        while self.ticks as i32 - 4 >= 0 && self.dma_index < self.oam.len() {
-            self.oam[self.dma_index] = ram[self.dma_offset * 0x100 + self.dma_index];
+        if self.mode != DmaTransfer(InProgress) { return; }
+
+        if self.ticks >= 4 && self.dma_index < self.oam.len() {
             self.ticks -= 4;
             self.dma_index += 1;
         }
+
         if self.dma_index == self.oam.len() {
-            self.mode = self.old_mode;
+            self.mode = DmaTransfer(Finished);
         }
     }
 
     fn stat(&self) -> u8 {
-        self.registers[0] & 0xF8 | match if self.mode != DmaTransfer { self.mode } else { self.old_mode } {
+        self.registers[0] & 0xF8 | match if let DmaTransfer(_) = self.mode { self.old_mode } else { self.mode } {
             HBlank => 0,
             VBlank => 1,
             OamSearch => 2,
             PixelTransfer => 3,
-            DmaTransfer => unreachable!()
+            DmaTransfer(_) => unreachable!()
         } | if self.lyc_check() { 0x04 } else { 0x0 }
     }
 

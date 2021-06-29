@@ -165,12 +165,12 @@ pub enum WordRegister {
 
 
 impl Into<usize> for WordRegister {
-    fn into(self) -> usize { self.to_address() as usize }
+    fn into(self) -> usize { self.value() as usize }
 }
 
 
 impl WordRegister {
-    pub fn to_address(self) -> u16 {
+    pub fn value(self) -> u16 {
         match self {
             WordRegister::Double(h, l) => u16::from_le_bytes([l.value, h.value]),
             WordRegister::AccFlag(a, FlagRegister { z, n, h, c }) => {
