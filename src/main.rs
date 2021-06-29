@@ -25,7 +25,7 @@ fn main() {
 
     let mut gameboy = Gameboy::new(mem);
     let mut elapsed_cycles = 0;
-    let cycle_duration = 1.0 as f64 / FREQUENCY as f64;
+    let cycle_duration = 1.0_f64 / FREQUENCY as f64;
     let mut start = Instant::now();
     loop {
         while elapsed_cycles < FREQUENCY / 60 {

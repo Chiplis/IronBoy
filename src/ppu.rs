@@ -436,7 +436,7 @@ impl PPU {
         };
 
         if pixel != WHITE && pri {
-            return;
+            
         } else {
             self.set_pixel(x, y, color)
         }
@@ -533,7 +533,7 @@ impl Sprite {
             vertical_position: ppu.oam[index].wrapping_sub(16),
             horizontal_position: ppu.oam[index + 1].wrapping_sub(8),
             location: ppu.oam[index + 2] as u16,
-            attributes: SpriteAttributes::new(&ppu, ppu.oam[index + 3]),
+            attributes: SpriteAttributes::new(ppu, ppu.oam[index + 3]),
         }
     }
 }

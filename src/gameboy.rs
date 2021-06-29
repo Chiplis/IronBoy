@@ -55,7 +55,7 @@ impl Gameboy {
         let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &mut self.mem);
         let (opcode, command) = (instruction.0, instruction.1);
         let line = *self.mem.ppu.ly();
-        let log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
+        let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
         println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
@@ -99,7 +99,7 @@ impl Gameboy {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     fn get_interrupts(&self) -> [InterruptId; 5] { [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt] }
@@ -163,7 +163,7 @@ impl Gameboy {
                 self[A].value = add;
             }
             ADC_A_HL | ADD_A_HL => {
-                let carry = if let ADD_A_HL = command { 0 } else { if self.reg.flags.c { 1 } else { 0 } };
+                let carry = if let ADD_A_HL = command { 0 } else if self.reg.flags.c { 1 } else { 0 };
                 let old = self.mem.read(hl);
                 let (add, new_carry) = calc_with_carry(vec![self[A].value, old, carry], |a, b| a.overflowing_add(b));
                 self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, old, carry), new_carry);
@@ -240,7 +240,7 @@ impl Gameboy {
                 self[A].value = sub;
             }
             SBC_A_HL | SUB_A_HL => {
-                let carry = if let SUB_A_HL = command { 1 } else { if self.reg.flags.c { 1 } else { 0 } };
+                let carry = if let SUB_A_HL = command { 1 } else if self.reg.flags.c { 1 } else { 0 };
                 let old = self.mem.read(hl);
                 let (sub, new_carry) = calc_with_carry(vec![self[A].value, old, carry], |a, b| a.overflowing_sub(b));
                 self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, old, carry), new_carry);

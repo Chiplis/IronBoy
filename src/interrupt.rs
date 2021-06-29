@@ -73,7 +73,7 @@ impl InterruptHandler {
         }
     }
 
-    pub fn read(&self, address: usize) -> Option<u8> { self.registers.get(&address).map(|v| *v) }
+    pub fn read(&self, address: usize) -> Option<u8> { self.registers.get(&address).copied() }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
         if !self.registers.contains_key(&address) { return false }

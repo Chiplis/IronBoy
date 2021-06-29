@@ -9,7 +9,7 @@ use PpuMode::VBlank;
 use crate::timer::{Timer};
 use crate::joypad::{Joypad};
 use crate::ppu::PpuMode::DmaTransfer;
-use DmaState::{InProgress, Finished, Started};
+use DmaState::{InProgress, Finished};
 
 impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
@@ -40,8 +40,8 @@ impl MemoryMap {
         let rom_name = rom_name.to_owned();
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
-        let dma_index = 0;
-        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_progress: dma_index };
+        let dma_progress = 0;
+        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_progress };
         MemoryMap::init_memory(mem, rom)
     }
 
@@ -67,10 +67,8 @@ impl MemoryMap {
         if !(self.ppu.write(address, value)
             || self.timer.write(address, value)
             || self.interrupt_handler.write(address, value)
-            || self.joypad.write(address, value)) {
-            if address >= self.rom_size || self.rom_name.contains("cpu_instrs.gb") {
-                self.memory[address] = value
-            }
+            || self.joypad.write(address, value)) && (address >= self.rom_size || self.rom_name.contains("cpu_instrs.gb")) {
+            self.memory[address] = value
         }
         self.micro_cycle();
     }
@@ -115,38 +113,38 @@ impl MemoryMap {
 
     fn init_memory(mut mem: MemoryMap, rom: &Vec<u8>) -> MemoryMap {
         for (index, value) in rom.iter().enumerate() { mem.memory[index] = *value }
-        mem *= (0xFF05 as u16, 0);
-        mem *= (0xFF06 as u16, 0);
-        mem *= (0xFF07 as u16, 0);
-        mem *= (0xFF10 as u16, 0x80);
-        mem *= (0xFF11 as u16, 0xBF);
-        mem *= (0xFF12 as u16, 0xF3);
-        mem *= (0xFF14 as u16, 0xBF);
-        mem *= (0xFF16 as u16, 0x3F);
-        mem *= (0xFF16 as u16, 0x3F);
-        mem *= (0xFF17 as u16, 0);
-        mem *= (0xFF19 as u16, 0xBF);
-        mem *= (0xFF1A as u16, 0x7F);
-        mem *= (0xFF1B as u16, 0xFF);
-        mem *= (0xFF1C as u16, 0x9F);
-        mem *= (0xFF1E as u16, 0xFF);
-        mem *= (0xFF20 as u16, 0xFF);
-        mem *= (0xFF21 as u16, 0);
-        mem *= (0xFF22 as u16, 0);
-        mem *= (0xFF23 as u16, 0xBF);
-        mem *= (0xFF24 as u16, 0x77);
-        mem *= (0xFF25 as u16, 0xF3);
-        mem *= (0xFF26 as u16, 0xF1);
-        mem *= (0xFF40 as u16, 0x91);
-        mem *= (0xFF42 as u16, 0);
-        mem *= (0xFF43 as u16, 0);
-        mem *= (0xFF45 as u16, 0);
-        mem *= (0xFF47 as u16, 0xFC);
-        mem *= (0xFF48 as u16, 0xFF);
-        mem *= (0xFF49 as u16, 0xFF);
-        mem *= (0xFF4A as u16, 0);
-        mem *= (0xFF4B as u16, 0);
-        mem *= (0xFF00 as u16, 0xFF);
+        mem *= (0xFF05_u16, 0);
+        mem *= (0xFF06_u16, 0);
+        mem *= (0xFF07_u16, 0);
+        mem *= (0xFF10_u16, 0x80);
+        mem *= (0xFF11_u16, 0xBF);
+        mem *= (0xFF12_u16, 0xF3);
+        mem *= (0xFF14_u16, 0xBF);
+        mem *= (0xFF16_u16, 0x3F);
+        mem *= (0xFF16_u16, 0x3F);
+        mem *= (0xFF17_u16, 0);
+        mem *= (0xFF19_u16, 0xBF);
+        mem *= (0xFF1A_u16, 0x7F);
+        mem *= (0xFF1B_u16, 0xFF);
+        mem *= (0xFF1C_u16, 0x9F);
+        mem *= (0xFF1E_u16, 0xFF);
+        mem *= (0xFF20_u16, 0xFF);
+        mem *= (0xFF21_u16, 0);
+        mem *= (0xFF22_u16, 0);
+        mem *= (0xFF23_u16, 0xBF);
+        mem *= (0xFF24_u16, 0x77);
+        mem *= (0xFF25_u16, 0xF3);
+        mem *= (0xFF26_u16, 0xF1);
+        mem *= (0xFF40_u16, 0x91);
+        mem *= (0xFF42_u16, 0);
+        mem *= (0xFF43_u16, 0);
+        mem *= (0xFF45_u16, 0);
+        mem *= (0xFF47_u16, 0xFC);
+        mem *= (0xFF48_u16, 0xFF);
+        mem *= (0xFF49_u16, 0xFF);
+        mem *= (0xFF4A_u16, 0);
+        mem *= (0xFF4B_u16, 0);
+        mem *= (0xFF00_u16, 0xFF);
         mem.micro_ops = 0;
         mem
     }
