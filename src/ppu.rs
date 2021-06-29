@@ -253,17 +253,15 @@ impl PPU {
 
     fn dma_cycle(&mut self) {
         match self.mode {
-            DmaTransfer(InProgress) => {},
-            _ => if self.ticks >= 4 {
+            DmaTransfer(InProgress) => (),
+            DmaTransfer(Finished) => unreachable!(),
+            DmaTransfer(Started) => {
                 self.ticks -= 4;
                 self.mode = DmaTransfer(InProgress);
                 return;
-            } else {
-                self.mode = DmaTransfer(Started)
             }
+            _ => unreachable!(),
         };
-
-        if self.mode != DmaTransfer(InProgress) { return; }
 
         if self.ticks >= 4 && self.dma_index < self.oam.len() {
             self.ticks -= 4;
