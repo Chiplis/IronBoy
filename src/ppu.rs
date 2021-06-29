@@ -24,7 +24,7 @@ pub enum PpuMode {
 
 pub struct PPU {
     pub(crate) mode: PpuMode,
-    pub(crate) dma_index: usize,
+    pub(crate) dma_progress: usize,
     pub(crate) dma_offset: usize,
     tile_block_a: [u8; 0x8800 - 0x8000],
     tile_block_b: [u8; 0x9000 - 0x8800],
@@ -97,7 +97,7 @@ impl PPU {
             state: LcdOff,
             force_irq: true,
             last_ticks: 0,
-            dma_index: 0,
+            dma_progress: 0,
             dma_offset: 0,
             pixels: Box::new(fb),
             old_mode: PpuMode::OamSearch,
@@ -132,12 +132,12 @@ impl PPU {
         self.ticks -= match self.mode {
             PpuMode::DmaTransfer(Started | InProgress) => {
                 self.dma_cycle();
-                0
+                4
             }
 
             PpuMode::DmaTransfer(Finished) => {
                     self.mode = self.old_mode;
-                    self.dma_index = 0;
+                    self.dma_progress = 0;
                     0
             }
 
@@ -238,7 +238,7 @@ impl PPU {
             (0xFF44, _) => {}
 
             (0xFF46, _) => {
-                self.dma_index = 0;
+                self.dma_progress = 0;
                 self.dma_offset = value as usize;
                 self.mode = DmaTransfer(Started);
                 self.registers[address - 0xFF41] = value;
@@ -256,19 +256,15 @@ impl PPU {
             DmaTransfer(InProgress) => (),
             DmaTransfer(Finished) => unreachable!(),
             DmaTransfer(Started) => {
-                self.ticks -= 4;
                 self.mode = DmaTransfer(InProgress);
                 return;
             }
             _ => unreachable!(),
         };
 
-        if self.ticks >= 4 && self.dma_index < self.oam.len() {
-            self.ticks -= 4;
-            self.dma_index += 1;
-        }
+        self.dma_progress += 1;
 
-        if self.dma_index == self.oam.len() {
+        if self.dma_progress == self.oam.len() {
             self.mode = DmaTransfer(Finished);
         }
     }

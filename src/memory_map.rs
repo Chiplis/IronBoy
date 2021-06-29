@@ -27,7 +27,7 @@ pub struct MemoryMap {
     rom_size: usize,
     rom_name: String,
     pub micro_ops: u16,
-    dma_transfer: usize,
+    dma_progress: usize,
 }
 
 impl MemoryMap {
@@ -41,7 +41,7 @@ impl MemoryMap {
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
         let dma_index = 0;
-        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_transfer: dma_index };
+        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_progress: dma_index };
         MemoryMap::init_memory(mem, rom)
     }
 
@@ -84,9 +84,12 @@ impl MemoryMap {
     }
 
     fn dma_transfer(&mut self) {
-        while self.dma_transfer < self.ppu.dma_index {
-            self.ppu.oam[self.dma_transfer] = self.read_mem(self.ppu.dma_offset * 0x100 + self.dma_transfer, false);
-            self.dma_transfer += 1;
+        while self.dma_progress < self.ppu.dma_progress {
+            self.ppu.oam[self.dma_progress] = self.read_mem(self.ppu.dma_offset * 0x100 + self.dma_progress, false);
+            self.dma_progress += 1;
+        }
+        if self.dma_progress == self.ppu.oam.len() {
+            self.dma_progress = 0;
         }
     }
 
