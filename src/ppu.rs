@@ -1,4 +1,4 @@
-use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank, DmaTransfer};
+use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
 use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt};
 use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
 use crate::ppu::TileMapArea::{H9C00, H9800};
@@ -7,10 +7,14 @@ use crate::ppu::AddressingMode::{H8800, H8000};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use minifb::{WindowOptions, Window, ScaleMode, Scale};
 use DmaState::{Started, InProgress, Finished};
+use crate::ppu::DmaState::Inactive;
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum DmaState {
-    Started, InProgress, Finished
+    Inactive,
+    Started,
+    InProgress,
+    Finished,
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -19,19 +23,19 @@ pub enum PpuMode {
     PixelTransfer,
     HBlank,
     VBlank,
-    DmaTransfer(DmaState),
 }
 
 pub struct PPU {
-    pub(crate) mode: PpuMode,
-    pub(crate) dma_progress: usize,
-    pub(crate) dma_offset: usize,
+    pub mode: PpuMode,
+    pub dma: DmaState,
+    pub dma_progress: usize,
+    pub dma_offset: usize,
     tile_block_a: [u8; 0x8800 - 0x8000],
     tile_block_b: [u8; 0x9000 - 0x8800],
     tile_block_c: [u8; 0x9800 - 0x9000],
     tile_map_a: [u8; 0x9C00 - 0x9800],
     tile_map_b: [u8; 0xA000 - 0x9C00],
-    pub(crate) oam: [u8; 0xFEA0 - 0xFE00],
+    pub oam: [u8; 0xFEA0 - 0xFE00],
     registers: [u8; 0xFF4C - 0xFF41],
     ticks: usize,
     state: PpuState,
@@ -83,7 +87,7 @@ impl PPU {
                 none: false,
             }).unwrap();
         PPU {
-            mode: PpuMode::OamSearch,
+            mode: OamSearch,
             tile_block_a: [0; 2048],
             tile_block_b: [0; 2048],
             tile_block_c: [0; 2048],
@@ -100,7 +104,8 @@ impl PPU {
             dma_progress: 0,
             dma_offset: 0,
             pixels: Box::new(fb),
-            old_mode: PpuMode::OamSearch,
+            old_mode: OamSearch,
+            dma: Inactive,
             window,
         }
     }
@@ -115,10 +120,8 @@ impl PPU {
             return Normal(self.state);
         }
 
-        self.old_mode = match self.mode {
-            DmaTransfer(_) => self.old_mode,
-            _ => self.mode
-        };
+        self.old_mode = self.mode;
+
         let mut lyc_stat_check = false;
 
         if self.state == PpuState::LcdOff {
@@ -129,29 +132,24 @@ impl PPU {
         self.last_ticks = cpu_cycles as usize * 4;
         self.ticks += self.last_ticks;
 
+        if self.dma != Inactive {
+            self.dma_cycle();
+            self.ticks -= 4;
+        }
+
         self.ticks -= match self.mode {
-            PpuMode::DmaTransfer(Started | InProgress) => {
-                self.dma_cycle();
-                4
-            }
 
-            PpuMode::DmaTransfer(Finished) => {
-                    self.mode = self.old_mode;
-                    self.dma_progress = 0;
-                    0
-            }
-
-            PpuMode::OamSearch => if self.ticks < 80 { 0 } else {
+            OamSearch => if self.ticks < 80 { 0 } else {
                 self.mode = PixelTransfer;
                 80
             }
 
-            PpuMode::PixelTransfer => if self.ticks < 172 { 0 } else {
+            PixelTransfer => if self.ticks < 172 { 0 } else {
                 self.mode = HBlank;
                 172
             }
 
-            PpuMode::HBlank => if self.ticks < 204 { 0 } else {
+            HBlank => if self.ticks < 204 { 0 } else {
                 *self.ly_mut() += 1;
                 lyc_stat_check = self.lyc_check();
                 self.mode = if *self.ly() == 144 {
@@ -164,13 +162,14 @@ impl PPU {
                 204
             }
 
-            PpuMode::VBlank => if self.ticks < 456 { 0 } else {
+            VBlank => if self.ticks < 456 { 0 } else {
                 *self.ly_mut() = (*self.ly() + 1) % 154;
                 lyc_stat_check = self.lyc_check();
                 self.mode = if *self.ly() == 0 { OamSearch } else { VBlank };
                 456
             }
         };
+
         self.state = if self.old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(self.old_mode, self.mode) };
 
         self.cycle_result(self.old_mode, lyc_stat_check)
@@ -199,22 +198,22 @@ impl PPU {
     }
 
     pub fn read(&self, address: usize) -> Option<u8> {
-        match (address, self.mode) {
-            (0x8000..=0x9FFF, PixelTransfer) => Some(0xFF),
-            (0x8000..=0x87FF, _) => Some(self.tile_block_a[(address - 0x8000) as usize]),
-            (0x8800..=0x8FFF, _) => Some(self.tile_block_b[(address - 0x8800) as usize]),
-            (0x9000..=0x97FF, _) => Some(self.tile_block_c[(address - 0x9000) as usize]),
-            (0x9800..=0x9BFF, _) => Some(self.tile_map_a[(address - 0x9800) as usize]),
-            (0x9C00..=0x9FFF, _) => Some(self.tile_map_b[(address - 0x9C00) as usize]),
-            (0xFE00..=0xFE9F, VBlank | HBlank) => {
+        match (address, self.mode, self.dma) {
+            (0x8000..=0x9FFF, PixelTransfer, _) => Some(0xFF),
+            (0x8000..=0x87FF, _, _) => Some(self.tile_block_a[(address - 0x8000) as usize]),
+            (0x8800..=0x8FFF, _, _) => Some(self.tile_block_b[(address - 0x8800) as usize]),
+            (0x9000..=0x97FF, _, _) => Some(self.tile_block_c[(address - 0x9000) as usize]),
+            (0x9800..=0x9BFF, _, _) => Some(self.tile_map_a[(address - 0x9800) as usize]),
+            (0x9C00..=0x9FFF, _, _) => Some(self.tile_map_b[(address - 0x9C00) as usize]),
+            (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Started) => {
                 Some(self.oam[(address - 0xFE00) as usize])
             }
-            (0xFE00..=0xFE9F, _) => {
+            (0xFE00..=0xFE9F, _, _) => {
                 Some(0xFF)
             }
-            (0xFF40, _) => Some(self.lcdc.get()),
-            (0xFF41, _) => Some(self.stat()),
-            (0xFF42..=0xFF4B, _) => Some(self.registers[(address - 0xFF41) as usize]),
+            (0xFF40, _, _) => Some(self.lcdc.get()),
+            (0xFF41, _, _) => Some(self.stat()),
+            (0xFF42..=0xFF4B, _, _) => Some(self.registers[(address - 0xFF41) as usize]),
             _ => None
         }
     }
@@ -238,9 +237,8 @@ impl PPU {
             (0xFF44, _) => {}
 
             (0xFF46, _) => {
-                self.dma_progress = 0;
                 self.dma_offset = value as usize;
-                self.mode = DmaTransfer(Started);
+                self.dma_cycle();
                 self.registers[address - 0xFF41] = value;
             }
 
@@ -252,30 +250,29 @@ impl PPU {
     }
 
     fn dma_cycle(&mut self) {
-        match self.mode {
-            DmaTransfer(InProgress) => (),
-            DmaTransfer(Finished) => unreachable!(),
-            DmaTransfer(Started) => {
-                self.mode = DmaTransfer(InProgress);
-                return;
+        match self.dma {
+            Inactive => {
+                self.dma = Started;
+                self.dma_progress = 0;
             }
-            _ => unreachable!(),
+            Started => self.dma = InProgress,
+            InProgress => self.dma_progress += 1,
+            Finished => self.dma = Inactive,
         };
 
-        self.dma_progress += 1;
+        if self.dma != InProgress { return; }
 
         if self.dma_progress == self.oam.len() {
-            self.mode = DmaTransfer(Finished);
+            self.dma = Finished;
         }
     }
 
     fn stat(&self) -> u8 {
-        self.registers[0] & 0xF8 | match if let DmaTransfer(_) = self.mode { self.old_mode } else { self.mode } {
+        self.registers[0] & 0xF8 | match self.mode {
             HBlank => 0,
             VBlank => 1,
             OamSearch => 2,
-            PixelTransfer => 3,
-            DmaTransfer(_) => unreachable!()
+            PixelTransfer => 3
         } | if self.lyc_check() { 0x04 } else { 0x0 }
     }
 
@@ -435,9 +432,7 @@ impl PPU {
             b: self.pixels[offset] as u8,
         };
 
-        if pixel != WHITE && pri {
-            
-        } else {
+        if pixel != WHITE && pri {} else {
             self.set_pixel(x, y, color)
         }
     }

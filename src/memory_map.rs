@@ -8,7 +8,6 @@ use crate::ppu::PpuState::ModeChange;
 use PpuMode::VBlank;
 use crate::timer::{Timer};
 use crate::joypad::{Joypad};
-use crate::ppu::PpuMode::DmaTransfer;
 use DmaState::{InProgress, Finished};
 
 impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
@@ -75,7 +74,7 @@ impl MemoryMap {
 
     pub fn micro_cycle(&mut self) {
         self.micro_ops += 1;
-        if let DmaTransfer(InProgress | Finished) = self.ppu.mode {
+        if let InProgress | Finished = self.ppu.dma {
             self.dma_transfer();
         }
         self.cycle(1);
@@ -94,9 +93,7 @@ impl MemoryMap {
     pub fn cycle(&mut self, cpu_cycles: usize) {
         let mut interrupts = vec![];
         interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles) {
-            StatTrigger(ModeChange(DmaTransfer(_), VBlank)) => vec![StatInt],
             StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
-            Normal(ModeChange(DmaTransfer(_), VBlank)) => vec![],
             Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
             StatTrigger(_) => vec![StatInt],
             _ => vec![]
