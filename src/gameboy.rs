@@ -40,6 +40,7 @@ impl Gameboy {
     #[deny(unreachable_patterns)]
     pub fn cycle(&mut self) -> u8 {
         let interrupt_cycles = if self.handle_interrupts() { 5 } else { 0 };
+
         if self.halted {
             self.halted = interrupt_cycles == 0;
             if self.halted && !self.ime {
@@ -50,6 +51,7 @@ impl Gameboy {
             }
             return 1 + interrupt_cycles;
         }
+
         if interrupt_cycles != 0 { return interrupt_cycles; };
 
         let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &mut self.mem);
@@ -60,10 +62,10 @@ impl Gameboy {
         //println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
 
-        self.execute_instruction(command, interrupt_cycles)
+        self.execute_instruction(command)
     }
 
-    fn execute_instruction(&mut self, command: Command, interrupt_cycles: u8) -> u8 {
+    fn execute_instruction(&mut self, command: Command) -> u8 {
         let command_cycles = self.handle_command(command);
 
         match self.bugged_pc {
@@ -84,7 +86,7 @@ impl Gameboy {
             let x = self.mem.read(self.reg.pc.0);
             self.mem.memory.insert(self.reg.pc.0 as usize, x);
         }
-        interrupt_cycles + if command != HALT { command_cycles } else { self.mem.micro_ops as u8 }
+        if command != HALT { command_cycles } else { self.mem.micro_ops as u8 }
     }
 
     fn handle_interrupts(&mut self) -> bool {

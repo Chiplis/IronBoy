@@ -162,13 +162,6 @@ impl Command {
             CALL_CC_U16(..) => if branch { 6 } else { 3 },
         }
     }
-
-    pub fn can_branch(&self) -> bool {
-        match self {
-            JR_CC_I8(..) | JP_CC_U16(..) | RET_CC(..) | CALL_CC_U16(..) => true,
-            _ => false
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
