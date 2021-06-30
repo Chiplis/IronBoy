@@ -47,7 +47,7 @@ impl Gameboy {
                 if self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0 {
                     self.halted = false;
                 }
-                return 2 + interrupt_cycles;
+                return 2;
             }
             return 1 + interrupt_cycles;
         }
@@ -59,7 +59,7 @@ impl Gameboy {
         let line = *self.mem.ppu.ly();
         let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
-        //println!("{:?}", command);
+        println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
 
         self.execute_instruction(command)
@@ -86,7 +86,9 @@ impl Gameboy {
             let x = self.mem.read(self.reg.pc.0);
             self.mem.memory.insert(self.reg.pc.0 as usize, x);
         }
-        if command != HALT { command_cycles } else { self.mem.micro_ops as u8 }
+        if command != HALT { command_cycles } else {
+            self.mem.micro_ops as u8
+        }
     }
 
     fn handle_interrupts(&mut self) -> bool {
@@ -471,7 +473,7 @@ impl Gameboy {
                             self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
                         }
                     }
-                    WordRegister::AccFlag(_, _) => {
+                    WordRegister::AccFlag(..) => {
                         self.reg.flags.set(self.mem.read(self.reg.sp));
                         self[A].value = self.mem.read(self.reg.sp.value().wrapping_add(1));
                         self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);

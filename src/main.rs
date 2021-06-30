@@ -29,11 +29,14 @@ fn main() {
     let mut start = Instant::now();
     loop {
         while elapsed_cycles < FREQUENCY / 60 {
+            let halted = gameboy.halted;
             let cycles = gameboy.cycle() as u16;
             elapsed_cycles += cycles as u32 * 4;
-            let mem_cycles = cycles as i32 - gameboy.mem.micro_ops as i32;
-            if mem_cycles != 0 {
+            let mem_cycles = cycles - gameboy.mem.micro_ops;
+            if mem_cycles != 0 && !halted {
                 panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.micro_ops)
+            } else if mem_cycles != 0 {
+                gameboy.mem.cycle(mem_cycles as usize);
             }
             gameboy.mem.micro_ops = 0;
         }

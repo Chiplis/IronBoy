@@ -116,15 +116,15 @@ pub enum Command {
 impl Command {
     pub fn size(&self) -> u8 {
         match self {
-            LD_A_U8(_) | ADC_A_U8(_) | ADD_A_U8(_) | AND_A_U8(_) | CP_A_U8(_) | OR_A_U8(_) | SBC_A_U8(_) |
-            SUB_A_U8(_) | XOR_A_U8(_) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
-            SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(_) | SWAP_HL | RL_R8(_) | RL_HL | RLC_R8(_) |
-            RLC_HL | RR_R8(_) | RR_HL | RRC_R8(_) | RRC_HL | SLA_R8(_) | SLA_HL | SRA_R8(_) |
-            SRA_HL | SRL_R8(_) | SRL_HL | LD_R8_U8(..) | JR_I8(_) | JR_CC_I8(..) |
-            LDH_A_U8(_) | LDH_U8_A(_) | ADD_SP_I8(_) | LD_HL_SP_I8(_) | LDH_HL_U8(..) => 2,
+            LD_A_U8(..) | ADC_A_U8(..) | ADD_A_U8(..) | AND_A_U8(..) | CP_A_U8(..) | OR_A_U8(..) | SBC_A_U8(..) |
+            SUB_A_U8(..) | XOR_A_U8(..) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
+            SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | RL_R8(..) | RL_HL | RLC_R8(..) |
+            RLC_HL | RR_R8(..) | RR_HL | RRC_R8(..) | RRC_HL | SLA_R8(..) | SLA_HL | SRA_R8(..) |
+            SRA_HL | SRL_R8(..) | SRL_HL | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) |
+            LDH_A_U8(..) | LDH_U8_A(..) | ADD_SP_I8(..) | LD_HL_SP_I8(..) | LDH_HL_U8(..) => 2,
 
-            LDH_U16_A(_) | LDH_A_U16(_) | LD_R16_U16(..) | CALL_U16(_) | CALL_CC_U16(..) |
-            JP_U16(_) | JP_CC_U16(..) | LD_U16_SP(_) => 3,
+            LDH_U16_A(..) | LDH_A_U16(..) | LD_R16_U16(..) | CALL_U16(..) | CALL_CC_U16(..) |
+            JP_U16(..) | JP_CC_U16(..) | LD_U16_SP(..) => 3,
             _ => 1
         }
     }

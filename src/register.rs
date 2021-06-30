@@ -47,7 +47,7 @@ impl Register {
     pub fn set_word_register(&mut self, value: u16, reg: WordRegister) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
-            WordRegister::AccFlag(_, _) => {
+            WordRegister::AccFlag(..) => {
                 self.set_flag(lo);
                 self[A].value = hi;
             }
@@ -62,7 +62,7 @@ impl Register {
     pub fn set_word_register_with_callback(&mut self, value: u16, reg: WordRegister, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
-            WordRegister::AccFlag(_, _) => {
+            WordRegister::AccFlag(..) => {
                 self.set_flag(lo);
                 callback(mem);
                 self[A].value = hi;

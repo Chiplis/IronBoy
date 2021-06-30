@@ -87,7 +87,7 @@ impl PPU {
                 none: false,
             }).unwrap();
         PPU {
-            mode: OamSearch,
+            mode: HBlank,
             tile_block_a: [0; 2048],
             tile_block_b: [0; 2048],
             tile_block_c: [0; 2048],
@@ -104,7 +104,7 @@ impl PPU {
             dma_progress: 0,
             dma_offset: 0,
             pixels: Box::new(fb),
-            old_mode: OamSearch,
+            old_mode: HBlank,
             dma: Inactive,
             window,
         }
@@ -115,6 +115,7 @@ impl PPU {
             *self.ly_mut() = 0;
             self.ticks = 0;
             self.mode = HBlank;
+            self.old_mode = HBlank;
             self.state = PpuState::LcdOff;
             self.force_irq = false;
             return Normal(self.state);
