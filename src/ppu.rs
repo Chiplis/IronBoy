@@ -235,7 +235,7 @@ impl PPU {
                 self.force_irq = true
             }
 
-            (0xFF44, ..) => {}
+            (0xFF44, ..) => (),
 
             (0xFF46, ..) => {
                 self.dma_offset = value as usize;

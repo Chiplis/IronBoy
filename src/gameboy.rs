@@ -84,7 +84,7 @@ impl Gameboy {
             let x = self.mem.read(self.reg.pc.0);
             self.mem.memory.insert(self.reg.pc.0 as usize, x);
         }
-        command_cycles + if command == HALT { 2 } else { 0 } + interrupt_cycles
+        interrupt_cycles + if command != HALT { command_cycles } else { self.mem.micro_ops as u8 }
     }
 
     fn handle_interrupts(&mut self) -> bool {
