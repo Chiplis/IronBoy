@@ -57,7 +57,7 @@ impl Gameboy {
         let line = *self.mem.ppu.ly();
         let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
-        println!("{:?}", command);
+        //println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
 
         self.execute_instruction(command, interrupt_cycles)
@@ -117,7 +117,7 @@ impl Gameboy {
                 self.mem *= (self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value() - 1);
                 self.mem *= (self.reg.sp, lo);
-                self.set_pc(*interrupt_id as u16);
+                self.set_pc(*interrupt_id as u16, true);
                 true
             }
             Priority(priority_id) => self.trigger_interrupt(&priority_id),
@@ -407,17 +407,18 @@ impl Gameboy {
                 self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
             }
             CALL_U16(n) => {
+                self.micro_cycle();
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value() - 1);
                 self.mem *= (self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value() - 1);
                 self.mem *= (self.reg.sp, lo);
-                self.set_pc(n);
+                self.set_pc(n, false);
             }
 
-            JP_HL => self.set_pc_without_micro_cycle(self.reg.hl().value()),
-            JP_U16(n) => self.set_pc(n),
-            JR_I8(n) => self.set_pc((self.reg.pc.0 as i16 + n as i16) as u16),
+            JP_HL => self.set_pc(self.reg.hl().value(), false),
+            JP_U16(n) => self.set_pc(n, true),
+            JR_I8(n) => self.set_pc((self.reg.pc.0 as i16 + n as i16) as u16, true),
             CPL => {
                 self[A].value = !self[A].value;
                 self.reg.set_flags(self.reg.flags.z, true, true, self.reg.flags.c);
@@ -425,13 +426,13 @@ impl Gameboy {
             RET => {
                 let lo = self.mem.read(self.reg.sp);
                 let hi = self.mem.read(self.reg.sp.value().wrapping_add(1));
-                self.set_pc(u16::from_le_bytes([lo, hi]));
+                self.set_pc(u16::from_le_bytes([lo, hi]), true);
                 self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
             }
             RETI => {
                 let lo = self.mem.read(self.reg.sp);
                 let hi = self.mem.read(self.reg.sp.value().wrapping_add(1));
-                self.set_pc(u16::from_le_bytes([lo, hi]));
+                self.set_pc(u16::from_le_bytes([lo, hi]), true);
                 self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
                 self.ei_counter = 1;
                 self.ime = true;
@@ -442,7 +443,7 @@ impl Gameboy {
                 self.mem *= (self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, lo);
-                self.set_pc(rst_vec as u16)
+                self.set_pc(rst_vec as u16, true)
             }
             ADD_SP_I8(n) | LD_HL_SP_I8(n) => {
                 let a = self.reg.sp.value();
@@ -532,7 +533,7 @@ impl Gameboy {
                 if self.reg.cc_flag(cc) {
                     let lo = self.mem.read(self.reg.sp);
                     let hi = self.mem.read(self.reg.sp.value().wrapping_add(1));
-                    self.set_pc_without_micro_cycle(u16::from_le_bytes([lo, hi]));
+                    self.set_pc(u16::from_le_bytes([lo, hi]), false);
                     self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
                 } else {
                     branch_taken = false
@@ -540,9 +541,9 @@ impl Gameboy {
                 self.micro_cycle();
             }
 
-            JP_CC_U16(cc, n) => if self.reg.cc_flag(cc) { self.set_pc_without_micro_cycle(n) } else { branch_taken = false }
+            JP_CC_U16(cc, n) => if self.reg.cc_flag(cc) { self.set_pc(n, false) } else { branch_taken = false }
 
-            JR_CC_I8(cc, n) => if self.reg.cc_flag(cc) { self.set_pc_without_micro_cycle((self.reg.pc.0 as i16 + n as i16) as u16) } else { branch_taken = false }
+            JR_CC_I8(cc, n) => if self.reg.cc_flag(cc) { self.set_pc((self.reg.pc.0 as i16 + n as i16) as u16, false) } else { branch_taken = false }
 
             CALL_CC_U16(cc, n) => if self.reg.cc_flag(cc) {
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
@@ -550,7 +551,7 @@ impl Gameboy {
                 self.mem *= (self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value() - 1);
                 self.mem *= (self.reg.sp, lo);
-                self.set_pc_without_micro_cycle(n);
+                self.set_pc(n, false);
             } else { branch_taken = false }
 
             STOP => {}
@@ -562,13 +563,9 @@ impl Gameboy {
         self.mem.micro_cycle();
     }
 
-    fn set_pc(&mut self, value: u16) {
+    fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
         self.reg.pc.0 = value;
-        self.micro_cycle();
-    }
-
-    fn set_pc_without_micro_cycle(&mut self, value: u16) {
-        self.reg.pc.0 = value;
+        if trigger_cycle { self.micro_cycle() }
     }
 
     fn set_word_register(&mut self, value: u16, reg: WordRegister) {

@@ -6,14 +6,14 @@ use crate::ppu::ObjSize::{StackedTile, SingleTile};
 use crate::ppu::AddressingMode::{H8800, H8000};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use minifb::{WindowOptions, Window, ScaleMode, Scale};
-use DmaState::{Started, InProgress, Finished};
+use DmaState::{Starting, Executing, Finished};
 use crate::ppu::DmaState::Inactive;
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum DmaState {
     Inactive,
-    Started,
-    InProgress,
+    Starting,
+    Executing,
     Finished,
 }
 
@@ -200,49 +200,50 @@ impl PPU {
     pub fn read(&self, address: usize) -> Option<u8> {
         match (address, self.mode, self.dma) {
             (0x8000..=0x9FFF, PixelTransfer, _) => Some(0xFF),
-            (0x8000..=0x87FF, _, _) => Some(self.tile_block_a[(address - 0x8000) as usize]),
-            (0x8800..=0x8FFF, _, _) => Some(self.tile_block_b[(address - 0x8800) as usize]),
-            (0x9000..=0x97FF, _, _) => Some(self.tile_block_c[(address - 0x9000) as usize]),
-            (0x9800..=0x9BFF, _, _) => Some(self.tile_map_a[(address - 0x9800) as usize]),
-            (0x9C00..=0x9FFF, _, _) => Some(self.tile_map_b[(address - 0x9C00) as usize]),
-            (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Started) => {
-                Some(self.oam[(address - 0xFE00) as usize])
-            }
-            (0xFE00..=0xFE9F, _, _) => {
-                Some(0xFF)
-            }
-            (0xFF40, _, _) => Some(self.lcdc.get()),
-            (0xFF41, _, _) => Some(self.stat()),
-            (0xFF42..=0xFF4B, _, _) => Some(self.registers[(address - 0xFF41) as usize]),
+
+            (0x8000..=0x87FF, ..) => Some(self.tile_block_a[address - 0x8000]),
+            (0x8800..=0x8FFF, ..) => Some(self.tile_block_b[address - 0x8800]),
+            (0x9000..=0x97FF, ..) => Some(self.tile_block_c[address - 0x9000]),
+            (0x9800..=0x9BFF, ..) => Some(self.tile_map_a[address - 0x9800]),
+            (0x9C00..=0x9FFF, ..) => Some(self.tile_map_b[address - 0x9C00]),
+
+            (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Starting) => Some(self.oam[address - 0xFE00]),
+            (0xFE00..=0xFE9F, ..) => Some(0xFF),
+
+            (0xFF40, ..) => Some(self.lcdc.get()),
+            (0xFF41, ..) => Some(self.stat()),
+            (0xFF42..=0xFF4B, ..) => Some(self.registers[address - 0xFF41]),
             _ => None
         }
     }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        match (address, self.mode) {
-            (0x8000..=0x87FF, _) => self.tile_block_a[address - 0x8000] = value,
-            (0x8800..=0x8FFF, _) => self.tile_block_b[address - 0x8800] = value,
-            (0x9000..=0x97FF, _) => self.tile_block_c[address - 0x9000] = value,
-            (0x9800..=0x9BFF, _) => self.tile_map_a[address - 0x9800] = value,
-            (0x9C00..=0x9FFF, _) => self.tile_map_b[address - 0x9C00] = value,
+        match (address, self.mode, self.dma) {
+            (0x8000..=0x9FFF, PixelTransfer, _) => (),
+            (0x8000..=0x87FF, ..) => self.tile_block_a[address - 0x8000] = value,
+            (0x8800..=0x8FFF, ..) => self.tile_block_b[address - 0x8800] = value,
+            (0x9000..=0x97FF, ..) => self.tile_block_c[address - 0x9000] = value,
+            (0x9800..=0x9BFF, ..) => self.tile_map_a[address - 0x9800] = value,
+            (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
 
-            (0xFE00..=0xFE9F, _) => self.oam[address - 0xFE00] = value,
+            (0xFE00..=0xFE9F, HBlank | VBlank, Inactive | Starting) => self.oam[address - 0xFE00] = value,
+            (0xFE00..=0xFE9F, ..) => (),
 
-            (0xFF40, _) => self.lcdc.set(value),
-            (0xFF41, _) => {
+            (0xFF40, ..) => self.lcdc.set(value),
+            (0xFF41, ..) => {
                 *self.stat_mut() = value;
                 self.force_irq = true
             }
 
-            (0xFF44, _) => {}
+            (0xFF44, ..) => {}
 
-            (0xFF46, _) => {
+            (0xFF46, ..) => {
                 self.dma_offset = value as usize;
                 self.dma_cycle();
                 self.registers[address - 0xFF41] = value;
             }
 
-            (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, _) => self.registers[address - 0xFF41] = value,
+            (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, ..) => self.registers[address - 0xFF41] = value,
 
             _ => return false
         }
@@ -250,21 +251,18 @@ impl PPU {
     }
 
     fn dma_cycle(&mut self) {
-        match self.dma {
+        self.dma = match self.dma {
             Inactive => {
-                self.dma = Started;
                 self.dma_progress = 0;
+                Starting
             }
-            Started => self.dma = InProgress,
-            InProgress => self.dma_progress += 1,
-            Finished => self.dma = Inactive,
+            Executing => {
+                self.dma_progress += 1;
+                if self.dma_progress == self.oam.len() { Finished } else { Executing }
+            },
+            Starting => Executing,
+            Finished => Inactive,
         };
-
-        if self.dma != InProgress { return; }
-
-        if self.dma_progress == self.oam.len() {
-            self.dma = Finished;
-        }
     }
 
     fn stat(&self) -> u8 {
