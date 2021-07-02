@@ -44,6 +44,15 @@ impl MemoryMap {
         MemoryMap::init_memory(mem, rom)
     }
 
+    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
+        self.read_mem(address, true)
+    }
+
+    pub fn write<T: 'static + Into<usize> + Copy>(&mut self, address: T, value: u8) {
+        self.write_mem(address, value, true)
+    }
+
+
     fn read_mem<T: 'static + Into<usize> + Copy>(&mut self, address: T, trigger_cycle: bool) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
@@ -56,11 +65,7 @@ impl MemoryMap {
         read
     }
 
-    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
-        self.read_mem(address, true)
-    }
-
-    pub fn write<T: Into<usize> + Copy>(&mut self, address: T, value: u8) {
+    pub fn write_mem<T: Into<usize> + Copy>(&mut self, address: T, value: u8, trigger_cycle: bool) {
         //println!("Writing address {}", address.into());
         let address = address.into();
         if !(self.ppu.write(address, value)
@@ -69,7 +74,7 @@ impl MemoryMap {
             || self.joypad.write(address, value)) && (address >= self.rom_size || self.rom_name.contains("cpu_instrs.gb")) {
             self.memory[address] = value
         }
-        self.micro_cycle();
+        if trigger_cycle { self.micro_cycle() }
     }
 
     pub fn micro_cycle(&mut self) {
@@ -110,39 +115,38 @@ impl MemoryMap {
 
     fn init_memory(mut mem: MemoryMap, rom: &Vec<u8>) -> MemoryMap {
         for (index, value) in rom.iter().enumerate() { mem.memory[index] = *value }
-        mem *= (0xFF05_u16, 0);
-        mem *= (0xFF06_u16, 0);
-        mem *= (0xFF07_u16, 0);
-        mem *= (0xFF10_u16, 0x80);
-        mem *= (0xFF11_u16, 0xBF);
-        mem *= (0xFF12_u16, 0xF3);
-        mem *= (0xFF14_u16, 0xBF);
-        mem *= (0xFF16_u16, 0x3F);
-        mem *= (0xFF16_u16, 0x3F);
-        mem *= (0xFF17_u16, 0);
-        mem *= (0xFF19_u16, 0xBF);
-        mem *= (0xFF1A_u16, 0x7F);
-        mem *= (0xFF1B_u16, 0xFF);
-        mem *= (0xFF1C_u16, 0x9F);
-        mem *= (0xFF1E_u16, 0xFF);
-        mem *= (0xFF20_u16, 0xFF);
-        mem *= (0xFF21_u16, 0);
-        mem *= (0xFF22_u16, 0);
-        mem *= (0xFF23_u16, 0xBF);
-        mem *= (0xFF24_u16, 0x77);
-        mem *= (0xFF25_u16, 0xF3);
-        mem *= (0xFF26_u16, 0xF1);
-        mem *= (0xFF40_u16, 0x91);
-        mem *= (0xFF42_u16, 0);
-        mem *= (0xFF43_u16, 0);
-        mem *= (0xFF45_u16, 0);
-        mem *= (0xFF47_u16, 0xFC);
-        mem *= (0xFF48_u16, 0xFF);
-        mem *= (0xFF49_u16, 0xFF);
-        mem *= (0xFF4A_u16, 0);
-        mem *= (0xFF4B_u16, 0);
-        mem *= (0xFF00_u16, 0xFF);
-        mem.micro_ops = 0;
+        mem.write_mem(0xFF05_u16, 0, false);
+        mem.write_mem(0xFF06_u16, 0, false);
+        mem.write_mem(0xFF07_u16, 0, false);
+        mem.write_mem(0xFF10_u16, 0x80, false);
+        mem.write_mem(0xFF11_u16, 0xBF, false);
+        mem.write_mem(0xFF12_u16, 0xF3, false);
+        mem.write_mem(0xFF14_u16, 0xBF, false);
+        mem.write_mem(0xFF16_u16, 0x3F, false);
+        mem.write_mem(0xFF16_u16, 0x3F, false);
+        mem.write_mem(0xFF17_u16, 0, false);
+        mem.write_mem(0xFF19_u16, 0xBF, false);
+        mem.write_mem(0xFF1A_u16, 0x7F, false);
+        mem.write_mem(0xFF1B_u16, 0xFF, false);
+        mem.write_mem(0xFF1C_u16, 0x9F, false);
+        mem.write_mem(0xFF1E_u16, 0xFF, false);
+        mem.write_mem(0xFF20_u16, 0xFF, false);
+        mem.write_mem(0xFF21_u16, 0, false);
+        mem.write_mem(0xFF22_u16, 0, false);
+        mem.write_mem(0xFF23_u16, 0xBF, false);
+        mem.write_mem(0xFF24_u16, 0x77, false);
+        mem.write_mem(0xFF25_u16, 0xF3, false);
+        mem.write_mem(0xFF26_u16, 0xF1, false);
+        mem.write_mem(0xFF40_u16, 0x91, false);
+        mem.write_mem(0xFF42_u16, 0, false);
+        mem.write_mem(0xFF43_u16, 0, false);
+        mem.write_mem(0xFF45_u16, 0, false);
+        mem.write_mem(0xFF47_u16, 0xFC, false);
+        mem.write_mem(0xFF48_u16, 0xFF, false);
+        mem.write_mem(0xFF49_u16, 0xFF, false);
+        mem.write_mem(0xFF4A_u16, 0, false);
+        mem.write_mem(0xFF4B_u16, 0, false);
+        mem.write_mem(0xFF00_u16, 0xFF, false);
         mem
     }
 }

@@ -56,10 +56,10 @@ impl Gameboy {
 
         let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &mut self.mem);
         let (opcode, command) = (instruction.0, instruction.1);
-        let line = *self.mem.ppu.ly();
+        let line = self.mem.ppu.ly();
         let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
-        println!("{:?}", command);
+        //println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
 
         self.execute_instruction(command)
@@ -189,7 +189,9 @@ impl Gameboy {
                 let n = self[id].value;
                 self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value)
             }
-            CP_A_U8(n) => self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value),
+            CP_A_U8(n) => {
+                self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value)
+            },
             CP_A_HL => {
                 let n = self.mem.read(hl);
                 self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value);
@@ -391,7 +393,9 @@ impl Gameboy {
                 let x = self.mem.read(n);
                 self[A].value = x;
             }
-            LDH_U8_A(n) => self.mem *= (n, self[A].value),
+            LDH_U8_A(n) => {
+                self.mem *= (n, self[A].value)
+            },
             LDH_HL_U8(n) => self.mem *= (hl, n),
             LDH_A_C => self[A].value = self.mem.read(self[C]),
             LD_A_HLD => {
@@ -525,7 +529,9 @@ impl Gameboy {
                 self.reg.flags.h = false;
             }
             DI => self.ime = false,
-            EI => self.ei_counter = 2,
+            EI => {
+                self.ei_counter = 2
+            },
             HALT => { self.halted = true },
             SCF => {
                 self.reg.flags.n = false;

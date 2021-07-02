@@ -36,7 +36,7 @@ fn main() {
             if mem_cycles != 0 && !halted {
                 panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.micro_ops)
             } else if mem_cycles != 0 {
-                gameboy.mem.cycle(mem_cycles as usize);
+                for _ in 0..mem_cycles { gameboy.mem.micro_cycle() }
             }
             gameboy.mem.micro_ops = 0;
         }
