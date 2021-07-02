@@ -8,7 +8,7 @@ use crate::ppu::PpuState::ModeChange;
 use PpuMode::VBlank;
 use crate::timer::{Timer};
 use crate::joypad::{Joypad};
-use DmaState::{Executing, Finished};
+use DmaState::{Inactive, Starting};
 
 impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
     fn mul_assign(&mut self, (address, value): (Address, Value)) {
@@ -79,13 +79,12 @@ impl MemoryMap {
 
     pub fn micro_cycle(&mut self) {
         self.micro_ops += 1;
-        if let Executing | Finished = self.ppu.dma {
-            self.dma_transfer();
-        }
+        self.dma_transfer();
         self.cycle(1);
     }
 
     fn dma_transfer(&mut self) {
+        if let Inactive | Starting = self.ppu.dma { return; }
         while self.dma_progress < self.ppu.dma_progress {
             self.ppu.oam[self.dma_progress] = self.read_mem(self.ppu.dma_offset * 0x100 + self.dma_progress, false);
             self.dma_progress += 1;

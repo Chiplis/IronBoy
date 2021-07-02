@@ -113,6 +113,13 @@ impl PPU {
     }
 
     pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
+        self.ticks += self.last_ticks;
+
+        if self.dma != Inactive {
+            self.dma_cycle();
+            self.ticks -= 4;
+        }
+
         if !self.lcdc.enabled() {
             self.mode = HBlank;
             self.old_mode = HBlank;
@@ -127,12 +134,6 @@ impl PPU {
         self.old_mode = self.mode;
 
         self.last_ticks = cpu_cycles as usize * 4;
-        self.ticks += self.last_ticks;
-
-        if self.dma != Inactive {
-            self.dma_cycle();
-            self.ticks -= 4;
-        }
 
         self.ticks -= match self.mode {
             OamSearch => if self.ticks < 80 { 0 } else {
@@ -210,8 +211,12 @@ impl PPU {
             (0x9800..=0x9BFF, ..) => Some(self.tile_map_a[address - 0x9800]),
             (0x9C00..=0x9FFF, ..) => Some(self.tile_map_b[address - 0x9C00]),
 
-            (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Starting) => Some(self.oam[address - 0xFE00]),
-            (0xFE00..=0xFE9F, ..) => Some(0xFF),
+            (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Starting) => {
+                Some(self.oam[address - 0xFE00])
+            },
+            (0xFE00..=0xFE9F, ..) => {
+                Some(0xFF)
+            },
 
             (0xFF40, ..) => Some(self.lcdc.get()),
             (0xFF41, ..) => Some(self.stat()),

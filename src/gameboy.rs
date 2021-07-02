@@ -59,7 +59,7 @@ impl Gameboy {
         let line = self.mem.ppu.ly();
         let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
-        //println!("{:?}", command);
+        println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
 
         self.execute_instruction(command)
