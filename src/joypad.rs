@@ -1,6 +1,7 @@
 use minifb::{Key, Window};
 use crate::joypad::SelectedButtons::{Direction, Action};
 use std::ops::BitXor;
+use Key::*;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum SelectedButtons { Action = 0x10, Direction = 0x20 }
@@ -12,28 +13,25 @@ pub struct Joypad {
 }
 
 #[derive(Copy, Clone)]
-pub struct InputInterrupt();
+pub struct InputInterrupt;
 
 impl Joypad {
     pub fn new() -> Self { Self { action_buttons: 0x0F, direction_buttons: 0x0F, selected_buttons: Action } }
 
     pub fn input_cycle(&mut self, window: &Window) -> Vec<InputInterrupt> {
-        if window.is_key_down(Key::Escape) { std::process::exit(0) }
+        if window.is_key_down(Escape) { std::process::exit(0) }
 
         let previous_buttons = *self.buttons();
 
-        self.action_buttons = !(if window.is_key_down(Key::Z) { 0x01 } else { 0x00 }
-            + if window.is_key_down(Key::C) { 0x02 } else { 0x00 }
-            + if window.is_key_down(Key::Backspace) { 0x04 } else { 0x00 }
-            + if window.is_key_down(Key::Enter) { 0x08 } else { 0x00 }) & 0x0F;
+        let map_buttons = |keys: [Key; 4]| !(keys.iter().enumerate()
+            .map(|(i, k)| if window.is_key_down(*k) { 2_u8.pow(i as u32) } else { 0x00 })
+            .sum::<u8>()) & 0x0F;
 
-        self.direction_buttons = !(if window.is_key_down(Key::Right) { 0x01 } else { 0x00 }
-            + if window.is_key_down(Key::Left) { 0x02 } else { 0x00 }
-            + if window.is_key_down(Key::Up) { 0x04 } else { 0x00 }
-            + if window.is_key_down(Key::Down) { 0x08 } else { 0x00 }) & 0x0F;
+        self.action_buttons = map_buttons([Z, C, Backspace, Enter]);
+        self.direction_buttons = map_buttons([Right, Left, Up, Down]);
 
         let size = self.buttons().bitxor(previous_buttons);
-        vec![InputInterrupt(); size as usize]
+        vec![InputInterrupt; size as usize]
     }
 
     fn buttons(&self) -> &u8 {

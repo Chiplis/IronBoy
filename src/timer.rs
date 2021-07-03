@@ -6,7 +6,7 @@ pub struct Timer {
     tac: u8,
     ticks: u16,
     interrupt: bool,
-    interrupt_served: bool
+    interrupt_served: bool,
 }
 
 impl Timer {
@@ -65,7 +65,7 @@ impl Timer {
             }
             Timer::TIMA => {
                 Some(self.tima)
-            },
+            }
             Timer::TMA => Some(self.tma),
             Timer::TAC => Some(self.tac),
             _ => None
@@ -84,7 +84,7 @@ impl Timer {
                     self.tima = value;
                     self.interrupt = false;
                 }
-            },
+            }
             Timer::TMA => {
                 self.tma = value;
                 if self.interrupt_served {
@@ -93,7 +93,7 @@ impl Timer {
             }
             Timer::TAC => {
                 self.tac = value
-            },
+            }
             _ => return false
         };
         true
