@@ -62,7 +62,7 @@ impl Gameboy {
         let line = self.mem.ppu.ly();
         let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
-        println!("{:?}", command);
+        //println!("{:?}", command);
         self.reg.pc.0 += command.size() as u16;
 
         self.execute_instruction(command)
@@ -120,9 +120,9 @@ impl Gameboy {
                 self.ime = false;
                 self.mem.interrupt_handler.set(vec![*interrupt_id], false);
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
-                self.reg.sp = StackPointer(self.reg.sp.value() - 1);
+                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, hi);
-                self.reg.sp = StackPointer(self.reg.sp.value() - 1);
+                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, lo);
                 self.set_pc(*interrupt_id as u16, true);
                 true
@@ -424,9 +424,9 @@ impl Gameboy {
             CALL_U16(n) => {
                 self.micro_cycle();
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
-                self.reg.sp = StackPointer(self.reg.sp.value() - 1);
+                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, hi);
-                self.reg.sp = StackPointer(self.reg.sp.value() - 1);
+                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, lo);
                 self.set_pc(n, false);
             }
@@ -564,9 +564,9 @@ impl Gameboy {
 
             CALL_CC_U16(cc, n) => if self.reg.cc_flag(cc) {
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
-                self.reg.sp = StackPointer(self.reg.sp.value() - 1);
+                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, hi);
-                self.reg.sp = StackPointer(self.reg.sp.value() - 1);
+                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, lo);
                 self.set_pc(n, false);
             } else { branch_taken = false }
