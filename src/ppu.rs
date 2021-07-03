@@ -113,6 +113,8 @@ impl PPU {
     }
 
     pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
+        self.old_mode = self.mode;
+        self.last_ticks = cpu_cycles as usize * 4;
         self.ticks += self.last_ticks;
 
         if self.dma != Inactive {
@@ -130,10 +132,6 @@ impl PPU {
             self.ticks = 0;
             return Normal(self.state);
         }
-
-        self.old_mode = self.mode;
-
-        self.last_ticks = cpu_cycles as usize * 4;
 
         self.ticks -= match self.mode {
             OamSearch => if self.ticks < 80 { 0 } else {

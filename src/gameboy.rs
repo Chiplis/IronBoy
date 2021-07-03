@@ -382,12 +382,6 @@ impl Gameboy {
                 self.reg.set_flags(x == 0, false, false, false);
             }
             LD_R8_R8(a, b) => {
-                if a == D && b == A {
-                    println!();
-                }
-                if a == E && b == A {
-                    println!();
-                }
                 self[a].value = self[b].value
             }
             LD_R8_U8(a, b) => self[a].value = b,
@@ -397,7 +391,9 @@ impl Gameboy {
             LD_R16_A(n) => self.mem *= (n, self[A]),
             LDH_U16_A(n) => self.mem *= (n, self[A]),
             LDH_C_A => self.mem *= (self[C], self[A]),
-            LD_A_U8(n) => self[A].value = n,
+            LD_A_U8(n) => {
+                self[A].value = n
+            },
             LD_A_R16(n) => self[A].value = self.mem.read(n),
             LDH_A_U16(n) => self[A].value = self.mem.read(n),
             LDH_A_U8(n) => {

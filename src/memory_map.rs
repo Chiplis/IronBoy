@@ -102,7 +102,7 @@ impl MemoryMap {
             StatTrigger(_) => vec![StatInt],
             _ => vec![]
         });
-        interrupts.append(&mut match self.timer.timer_cycle(cpu_cycles) {
+        interrupts.append(&mut match self.timer.timer_cycle(cpu_cycles as u16) {
             Some(_) => vec![TimerInt],
             None => vec![],
         });
