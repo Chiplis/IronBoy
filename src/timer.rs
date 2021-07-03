@@ -54,18 +54,13 @@ impl Timer {
     }
 
     fn timer_increase(&self, old_timer: u16) -> bool {
-        let mask = 2_u16.pow(self.frequency());
-        old_timer & mask != 0 && self.ticks & mask == 0
+        old_timer & self.frequency() != 0 && self.ticks & self.frequency() == 0
     }
 
     pub fn read(&self, address: usize) -> Option<u8> {
         match address {
-            Timer::DIVIDER => {
-                Some(((self.ticks & 0xFF00) >> 8) as u8)
-            }
-            Timer::TIMA => {
-                Some(self.tima)
-            }
+            Timer::DIVIDER => Some(self.ticks.to_le_bytes()[1]),
+            Timer::TIMA => Some(self.tima),
             Timer::TMA => Some(self.tma),
             Timer::TAC => Some(self.tac),
             _ => None
@@ -101,13 +96,13 @@ impl Timer {
 
     fn timer_enabled(&self) -> bool { self.tac & 0x04 != 0 }
 
-    fn frequency(&self) -> u32 {
-        match self.tac & 0x03 {
+    fn frequency(&self) -> u16 {
+        2_u16.pow(match self.tac & 0x03 {
             0x03 => 7,
             0x02 => 5,
             0x01 => 3,
             0x00 => 9,
             _ => unreachable!(),
-        }
+        })
     }
 }

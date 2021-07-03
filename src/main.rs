@@ -6,6 +6,10 @@ use crate::memory_map::MemoryMap;
 use std::time::{Instant, Duration};
 use std::process::Command;
 use std::path::Path;
+use std::fs::{read, read_dir};
+use std::env::var;
+use image::DynamicImage;
+use image::io::Reader;
 
 mod instruction_fetcher;
 mod instruction;
@@ -22,7 +26,7 @@ const FREQUENCY: u32 = 4194304;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let rom_name = args.get(1).unwrap();
-    let rom = std::fs::read(rom_name).unwrap();
+    let rom = read(rom_name).unwrap();
     let mem = MemoryMap::new(&rom, rom_name);
 
     let mut gameboy = Gameboy::new(mem);
@@ -55,13 +59,13 @@ fn main() {
 #[test]
 fn test_roms() -> Result<(), io::Error> {
     let (tx, rx) = std::sync::mpsc::channel();
-    for entry in std::fs::read_dir(std::env::var("HOME").unwrap() + &String::from("/femboy/tests"))? {
+    for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/tests"))? {
         let entry = entry?;
         let path = entry.path();
         let rom = String::from(path.to_str().unwrap());
         if !rom.ends_with(".gb") { continue; }
 
-        let rom_vec = std::fs::read(rom.clone()).unwrap();
+        let rom_vec = read(rom.clone()).unwrap();
         if rom_vec.len() > 32768 {
             println!("Still need to implement MBC for larger ROM's: {}", rom.clone());
             continue;
@@ -97,7 +101,7 @@ fn test_roms() -> Result<(), io::Error> {
                 spawn = false;
             }
 
-            for _ in rx.try_recv() { break 'inner }
+            for _ in rx.try_recv() { break 'inner; }
 
             while elapsed_cycles < FREQUENCY / 60 {
                 let halted = gameboy.halted;
@@ -119,6 +123,31 @@ fn test_roms() -> Result<(), io::Error> {
             start = Instant::now();
             elapsed_cycles = 0;
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_regressions() -> Result<(), io::Error> {
+    let mut regressions = vec![];
+    for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/test_ok"))? {
+        let p = {
+            let path = entry.map(|e| e.path()).unwrap();
+            path.to_str().unwrap().to_owned()
+        };
+        let path = p.split("/").collect::<Vec<&str>>();
+        let directory = path[0..path.len() - 2].join("/");
+        let img_name = path.last().unwrap();
+
+        let ok_image = Reader::open(directory.clone() + "/test_ok/" + img_name);
+        let latest_image = Reader::open(directory + "/test_output/" + img_name);
+
+        if ok_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
+            regressions.push(img_name.replace(".png", ""));
+        }
+    }
+    if !regressions.is_empty() {
+        panic!("Regressions found:\n{}", regressions.join("\n"));
     }
     Ok(())
 }
