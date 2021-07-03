@@ -18,7 +18,7 @@ impl Timer {
 
     pub fn new() -> Self {
         Self {
-            divider: 0,
+            divider: 0xAB,
             tima: 0,
             tma: 0,
             tac: 0,
@@ -54,7 +54,9 @@ impl Timer {
 
     pub fn read(&self, address: usize) -> Option<u8> {
         match address {
-            Timer::DIVIDER => Some(self.divider),
+            Timer::DIVIDER => {
+                Some(self.divider)
+            },
             Timer::TIMA => Some(self.tima),
             Timer::TMA => Some(self.tma),
             Timer::TAC => Some(self.tac),
@@ -64,7 +66,10 @@ impl Timer {
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
         match address {
-            Timer::DIVIDER => self.divider = 0x00,
+            Timer::DIVIDER => {
+                self.divider_ticks = 0x00;
+                self.divider = 0x00;
+            },
             Timer::TIMA => self.tima = value,
             Timer::TMA => {
                 self.old_tma = self.tma;

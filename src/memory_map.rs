@@ -53,7 +53,7 @@ impl MemoryMap {
     }
 
 
-    fn read_mem<T: 'static + Into<usize> + Copy>(&mut self, address: T, trigger_cycle: bool) -> u8 {
+    pub(crate) fn read_mem<T: 'static + Into<usize> + Copy>(&mut self, address: T, trigger_cycle: bool) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         let read = self.ppu.read(translated_address)

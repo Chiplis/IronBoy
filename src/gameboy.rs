@@ -44,15 +44,18 @@ impl Gameboy {
         if self.halted {
             self.halted = interrupt_cycles == 0;
             if self.halted && !self.ime {
-                if self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0 {
+                if self.mem.read_mem(IE_ADDRESS as u16, false)
+                    & self.mem.read_mem(IF_ADDRESS as u16, false)
+                    & 0x1F != 0 {
                     self.halted = false;
                 }
-                return 2;
             }
             return 1 + interrupt_cycles;
         }
 
-        if interrupt_cycles != 0 { return interrupt_cycles; };
+        if interrupt_cycles != 0 {
+            return interrupt_cycles;
+        }
 
         let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &mut self.mem);
         let (opcode, command) = (instruction.0, instruction.1);
@@ -80,7 +83,7 @@ impl Gameboy {
 
         self.bugged_pc = None;
 
-        if !self.ime && self.halted && self.mem.read(IE_ADDRESS as u16) & self.mem.read(IF_ADDRESS as u16) & 0x1F != 0 {
+        if !self.ime && self.halted && self.mem.read_mem(IE_ADDRESS as u16, false) & self.mem.read_mem(IF_ADDRESS as u16, false) & 0x1F != 0 {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);
             let x = self.mem.read(self.reg.pc.0);
@@ -191,7 +194,7 @@ impl Gameboy {
             }
             CP_A_U8(n) => {
                 self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value)
-            },
+            }
             CP_A_HL => {
                 let n = self.mem.read(hl);
                 self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value);
@@ -378,7 +381,15 @@ impl Gameboy {
                 self.mem *= (hl, x.rotate_left(4));
                 self.reg.set_flags(x == 0, false, false, false);
             }
-            LD_R8_R8(a, b) => self[a].value = self[b].value,
+            LD_R8_R8(a, b) => {
+                if a == D && b == A {
+                    println!();
+                }
+                if a == E && b == A {
+                    println!();
+                }
+                self[a].value = self[b].value
+            }
             LD_R8_U8(a, b) => self[a].value = b,
             LD_R16_U16(a, b) => self.set_word_register(b, a),
             LD_HL_R8(id) => { self.mem *= (hl, self[id].value); }
@@ -395,7 +406,7 @@ impl Gameboy {
             }
             LDH_U8_A(n) => {
                 self.mem *= (n, self[A].value)
-            },
+            }
             LDH_HL_U8(n) => self.mem *= (hl, n),
             LDH_A_C => self[A].value = self.mem.read(self[C]),
             LD_A_HLD => {
@@ -531,8 +542,8 @@ impl Gameboy {
             DI => self.ime = false,
             EI => {
                 self.ei_counter = 2
-            },
-            HALT => { self.halted = true },
+            }
+            HALT => { self.halted = true }
             SCF => {
                 self.reg.flags.n = false;
                 self.reg.flags.h = false;

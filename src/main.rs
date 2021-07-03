@@ -33,10 +33,12 @@ fn main() {
             let cycles = gameboy.cycle() as u16;
             elapsed_cycles += cycles as u32 * 4;
             let mem_cycles = cycles - gameboy.mem.micro_ops;
-            if mem_cycles != 0 && !halted {
+            if mem_cycles != 0 && !halted  && !gameboy.halted {
                 panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.micro_ops)
             } else if mem_cycles != 0 {
-                for _ in 0..mem_cycles { gameboy.mem.micro_cycle() }
+                for _ in 0..mem_cycles {
+                    gameboy.mem.micro_cycle();
+                }
             }
             gameboy.mem.micro_ops = 0;
         }
