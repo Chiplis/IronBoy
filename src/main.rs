@@ -8,7 +8,6 @@ use std::process::Command;
 use std::path::Path;
 use std::fs::{read, read_dir};
 use std::env::var;
-use image::DynamicImage;
 
 mod instruction_fetcher;
 mod instruction;
