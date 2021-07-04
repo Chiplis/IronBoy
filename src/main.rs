@@ -147,7 +147,32 @@ fn test_regressions() -> Result<(), io::Error> {
         }
     }
     if !regressions.is_empty() {
-        panic!("Regressions found:\n{}", regressions.join("\n"));
+        panic!("\nRegressions found:\n{}", regressions.join("\n"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_differences() -> Result<(), io::Error> {
+    let mut differences = vec![];
+    for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/test_output"))? {
+        let p = {
+            let path = entry.map(|e| e.path()).unwrap();
+            path.to_str().unwrap().to_owned()
+        };
+        let path = p.split("/").collect::<Vec<&str>>();
+        let directory = path[0..path.len() - 2].join("/");
+        let img_name = path.last().unwrap();
+
+        let output_image = Reader::open(directory.clone() + "/test_output/" + img_name);
+        let latest_image = Reader::open(directory + "/test_latest/" + img_name);
+
+        if output_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
+            differences.push(img_name.replace(".png", ""));
+        }
+    }
+    if !differences.is_empty() {
+        print!("Differences found:\n{}", differences.join("\n"));
     }
     Ok(())
 }
