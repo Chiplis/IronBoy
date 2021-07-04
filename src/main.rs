@@ -93,7 +93,7 @@ fn test_roms() -> Result<(), io::Error> {
                     let rom_name = screenshot_path.last().unwrap();
                     let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/");
                     let screenshot = Command::new("import")
-                        .args(&["-window", process_id.as_str(), &(screenshot_path.to_owned() + "/test_output/" + rom_name + ".png")])
+                        .args(&["-silent", "-window", process_id.as_str(), &(screenshot_path.to_owned() + "/test_output/" + rom_name + ".png")])
                         .output()
                         .unwrap_or_else(|_| std::process::exit(1));
                     tx_clone.send("");
