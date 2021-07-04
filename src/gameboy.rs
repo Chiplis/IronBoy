@@ -454,11 +454,11 @@ impl Gameboy {
             }
             RST(rst_vec) => {
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
+                self.set_pc(rst_vec as u16, true);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem *= (self.reg.sp, lo);
-                self.set_pc(rst_vec as u16, true)
             }
             ADD_SP_I8(n) | LD_HL_SP_I8(n) => {
                 let a = self.reg.sp.value();
