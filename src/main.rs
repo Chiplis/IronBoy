@@ -9,7 +9,6 @@ use std::path::Path;
 use std::fs::{read, read_dir};
 use std::env::var;
 use image::DynamicImage;
-use image::io::Reader;
 
 mod instruction_fetcher;
 mod instruction;
@@ -58,6 +57,8 @@ fn main() {
 
 #[test]
 fn test_roms() -> Result<(), io::Error> {
+    use image::io::Reader;
+
     let (tx, rx) = std::sync::mpsc::channel();
     for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/tests"))? {
         let entry = entry?;
@@ -129,6 +130,8 @@ fn test_roms() -> Result<(), io::Error> {
 
 #[test]
 fn test_regressions() -> Result<(), io::Error> {
+    use image::io::Reader;
+
     let mut regressions = vec![];
     for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/test_ok"))? {
         let p = {
@@ -154,6 +157,8 @@ fn test_regressions() -> Result<(), io::Error> {
 
 #[test]
 fn test_differences() -> Result<(), io::Error> {
+    use image::io::Reader;
+
     let mut differences = vec![];
     for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/test_output"))? {
         let p = {
