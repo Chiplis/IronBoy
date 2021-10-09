@@ -59,7 +59,7 @@ fn test_roms() -> Result<(), io::Error> {
     use image::io::Reader;
 
     let (tx, rx) = std::sync::mpsc::channel();
-    for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/tests"))? {
+    for entry in read_dir(var("HOME").unwrap() + &String::from("/feboy/tests"))? {
         let entry = entry?;
         let path = entry.path();
         let rom = String::from(path.to_str().unwrap());
@@ -132,7 +132,7 @@ fn test_regressions() -> Result<(), io::Error> {
     use image::io::Reader;
 
     let mut regressions = vec![];
-    for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/test_ok"))? {
+    for entry in read_dir(var("HOME").unwrap() + &String::from("/feboy/test_ok"))? {
         let p = {
             let path = entry.map(|e| e.path()).unwrap();
             path.to_str().unwrap().to_owned()
@@ -159,7 +159,7 @@ fn test_differences() -> Result<(), io::Error> {
     use image::io::Reader;
 
     let mut differences = vec![];
-    for entry in read_dir(var("HOME").unwrap() + &String::from("/femboy/test_output"))? {
+    for entry in read_dir(var("HOME").unwrap() + &String::from("/feboy/test_output"))? {
         let p = {
             let path = entry.map(|e| e.path()).unwrap();
             path.to_str().unwrap().to_owned()
