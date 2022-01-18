@@ -45,7 +45,9 @@ impl MemoryMap {
     }
 
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
-        self.read_mem(address, true)
+        let value = self.read_without_cycle(address);
+        self.micro_cycle();
+        return value;
     }
 
     pub fn write<T: 'static + Into<usize> + Copy>(&mut self, address: T, value: u8) {
@@ -53,7 +55,7 @@ impl MemoryMap {
     }
 
 
-    pub(crate) fn read_mem<T: 'static + Into<usize> + Copy>(&mut self, address: T, trigger_cycle: bool) -> u8 {
+    pub(crate) fn read_without_cycle<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         let read = self.ppu.read(translated_address)
@@ -61,7 +63,6 @@ impl MemoryMap {
             .or(self.timer.read(translated_address))
             .or(self.joypad.read(translated_address))
             .unwrap_or(self.memory[translated_address]);
-        if trigger_cycle { self.micro_cycle() };
         read
     }
 
@@ -86,7 +87,7 @@ impl MemoryMap {
     fn dma_transfer(&mut self) {
         if let Inactive | Starting = self.ppu.dma { return; }
         while self.dma_progress < self.ppu.dma_progress {
-            self.ppu.oam[self.dma_progress] = self.read_mem(self.ppu.dma_offset * 0x100 + self.dma_progress, false);
+            self.ppu.oam[self.dma_progress] = self.read_without_cycle(self.ppu.dma_offset * 0x100 + self.dma_progress);
             self.dma_progress += 1;
         }
         if self.dma_progress == self.ppu.oam.len() {

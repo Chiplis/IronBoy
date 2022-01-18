@@ -1,6 +1,6 @@
 use Command::*;
 use crate::Gameboy;
-use crate::instruction::InstructionOperand::{ByteOp, RegisterOp};
+use crate::instruction::InstructionOperand::{OpByte, OpRegister, OpHL};
 
 use crate::register::{Bit, ConditionCode, DoubleRegisterId, RegisterId};
 
@@ -8,30 +8,19 @@ pub struct Instruction(pub u8, pub Command);
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum InstructionOperand {
-    RegisterOp(RegisterId),
-    ByteOp(u8)
-}
-
-impl InstructionOperand {
-    pub(crate) fn unpack(&self, gb: &Gameboy) -> u8 {
-        match self {
-            RegisterOp(id) => gb[*id].value,
-            ByteOp(n) => *n
-        }
-    }
+    OpRegister(RegisterId),
+    OpByte(u8),
+    OpHL
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Command {
     ADC_A(InstructionOperand),
-    ADC_A_HL,
     ADD_A(InstructionOperand),
-    ADD_A_HL,
     ADD_HL_R16(DoubleRegisterId),
     ADD_SP_I8(i8),
     AND_A(InstructionOperand),
-    AND_A_HL,
     BIT_U3_HL(Bit),
     BIT_U3_R8(Bit, RegisterId),
     CALL_CC_U16(ConditionCode, u16),
@@ -39,7 +28,6 @@ pub enum Command {
     CCF,
     CPL,
     CP_A(InstructionOperand),
-    CP_A_HL,
     DAA,
     DECH_HL,
     DEC_R16(DoubleRegisterId),
@@ -79,7 +67,6 @@ pub enum Command {
     LD_U16_SP(u16),
     NOP,
     OR_A(InstructionOperand),
-    OR_A_HL,
     POP_R16(DoubleRegisterId),
     PUSH_AF,
     PUSH_R16(DoubleRegisterId),
@@ -102,7 +89,6 @@ pub enum Command {
     RR_R8(RegisterId),
     RST(RstVec),
     SBC_A(InstructionOperand),
-    SBC_A_HL,
     SCF,
     SET_U3_HL(Bit),
     SET_U3_R8(Bit, RegisterId),
@@ -114,11 +100,9 @@ pub enum Command {
     SRL_R8(RegisterId),
     STOP,
     SUB_A(InstructionOperand),
-    SUB_A_HL,
     SWAP_HL,
     SWAP_R8(RegisterId),
-    XOR_A(InstructionOperand),
-    XOR_A_HL,
+    XOR_A(InstructionOperand)
 }
 
 #[deny(unreachable_patterns)]
@@ -128,8 +112,8 @@ impl Command {
             ADC_A(n) | ADD_A(n) | AND_A(n) |
             CP_A(n) | OR_A(n) | SBC_A(n) |
             SUB_A(n) | XOR_A(n) => match n {
-                RegisterOp(_) => 1,
-                ByteOp(_) => 2
+                OpRegister(_) | OpHL => 1,
+                OpByte(_) => 2
             }
             LD_A_U8(..) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
             SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | RL_R8(..) | RL_HL | RLC_R8(..) |
@@ -149,16 +133,16 @@ impl Command {
             ADD_A(n) | SUB_A(n) |
             SBC_A(n) | AND_A(n) | XOR_A(n) | OR_A(n) |
             CP_A(n) | ADC_A(n) => match n {
-                RegisterOp(_) => 1,
-                ByteOp(_) => 2
+                OpRegister(_) => 1,
+                OpByte(_) | OpHL => 2
             }
 
             DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
             DEC_R8(..) | LD_R8_R8(..) | NOP | RRCA | STOP | RLA | RRA => 1,
 
-            CP_A_HL | INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | XOR_A_HL | AND_A_HL | LD_HL_R8(..) |
-            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | OR_A_HL | LDH_C_A | LDH_A_C |
-            SRL_R8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) | ADD_A_HL | ADC_A_HL | SBC_A_HL |
+            INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | LD_HL_R8(..) |
+            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | LDH_C_A | LDH_A_C |
+            SRL_R8(..) | LD_R8_HL(..) | LD_R16_A(..) |
             LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A | RLC_R8(..) | RL_R8(..) | SLA_R8(..) |
             SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) | RR_R8(..) | SRA_R8(..) | RRC_R8(..) => 2,
 

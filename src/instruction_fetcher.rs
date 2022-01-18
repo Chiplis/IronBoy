@@ -6,7 +6,7 @@ use crate::instruction::Command::*;
 use crate::memory_map::MemoryMap;
 use crate::register::{Bit, ConditionCode, RegisterId, Register};
 use crate::register::RegisterId::*;
-use crate::instruction::InstructionOperand::{ByteOp, RegisterOp};
+use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 
 enum RegisterOperand {
     HL,
@@ -117,43 +117,43 @@ impl InstructionFetcher {
             0x7F => LD_R8_R8(A, A),
 
             0x80..=0x87 => match operands[operand_idx] {
-                RegisterOperand::HL => ADD_A_HL,
-                RegisterOperand::Register(id) => ADD_A(RegisterOp(id)),
+                RegisterOperand::HL => ADD_A(OpHL),
+                RegisterOperand::Register(id) => ADD_A(OpRegister(id)),
             },
 
             0x88..=0x8F => match operands[operand_idx] {
-                RegisterOperand::HL => ADC_A_HL,
-                RegisterOperand::Register(id) => ADC_A(RegisterOp(id)),
+                RegisterOperand::HL => ADC_A(OpHL),
+                RegisterOperand::Register(id) => ADC_A(OpRegister(id)),
             },
 
             0x90..=0x97 => match operands[operand_idx] {
-                RegisterOperand::HL => SUB_A_HL,
-                RegisterOperand::Register(id) => SUB_A(RegisterOp(id)),
+                RegisterOperand::HL => SUB_A(OpHL),
+                RegisterOperand::Register(id) => SUB_A(OpRegister(id)),
             },
 
             0x98..=0x9F => match operands[operand_idx] {
-                RegisterOperand::HL => SBC_A_HL,
-                RegisterOperand::Register(id) => SBC_A(RegisterOp(id)),
+                RegisterOperand::HL => SBC_A(OpHL),
+                RegisterOperand::Register(id) => SBC_A(OpRegister(id)),
             },
 
             0xA0..=0xA7 => match operands[operand_idx] {
-                RegisterOperand::HL => AND_A_HL,
-                RegisterOperand::Register(id) => AND_A(RegisterOp(id)),
+                RegisterOperand::HL => AND_A(OpHL),
+                RegisterOperand::Register(id) => AND_A(OpRegister(id)),
             },
 
             0xA8..=0xAF => match operands[operand_idx] {
-                RegisterOperand::HL => XOR_A_HL,
-                RegisterOperand::Register(id) => XOR_A(RegisterOp(id)),
+                RegisterOperand::HL => XOR_A(OpHL),
+                RegisterOperand::Register(id) => XOR_A(OpRegister(id)),
             },
 
             0xB0..=0xB7 => match operands[operand_idx] {
-                RegisterOperand::HL => OR_A_HL,
-                RegisterOperand::Register(id) => OR_A(RegisterOp(id)),
+                RegisterOperand::HL => OR_A(OpHL),
+                RegisterOperand::Register(id) => OR_A(OpRegister(id)),
             },
 
             0xB8..=0xBF => match operands[operand_idx] {
-                RegisterOperand::HL => CP_A_HL,
-                RegisterOperand::Register(id) => CP_A(RegisterOp(id)),
+                RegisterOperand::HL => CP_A(OpHL),
+                RegisterOperand::Register(id) => CP_A(OpRegister(id)),
             },
 
             0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
@@ -215,14 +215,14 @@ impl InstructionFetcher {
             0xE1 => POP_R16(reg.hl()),
             0xF1 => POP_R16(reg.af()),
 
-            0xC6 => ADD_A(ByteOp(ram.read(pc + 1))),
-            0xCE => ADC_A(ByteOp(ram.read(pc + 1))),
-            0xD6 => SUB_A(ByteOp(ram.read(pc + 1))),
-            0xDE => SBC_A(ByteOp(ram.read(pc + 1))),
-            0xE6 => AND_A(ByteOp(ram.read(pc + 1))),
-            0xF6 => OR_A(ByteOp(ram.read(pc + 1))),
-            0xEE => XOR_A(ByteOp(ram.read(pc + 1))),
-            0xFE => CP_A(ByteOp(ram.read(pc + 1))),
+            0xC6 => ADD_A(OpByte(ram.read(pc + 1))),
+            0xCE => ADC_A(OpByte(ram.read(pc + 1))),
+            0xD6 => SUB_A(OpByte(ram.read(pc + 1))),
+            0xDE => SBC_A(OpByte(ram.read(pc + 1))),
+            0xE6 => AND_A(OpByte(ram.read(pc + 1))),
+            0xF6 => OR_A(OpByte(ram.read(pc + 1))),
+            0xEE => XOR_A(OpByte(ram.read(pc + 1))),
+            0xFE => CP_A(OpByte(ram.read(pc + 1))),
 
             0x09 => ADD_HL_R16(reg.bc()),
             0x19 => ADD_HL_R16(reg.de()),
