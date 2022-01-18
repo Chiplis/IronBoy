@@ -1,123 +1,137 @@
 use Command::*;
+use crate::Gameboy;
+use crate::instruction::InstructionOperand::{ByteOp, RegisterOp};
 
-use crate::register::{Bit, ConditionCode, WordRegister, RegisterId};
+use crate::register::{Bit, ConditionCode, DoubleRegisterId, RegisterId};
 
 pub struct Instruction(pub u8, pub Command);
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum InstructionOperand {
+    RegisterOp(RegisterId),
+    ByteOp(u8)
+}
+
+impl InstructionOperand {
+    pub(crate) fn unpack(&self, gb: &Gameboy) -> u8 {
+        match self {
+            RegisterOp(id) => gb[*id].value,
+            ByteOp(n) => *n
+        }
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Command {
-    ADC_A_R8(RegisterId),
+    ADC_A(InstructionOperand),
     ADC_A_HL,
-    ADC_A_U8(u8),
-    ADD_A_R8(RegisterId),
+    ADD_A(InstructionOperand),
     ADD_A_HL,
-    ADD_A_U8(u8),
-    AND_A_R8(RegisterId),
-    AND_A_HL,
-    AND_A_U8(u8),
-    CP_A_R8(RegisterId),
-    CP_A_HL,
-    CP_A_U8(u8),
-    DEC_R8(RegisterId),
-    DECH_HL,
-    INCH_HL,
-    INC_R8(RegisterId),
-    OR_A_R8(RegisterId),
-    OR_A_HL,
-    OR_A_U8(u8),
-    SBC_A_R8(RegisterId),
-    SBC_A_HL,
-    SBC_A_U8(u8),
-    SUB_A_R8(RegisterId),
-    SUB_A_HL,
-    SUB_A_U8(u8),
-    XOR_A_R8(RegisterId),
-    XOR_A_HL,
-    XOR_A_U8(u8),
-    ADD_HL_R16(WordRegister),
-    DEC_R16(WordRegister),
-    INC_R16(WordRegister),
-    BIT_U3_R8(Bit, RegisterId),
-    BIT_U3_HL(Bit),
-    RES_U3_R8(Bit, RegisterId),
-    RES_U3_HL(Bit),
-    SET_U3_R8(Bit, RegisterId),
-    SET_U3_HL(Bit),
-    SWAP_R8(RegisterId),
-    SWAP_HL,
-    RL_R8(RegisterId),
-    RL_HL,
-    RLA,
-    RLC_R8(RegisterId),
-    RLC_HL,
-    RLCA,
-    RR_R8(RegisterId),
-    RR_HL,
-    RRA,
-    RRC_R8(RegisterId),
-    RRC_HL,
-    RRCA,
-    SLA_R8(RegisterId),
-    SLA_HL,
-    SRA_R8(RegisterId),
-    SRA_HL,
-    SRL_R8(RegisterId),
-    SRL_HL,
-    LD_R8_R8(RegisterId, RegisterId),
-    LD_R8_U8(RegisterId, u8),
-    LD_R16_U16(WordRegister, u16),
-    LD_HL_R8(RegisterId),
-    LD_R8_HL(RegisterId),
-    LD_R16_A(WordRegister),
-    LDH_U16_A(u16),
-    LDH_U8_A(u8),
-    LDH_C_A,
-    LD_A_R16(WordRegister),
-    LD_A_U8(u8),
-    LDH_A_U16(u16),
-    LDH_A_U8(u8),
-    LDH_HL_U8(u8),
-    LDH_A_C,
-    LD_HLI_A,
-    LD_HLD_A,
-    LD_A_HLI,
-    LD_A_HLD,
-    CALL_U16(u16),
-    CALL_CC_U16(ConditionCode, u16),
-    JP_HL,
-    JP_U16(u16),
-    JP_CC_U16(ConditionCode, u16),
-    JR_I8(i8),
-    JR_CC_I8(ConditionCode, i8),
-    RET_CC(ConditionCode),
-    RET,
-    RETI,
-    RST(RstVec),
+    ADD_HL_R16(DoubleRegisterId),
     ADD_SP_I8(i8),
-    LD_U16_SP(u16),
-    LD_HL_SP_I8(i8),
-    LD_SP_HL,
-    POP_R16(WordRegister),
-    PUSH_AF,
-    PUSH_R16(WordRegister),
+    AND_A(InstructionOperand),
+    AND_A_HL,
+    BIT_U3_HL(Bit),
+    BIT_U3_R8(Bit, RegisterId),
+    CALL_CC_U16(ConditionCode, u16),
+    CALL_U16(u16),
     CCF,
     CPL,
+    CP_A(InstructionOperand),
+    CP_A_HL,
     DAA,
+    DECH_HL,
+    DEC_R16(DoubleRegisterId),
+    DEC_R8(RegisterId),
     DI,
     EI,
     HALT,
+    INCH_HL,
+    INC_R16(DoubleRegisterId),
+    INC_R8(RegisterId),
+    JP_CC_U16(ConditionCode, u16),
+    JP_HL,
+    JP_U16(u16),
+    JR_CC_I8(ConditionCode, i8),
+    JR_I8(i8),
+    LDH_A_C,
+    LDH_A_U16(u16),
+    LDH_A_U8(u8),
+    LDH_C_A,
+    LDH_HL_U8(u8),
+    LDH_U16_A(u16),
+    LDH_U8_A(u8),
+    LD_A_HLD,
+    LD_A_HLI,
+    LD_A_R16(DoubleRegisterId),
+    LD_A_U8(u8),
+    LD_HLD_A,
+    LD_HLI_A,
+    LD_HL_R8(RegisterId),
+    LD_HL_SP_I8(i8),
+    LD_R16_A(DoubleRegisterId),
+    LD_R16_U16(DoubleRegisterId, u16),
+    LD_R8_HL(RegisterId),
+    LD_R8_R8(RegisterId, RegisterId),
+    LD_R8_U8(RegisterId, u8),
+    LD_SP_HL,
+    LD_U16_SP(u16),
     NOP,
+    OR_A(InstructionOperand),
+    OR_A_HL,
+    POP_R16(DoubleRegisterId),
+    PUSH_AF,
+    PUSH_R16(DoubleRegisterId),
+    RES_U3_HL(Bit),
+    RES_U3_R8(Bit, RegisterId),
+    RET,
+    RETI,
+    RET_CC(ConditionCode),
+    RLA,
+    RLCA,
+    RLC_HL,
+    RLC_R8(RegisterId),
+    RL_HL,
+    RL_R8(RegisterId),
+    RRA,
+    RRCA,
+    RRC_HL,
+    RRC_R8(RegisterId),
+    RR_HL,
+    RR_R8(RegisterId),
+    RST(RstVec),
+    SBC_A(InstructionOperand),
+    SBC_A_HL,
     SCF,
+    SET_U3_HL(Bit),
+    SET_U3_R8(Bit, RegisterId),
+    SLA_HL,
+    SLA_R8(RegisterId),
+    SRA_HL,
+    SRA_R8(RegisterId),
+    SRL_HL,
+    SRL_R8(RegisterId),
     STOP,
+    SUB_A(InstructionOperand),
+    SUB_A_HL,
+    SWAP_HL,
+    SWAP_R8(RegisterId),
+    XOR_A(InstructionOperand),
+    XOR_A_HL,
 }
 
 #[deny(unreachable_patterns)]
 impl Command {
     pub fn size(&self) -> u8 {
         match self {
-            LD_A_U8(..) | ADC_A_U8(..) | ADD_A_U8(..) | AND_A_U8(..) | CP_A_U8(..) | OR_A_U8(..) | SBC_A_U8(..) |
-            SUB_A_U8(..) | XOR_A_U8(..) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
+            ADC_A(n) | ADD_A(n) | AND_A(n) |
+            CP_A(n) | OR_A(n) | SBC_A(n) |
+            SUB_A(n) | XOR_A(n) => match n {
+                RegisterOp(_) => 1,
+                ByteOp(_) => 2
+            }
+            LD_A_U8(..) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
             SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | RL_R8(..) | RL_HL | RLC_R8(..) |
             RLC_HL | RR_R8(..) | RR_HL | RRC_R8(..) | RRC_HL | SLA_R8(..) | SLA_HL | SRA_R8(..) |
             SRA_HL | SRL_R8(..) | SRL_HL | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) |
@@ -132,18 +146,21 @@ impl Command {
     #[deny(unreachable_patterns)]
     pub fn cycles(&self, branch: bool) -> u8 {
         match self {
+            ADD_A(n) | SUB_A(n) |
+            SBC_A(n) | AND_A(n) | XOR_A(n) | OR_A(n) |
+            CP_A(n) | ADC_A(n) => match n {
+                RegisterOp(_) => 1,
+                ByteOp(_) => 2
+            }
+
             DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
-            DEC_R8(..) | LD_R8_R8(..) | ADD_A_R8(..) | SUB_A_R8(..) |
-            SBC_A_R8(..) | AND_A_R8(..) | XOR_A_R8(..) | OR_A_R8(..) | CP_A_R8(..) |
-            ADC_A_R8(..) | NOP | RRCA | STOP | RLA | RRA => 1,
+            DEC_R8(..) | LD_R8_R8(..) | NOP | RRCA | STOP | RLA | RRA => 1,
 
             CP_A_HL | INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | XOR_A_HL | AND_A_HL | LD_HL_R8(..) |
-            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | ADC_A_U8(..) |
-            SUB_A_U8(..) | OR_A_HL | LDH_C_A | LDH_A_C | SBC_A_U8(..) | ADD_A_U8(..) | CP_A_U8(..) |
-            SRL_R8(..) | OR_A_U8(..) | XOR_A_U8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) |
-            ADD_A_HL | ADC_A_HL | SBC_A_HL | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
-            RLC_R8(..) | RL_R8(..) | SLA_R8(..) | SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) |
-            RR_R8(..) | SRA_R8(..) | RRC_R8(..) | AND_A_U8(..) => 2,
+            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | OR_A_HL | LDH_C_A | LDH_A_C |
+            SRL_R8(..) | LD_R8_HL(..) | SUB_A_HL | LD_R16_A(..) | ADD_A_HL | ADC_A_HL | SBC_A_HL |
+            LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A | RLC_R8(..) | RL_R8(..) | SLA_R8(..) |
+            SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) | RR_R8(..) | SRA_R8(..) | RRC_R8(..) => 2,
 
             POP_R16(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) |
             DECH_HL | INCH_HL | LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,

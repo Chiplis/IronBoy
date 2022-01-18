@@ -1,16 +1,16 @@
 use std::ops::{Index, IndexMut};
 
 use crate::memory_map::MemoryMap;
-use crate::register::{ByteRegister, RegisterId, WordRegister, Register, ProgramCounter};
+use crate::register::{ByteRegister, RegisterId, DoubleRegisterId, Register, ProgramCounter};
 use crate::register::RegisterId::*;
-use crate::register::WordRegister::StackPointer;
+use crate::register::DoubleRegisterId::StackPointer;
 use crate::interrupt::InterruptState::*;
 use crate::interrupt::IF_ADDRESS;
 use crate::interrupt::IE_ADDRESS;
 use crate::instruction_fetcher::InstructionFetcher;
-use crate::instruction::Command;
 use crate::instruction::Command::*;
 use std::cmp::max;
+use crate::instruction::Command;
 use crate::interrupt::InterruptId::{VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt};
 use crate::interrupt::{InterruptId};
 
@@ -147,26 +147,15 @@ impl Gameboy {
         match command {
             NOP => {}
 
-            ADD_A_R8(id) => {
-                let (add, carry) = calc_with_carry(vec![self[A].value, self[id].value, 0], |a, b| a.overflowing_add(b));
-                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, self[id].value, 0), carry);
+            ADD_A(op) => {
+                let (add, carry) = calc_with_carry(vec![self[A].value, op.unpack(&self), 0], |a, b| a.overflowing_add(b));
+                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, op.unpack(&self), 0), carry);
                 self[A].value = add;
             }
-            ADD_A_U8(n) => {
-                let (add, carry) = calc_with_carry(vec![self[A].value, n, 0], |a, b| a.overflowing_add(b));
-                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, n, 0), carry);
-                self[A].value = add;
-            }
-            ADC_A_R8(id) => {
+            ADC_A(op) => {
                 let carry = if self.reg.flags.c { 1 } else { 0 };
-                let (add, new_carry) = calc_with_carry(vec![self[A].value, self[id].value, carry], |a, b| a.overflowing_add(b));
-                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, self[id].value, carry), new_carry);
-                self[A].value = add;
-            }
-            ADC_A_U8(n) => {
-                let carry = if self.reg.flags.c { 1 } else { 0 };
-                let (add, new_carry) = calc_with_carry(vec![self[A].value, n, carry], |a, b| a.overflowing_add(b));
-                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, n, carry), new_carry);
+                let (add, new_carry) = calc_with_carry(vec![self[A].value, op.unpack(&self), carry], |a, b| a.overflowing_add(b));
+                self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, op.unpack(&self), carry), new_carry);
                 self[A].value = add;
             }
             ADC_A_HL | ADD_A_HL => {
@@ -176,23 +165,16 @@ impl Gameboy {
                 self.reg.set_flags(add == 0, false, half_carry_8_add(self[A].value, old, carry), new_carry);
                 self[A].value = add;
             }
-            AND_A_R8(id) => {
-                self[A].value &= self[id].value;
-                self.reg.set_flags(self[A].value == 0, false, true, false);
-            }
-            AND_A_U8(n) => {
-                self[A].value &= n;
+            AND_A(op) => {
+                self[A].value &= op.unpack(&self);
                 self.reg.set_flags(self[A].value == 0, false, true, false);
             }
             AND_A_HL => {
                 self[A].value &= self.mem.read(hl);
                 self.reg.set_flags(self[A].value == 0, false, true, false);
             }
-            CP_A_R8(id) => {
-                let n = self[id].value;
-                self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value)
-            }
-            CP_A_U8(n) => {
+            CP_A(op) => {
+                let n = op.unpack(&self);
                 self.reg.set_flags(self[A].value == n, true, half_carry_8_sub(self[A].value, n, 0), n > self[A].value)
             }
             CP_A_HL => {
@@ -214,38 +196,23 @@ impl Gameboy {
                 let hc = half_carry_8_add(reg, 1, 0);
                 self.reg.set_flags(z, false, hc, self.reg.flags.c);
             }
-            OR_A_R8(id) => {
-                self[A].value |= self[id].value;
-                self.reg.set_flags(self[A].value == 0, false, false, false);
-            }
-            OR_A_U8(n) => {
-                self[A].value |= n;
+            OR_A(op) => {
+                self[A].value |= op.unpack(&self);
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
             OR_A_HL => {
                 self[A].value |= self.mem.read(hl);
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
-            SUB_A_R8(id) => {
-                let (sub, c) = calc_with_carry(vec![self[A].value, self[id].value, 0], |a, b| a.overflowing_sub(b));
-                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, self[id].value, 0), c);
+            SUB_A(op) => {
+                let (sub, c) = calc_with_carry(vec![self[A].value, op.unpack(&self), 0], |a, b| a.overflowing_sub(b));
+                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, op.unpack(&self), 0), c);
                 self[A].value = sub;
             }
-            SUB_A_U8(n) => {
-                let (sub, c) = calc_with_carry(vec![self[A].value, n, 0], |a, b| a.overflowing_sub(b));
-                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, n, 0), c);
-                self[A].value = sub;
-            }
-            SBC_A_R8(id) => {
+            SBC_A(op) => {
                 let carry = if self.reg.flags.c { 1 } else { 0 };
-                let (sub, new_carry) = calc_with_carry(vec![self[A].value, self[id].value, carry], |a, b| a.overflowing_sub(b));
-                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, self[id].value, carry), new_carry);
-                self[A].value = sub;
-            }
-            SBC_A_U8(n) => {
-                let carry = if self.reg.flags.c { 1 } else { 0 };
-                let (sub, new_carry) = calc_with_carry(vec![self[A].value, n, carry], |a, b| a.overflowing_sub(b));
-                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, n, carry), new_carry);
+                let (sub, new_carry) = calc_with_carry(vec![self[A].value, op.unpack(&self), carry], |a, b| a.overflowing_sub(b));
+                self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, op.unpack(&self), carry), new_carry);
                 self[A].value = sub;
             }
             SBC_A_HL | SUB_A_HL => {
@@ -255,12 +222,8 @@ impl Gameboy {
                 self.reg.set_flags(sub == 0, true, half_carry_8_sub(self[A].value, old, carry), new_carry);
                 self[A].value = sub;
             }
-            XOR_A_R8(id) => {
-                self[A].value ^= self[id].value;
-                self.reg.set_flags(self[A].value == 0, false, false, false);
-            }
-            XOR_A_U8(n) => {
-                self[A].value ^= n;
+            XOR_A(op) => {
+                self[A].value ^= op.unpack(&self);
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
             XOR_A_HL => {
@@ -478,13 +441,13 @@ impl Gameboy {
 
             POP_R16(reg) => {
                 match reg {
-                    WordRegister::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
+                    DoubleRegisterId::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
                         for id in &[low, high] {
                             self[*id].value = self.mem.read(self.reg.sp);
                             self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
                         }
                     }
-                    WordRegister::AccFlag(..) => {
+                    DoubleRegisterId::AccFlag(..) => {
                         self.reg.flags.set(self.mem.read(self.reg.sp));
                         self[A].value = self.mem.read(self.reg.sp.value().wrapping_add(1));
                         self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
@@ -503,7 +466,7 @@ impl Gameboy {
             PUSH_R16(reg) => {
                 self.micro_cycle();
                 match reg {
-                    WordRegister::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
+                    DoubleRegisterId::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
                         for id in &[high, low] {
                             self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                             let value = self[*id].value;
@@ -585,11 +548,11 @@ impl Gameboy {
         if trigger_cycle { self.micro_cycle() }
     }
 
-    fn set_word_register(&mut self, value: u16, reg: WordRegister) {
+    fn set_word_register(&mut self, value: u16, reg: DoubleRegisterId) {
         self.reg.set_word_register(value, reg);
     }
 
-    fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: WordRegister) {
+    fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: DoubleRegisterId) {
         self.reg.set_word_register_with_callback(value, reg, |mem| mem.micro_cycle(), &mut self.mem);
     }
 }

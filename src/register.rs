@@ -1,5 +1,5 @@
 use std::ops::{Index, IndexMut};
-use crate::register::WordRegister::{StackPointer};
+use crate::register::DoubleRegisterId::{StackPointer};
 use crate::register::RegisterId::{A, B, D, H, L, E, C};
 use crate::memory_map::MemoryMap;
 
@@ -17,7 +17,7 @@ pub enum RegisterId {
 pub struct Register {
     registers: [ByteRegister; 7],
     pub flags: FlagRegister,
-    pub sp: WordRegister,
+    pub sp: DoubleRegisterId,
     pub pc: ProgramCounter,
 }
 
@@ -39,40 +39,40 @@ impl Register {
         }
     }
 
-    pub fn af(&self) -> WordRegister { WordRegister::AccFlag(self[A], self.flags) }
-    pub fn bc(&self) -> WordRegister { WordRegister::Double(self[B], self[C]) }
-    pub fn de(&self) -> WordRegister { WordRegister::Double(self[D], self[E]) }
-    pub fn hl(&self) -> WordRegister { WordRegister::Double(self[H], self[L]) }
+    pub fn af(&self) -> DoubleRegisterId { DoubleRegisterId::AccFlag(self[A], self.flags) }
+    pub fn bc(&self) -> DoubleRegisterId { DoubleRegisterId::Double(self[B], self[C]) }
+    pub fn de(&self) -> DoubleRegisterId { DoubleRegisterId::Double(self[D], self[E]) }
+    pub fn hl(&self) -> DoubleRegisterId { DoubleRegisterId::Double(self[H], self[L]) }
 
-    pub fn set_word_register(&mut self, value: u16, reg: WordRegister) {
+    pub fn set_word_register(&mut self, value: u16, reg: DoubleRegisterId) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
-            WordRegister::AccFlag(..) => {
+            DoubleRegisterId::AccFlag(..) => {
                 self.set_flag(lo);
                 self[A].value = hi;
             }
-            WordRegister::Double(a, b) => {
+            DoubleRegisterId::Double(a, b) => {
                 self[b.id].value = lo;
                 self[a.id].value = hi;
             }
-            WordRegister::StackPointer(_) => self.sp = StackPointer(value)
+            DoubleRegisterId::StackPointer(_) => self.sp = StackPointer(value)
         };
     }
 
-    pub fn set_word_register_with_callback(&mut self, value: u16, reg: WordRegister, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
+    pub fn set_word_register_with_callback(&mut self, value: u16, reg: DoubleRegisterId, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
-            WordRegister::AccFlag(..) => {
+            DoubleRegisterId::AccFlag(..) => {
                 self.set_flag(lo);
                 callback(mem);
                 self[A].value = hi;
             }
-            WordRegister::Double(a, b) => {
+            DoubleRegisterId::Double(a, b) => {
                 self[b.id].value = lo;
                 callback(mem);
                 self[a.id].value = hi;
             }
-            WordRegister::StackPointer(_) => {
+            DoubleRegisterId::StackPointer(_) => {
                 self.sp = StackPointer(value);
                 callback(mem);
             }
@@ -157,27 +157,27 @@ impl FlagRegister {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum WordRegister {
+pub enum DoubleRegisterId {
     Double(ByteRegister, ByteRegister),
     AccFlag(ByteRegister, FlagRegister),
     StackPointer(u16),
 }
 
 
-impl Into<usize> for WordRegister {
+impl Into<usize> for DoubleRegisterId {
     fn into(self) -> usize { self.value() as usize }
 }
 
 
-impl WordRegister {
+impl DoubleRegisterId {
     pub fn value(self) -> u16 {
         match self {
-            WordRegister::Double(h, l) => u16::from_le_bytes([l.value, h.value]),
-            WordRegister::AccFlag(a, FlagRegister { z, n, h, c }) => {
+            DoubleRegisterId::Double(h, l) => u16::from_le_bytes([l.value, h.value]),
+            DoubleRegisterId::AccFlag(a, FlagRegister { z, n, h, c }) => {
                 let bit_flag = |b: bool, v: u32| 2u8.pow(v) as u8 * if b { 1 } else { 0 };
                 u16::from_le_bytes([bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0), a.value])
             }
-            WordRegister::StackPointer(n) => n
+            DoubleRegisterId::StackPointer(n) => n
         }
     }
 }
