@@ -130,9 +130,9 @@ impl Gameboy {
                 self.mem.interrupt_handler.set(vec![*interrupt_id], false);
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, hi);
+                self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, lo);
+                self.mem.write(self.reg.sp, lo);
                 self.set_pc(*interrupt_id as u16, true);
                 true
             }
@@ -228,14 +228,14 @@ impl Gameboy {
 
             DECH_HL => {
                 let old = self.mem.read(hl);
-                self.mem *= (hl, old.wrapping_sub(1));
+                self.mem.write(hl, old.wrapping_sub(1));
                 let hc = half_carry_8_sub(old, 1, 0);
                 self.reg.set_flags(old.wrapping_sub(1) == 0, true, hc, self.reg.flags.c);
             }
 
             INCH_HL => {
                 let old = self.mem.read(hl);
-                self.mem *= (hl, old.wrapping_add(1));
+                self.mem.write(hl, old.wrapping_add(1));
                 let hc = half_carry_8_add(old, 1, 0);
                 self.reg.set_flags(old.wrapping_add(1) == 0, false, hc, self.reg.flags.c);
             }
@@ -279,7 +279,7 @@ impl Gameboy {
                 match command {
                     RL_R8(id) | RR_R8(id) | RLC_R8(id) | RRC_R8(id) => self[id].value = value,
                     RLA | RRA | RLCA | RRCA => self[A].value = value,
-                    RR_HL | RL_HL | RRC_HL | RLC_HL => self.mem *= (hl, value),
+                    RR_HL | RL_HL | RRC_HL | RLC_HL => self.mem.write(hl, value),
                     _ => panic!()
                 };
                 self.reg.set_flags(z, false, false, carry);
@@ -302,7 +302,7 @@ impl Gameboy {
                     _ => panic!()
                 };
                 match command {
-                    SRL_HL | SRA_HL | SLA_HL => self.mem *= (hl, value),
+                    SRL_HL | SRA_HL | SLA_HL => self.mem.write(hl, value),
                     SLA_R8(id) | SRA_R8(id) | SRL_R8(id) => self[id].value = value,
                     _ => panic!()
                 };
@@ -327,14 +327,14 @@ impl Gameboy {
 
             RES_U3_HL(bit) => {
                 let x = self.mem.read(hl);
-                self.mem *= (hl, x & !bit.0)
+                self.mem.write(hl, x & !bit.0)
             }
 
             SET_U3_R8(bit, id) => self[id].value |= bit.0,
 
             SET_U3_HL(bit) => {
                 let x = self.mem.read(hl);
-                self.mem *= (hl, x | bit.0)
+                self.mem.write(hl, x | bit.0)
             }
 
             SWAP_R8(id) => {
@@ -344,7 +344,7 @@ impl Gameboy {
 
             SWAP_HL => {
                 let x = self.mem.read(hl);
-                self.mem *= (hl, x.rotate_left(4));
+                self.mem.write(hl, x.rotate_left(4));
                 self.reg.set_flags(x == 0, false, false, false);
             }
 
@@ -354,11 +354,11 @@ impl Gameboy {
 
             LD_R8_U8(a, b) => self[a].value = b,
             LD_R16_U16(a, b) => self.set_word_register(b, a),
-            LD_HL_R8(id) => { self.mem *= (hl, self[id].value); }
+            LD_HL_R8(id) => { self.mem.write(hl, self[id].value); }
             LD_R8_HL(id) => { self[id].value = self.mem.read(hl) }
-            LD_R16_A(n) => self.mem *= (n, self[A]),
-            LDH_U16_A(n) => self.mem *= (n, self[A]),
-            LDH_C_A => self.mem *= (self[C], self[A]),
+            LD_R16_A(n) => self.mem.write(n, self[A]),
+            LDH_U16_A(n) => self.mem.write(n, self[A]),
+            LDH_C_A => self.mem.write(self[C], self[A]),
             LD_A_U8(n) => { self[A].value = n }
             LD_A_R16(n) => self[A].value = self.mem.read(n),
             LDH_A_U16(n) => self[A].value = self.mem.read(n),
@@ -367,9 +367,9 @@ impl Gameboy {
                 self[A].value = x;
             }
             LDH_U8_A(n) => {
-                self.mem *= (n, self[A].value)
+                self.mem.write(n, self[A].value)
             }
-            LDH_HL_U8(n) => self.mem *= (hl, n),
+            LDH_HL_U8(n) => self.mem.write(hl, n),
             LDH_A_C => self[A].value = self.mem.read(self[C]),
             LD_A_HLD => {
                 self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
@@ -377,23 +377,23 @@ impl Gameboy {
             }
             LD_HLD_A => {
                 self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
-                self.mem *= (hl, self[A]);
+                self.mem.write(hl, self[A]);
             }
             LD_A_HLI => {
                 self[A].value = self.mem.read(hl);
                 self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
             }
             LD_HLI_A => {
-                self.mem *= (hl, self[A]);
+                self.mem.write(hl, self[A]);
                 self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
             }
             CALL_U16(n) => {
                 self.micro_cycle();
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, hi);
+                self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, lo);
+                self.mem.write(self.reg.sp, lo);
                 self.set_pc(n, false);
             }
 
@@ -422,9 +422,9 @@ impl Gameboy {
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
                 self.set_pc(rst_vec as u16, true);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, hi);
+                self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, lo);
+                self.mem.write(self.reg.sp, lo);
             }
             ADD_SP_I8(n) | LD_HL_SP_I8(n) => {
                 let a = self.reg.sp.value();
@@ -437,8 +437,8 @@ impl Gameboy {
             }
             LD_U16_SP(n) => {
                 let [lo, hi] = self.reg.sp.value().to_le_bytes();
-                self.mem *= (n, lo);
-                self.mem *= (n + 1, hi);
+                self.mem.write(n, lo);
+                self.mem.write(n + 1, hi);
             }
             LD_SP_HL => self.set_word_register_with_micro_cycle(self.reg.hl().value(), self.reg.sp),
 
@@ -462,9 +462,9 @@ impl Gameboy {
             PUSH_AF => {
                 self.micro_cycle();
                 self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
-                self.mem *= (self.reg.sp, self[A]);
+                self.mem.write(self.reg.sp, self[A]);
                 self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
-                self.mem *= (self.reg.sp, self.reg.flags.value());
+                self.mem.write(self.reg.sp, self.reg.flags.value());
             }
             PUSH_R16(reg) => {
                 self.micro_cycle();
@@ -473,7 +473,7 @@ impl Gameboy {
                         for id in &[high, low] {
                             self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                             let value = self[*id].value;
-                            self.mem *= (self.reg.sp, value);
+                            self.mem.write(self.reg.sp, value);
                         }
                     }
                     _ => panic!()
@@ -531,9 +531,9 @@ impl Gameboy {
             CALL_CC_U16(cc, n) => if self.reg.cc_flag(cc) {
                 let [lo, hi] = self.reg.pc.0.to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, hi);
+                self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem *= (self.reg.sp, lo);
+                self.mem.write(self.reg.sp, lo);
                 self.set_pc(n, false);
             } else { branch_taken = false }
 

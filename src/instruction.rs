@@ -1,5 +1,4 @@
 use Command::*;
-use crate::Gameboy;
 use crate::instruction::InstructionOperand::{OpByte, OpRegister, OpHL};
 
 use crate::register::{Bit, ConditionCode, DoubleRegisterId, RegisterId};

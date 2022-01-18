@@ -1,4 +1,3 @@
-use std::ops::{MulAssign};
 use crate::interrupt::{InterruptHandler};
 use crate::interrupt::InterruptId::{JoypadInt, StatInt, TimerInt, VBlankInt};
 use crate::ppu::{PPU, PpuMode, DmaState};
@@ -9,13 +8,6 @@ use PpuMode::VBlank;
 use crate::timer::{Timer};
 use crate::joypad::{Joypad};
 use DmaState::{Inactive, Starting};
-
-impl<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy> MulAssign<(Address, Value)> for MemoryMap {
-    fn mul_assign(&mut self, (address, value): (Address, Value)) {
-        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
-        self.write(translated_address, value.into());
-    }
-}
 
 pub struct MemoryMap {
     pub memory: Vec<u8>,
@@ -50,11 +42,6 @@ impl MemoryMap {
         return value;
     }
 
-    pub fn write<T: 'static + Into<usize> + Copy>(&mut self, address: T, value: u8) {
-        self.write_mem(address, value, true)
-    }
-
-
     pub(crate) fn read_without_cycle<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
@@ -66,7 +53,7 @@ impl MemoryMap {
         read
     }
 
-    pub fn write_mem<T: Into<usize> + Copy>(&mut self, address: T, value: u8, trigger_cycle: bool) {
+    fn write_mem<T: Into<usize> + Copy>(&mut self, address: T, value: u8, trigger_cycle: bool) {
         //println!("Writing address {}", address.into());
         let address = address.into();
         if !(self.ppu.write(address, value)
@@ -76,6 +63,11 @@ impl MemoryMap {
             self.memory[address] = value
         }
         if trigger_cycle { self.micro_cycle() }
+    }
+
+    pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(&mut self, address: Address, value: Value) {
+        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
+        self.write_mem(translated_address, value.into(), true)
     }
 
     pub fn micro_cycle(&mut self) {
