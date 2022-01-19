@@ -57,20 +57,38 @@ fn run_frame(gameboy: &mut Gameboy) {
 
 #[cfg(test)]
 mod tests {
-    use std::env::var;
     use std::fs::{read, read_dir};
-    use std::io;
-    use std::process::Command;
+    use std::{env, io};
+    use std::path::Path;
     use std::thread;
-    use std::time::{Duration, Instant};
-    use crate::{FREQUENCY, Gameboy, MemoryMap, run_frame};
+    use std::time::{Duration};
+    use image::{RgbaImage};
+    use crate::{Gameboy, MemoryMap, run_frame};
 
 
     #[test]
     fn test_roms() -> Result<(), io::Error> {
-
         let (tx, rx) = std::sync::mpsc::channel();
-        for entry in read_dir(var("HOME").unwrap() + &String::from("/feboy/tests"))? {
+        let args: Vec<String> = env::args().collect();
+        let skip_known = args.contains(&"skip-known".to_owned());
+        let skip_ok = args.contains(&"skip-ok".to_owned());
+        for entry in read_dir(env::current_dir().unwrap().join(Path::new("tests")))? {
+            let entry_path = entry.as_ref().unwrap().path();
+
+            let p = &(entry_path.to_str().unwrap().replace("tests", "test_latest") + ".png");
+            let latest_path = Path::new(p);
+            if skip_known && latest_path.exists() {
+                println!("Skipping already tested ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
+                continue;
+            }
+
+            let p = &(entry_path.to_str().unwrap().replace("tests", "test_ok") + ".png");
+            let ok_path = Path::new(p);
+            if skip_ok && ok_path.exists() {
+                println!("Skipping already passing ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
+                continue;
+            }
+
             let entry = entry?;
             let path = entry.path();
             let rom = String::from(path.to_str().unwrap());
@@ -83,35 +101,39 @@ mod tests {
             }
             let mem = MemoryMap::new(&rom_vec, &rom);
             let mut gameboy = Gameboy::new(mem);
-            let mut elapsed_cycles = 0;
-            let cycle_duration = 1.0_f64 / FREQUENCY as f64;
-            let mut start = Instant::now();
 
             let mut spawn = true;
             'inner: loop {
                 if spawn {
-                    let rom_clone = rom.clone();
                     let tx_clone = tx.clone();
                     thread::spawn(move || {
-                        thread::sleep(Duration::from_secs(8));
-                        Command::new(format!("wmctrl")).args(&["-a", rom_clone.as_str()]).status().unwrap_or_else(|_| std::process::exit(1));
-                        let process_id = {
-                            let xdotool = Command::new("xdotool").args(&["getwindowfocus", "-f"]).output().unwrap_or_else(|_| std::process::exit(1));
-                            String::from_utf8(xdotool.stdout).unwrap().as_str().to_owned()
-                        };
-                        let screenshot_path = rom_clone.as_str().split("/").collect::<Vec<&str>>();
-                        let rom_name = screenshot_path.last().unwrap();
-                        let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/");
-                        Command::new("import")
-                            .args(&["-silent", "-window", process_id.as_str(), &(screenshot_path.to_owned() + "/test_output/" + rom_name + ".png")])
-                            .output()
-                            .unwrap_or_else(|_| std::process::exit(1));
+                        thread::sleep(Duration::from_secs(15));
                         tx_clone.send("").unwrap();
                     });
                     spawn = false;
                 }
 
-                for _ in rx.try_recv() { break 'inner; }
+                for _ in rx.try_recv() {
+                    let map_pixel = |pixel: &u32| {
+                        let pixels = pixel.to_be_bytes();
+                        let a = pixels[0];
+                        let r = pixels[1];
+                        let g = pixels[2];
+                        let b = pixels[3];
+                        [r, g, b, a]
+                    };
+                    let pixels = gameboy.mem.ppu.pixels.iter().flat_map(map_pixel).collect::<Vec<u8>>();
+                    let rom_clone = rom.clone().replace("\\", "/");
+                    let screenshot_path = rom_clone.as_str().split("/").collect::<Vec<&str>>();
+                    let img_name = *screenshot_path.last().unwrap();
+                    let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/") + "/test_output/" + img_name + ".png";
+                    println!("{}", screenshot_path);
+                    RgbaImage::from_raw(160, 144, pixels)
+                        .unwrap()
+                        .save(Path::new(&screenshot_path))
+                        .unwrap();
+                    break 'inner;
+                }
 
                 run_frame(&mut gameboy);
             }
@@ -124,25 +146,27 @@ mod tests {
         use image::io::Reader;
 
         let mut regressions = vec![];
-        for entry in read_dir(var("HOME").unwrap() + &String::from("/feboy/test_ok"))? {
+        for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_latest")))? {
             let p = {
                 let path = entry.map(|e| e.path()).unwrap();
                 path.to_str().unwrap().to_owned()
             };
-            let path = p.split("/").collect::<Vec<&str>>();
+            let path = p.split("\\").flat_map(|p| p.split("/")).collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
-
+            println!("{:?}", directory);
             let ok_image = Reader::open(directory.clone() + "/test_ok/" + img_name);
-            let latest_image = Reader::open(directory + "/test_output/" + img_name);
-
+            let latest_image = Reader::open(directory + "/test_latest/" + img_name);
+            if ok_image.is_err() { continue; }
             if ok_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
                 regressions.push(img_name.replace(".png", ""));
             }
         }
+
         if !regressions.is_empty() {
             panic!("\nRegressions found:\n{}", regressions.join("\n"));
         }
+
         Ok(())
     }
 
@@ -151,7 +175,7 @@ mod tests {
         use image::io::Reader;
 
         let mut differences = vec![];
-        for entry in read_dir(var("HOME").unwrap() + &String::from("/feboy/test_output"))? {
+        for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_latest")))? {
             let p = {
                 let path = entry.map(|e| e.path()).unwrap();
                 path.to_str().unwrap().to_owned()

@@ -42,11 +42,11 @@ pub struct PPU {
     stat_line: StatInterrupt,
     force_irq: bool,
     lcdc: LcdControl,
-    pixels: Box<[u32]>,
+    pub(crate) pixels: Box<[u32]>,
     pub window: Window,
     pub last_ticks: usize,
     pub old_mode: PpuMode,
-    pub last_lyc_check: bool,
+    pub last_lyc_check: bool
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -72,7 +72,7 @@ enum StatInterrupt {
 impl PPU {
     pub fn new(rom_name: &String) -> Self {
         let lcdc = LcdControl::new(0);
-        let fb = [0_u32; 166 * 144];
+        let fb = [0_u32; 160 * 144];
         let window = Window::new(
             format!("{} - ESC to exit", rom_name).as_str(),
             160,
@@ -82,7 +82,7 @@ impl PPU {
                 transparency: false,
                 title: true,
                 resize: true,
-                scale: Scale::X4,
+                scale: Scale::X1,
                 scale_mode: ScaleMode::Stretch,
                 topmost: false,
                 none: false,
@@ -445,12 +445,8 @@ impl PPU {
 
     fn set_sprite_pixel(&mut self, x: u32, y: u32, pri: bool, color: Color) {
         let offset = ((y * 160) + x) as usize;
-        let pixel = Color {
-            a: (self.pixels[offset] >> 0x18) as u8,
-            r: (self.pixels[offset] >> 0x10) as u8,
-            g: (self.pixels[offset] >> 0x08) as u8,
-            b: self.pixels[offset] as u8,
-        };
+        let [a, r, g, b] = self.pixels[offset].to_be_bytes();
+        let pixel = Color { a, r, g, b };
 
         if pixel != WHITE && pri {} else {
             self.set_pixel(x, y, color)
@@ -460,7 +456,7 @@ impl PPU {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let offset = (y * 160 + x) as usize;
 
-        self.pixels[offset] = ((color.a as u32) << 24) | ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
+        self.pixels[offset] = u32::from_be_bytes([color.a, color.r, color.g, color.b]);
     }
 }
 
