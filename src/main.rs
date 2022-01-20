@@ -72,17 +72,17 @@ mod tests {
         let args: Vec<String> = env::args().collect();
         let skip_known = args.contains(&"skip-known".to_owned());
         let skip_ok = args.contains(&"skip-ok".to_owned());
-        for entry in read_dir(env::current_dir().unwrap().join(Path::new("tests")))? {
+        for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))? {
             let entry_path = entry.as_ref().unwrap().path();
 
-            let p = &(entry_path.to_str().unwrap().replace("tests", "test_latest") + ".png");
+            let p = &(entry_path.to_str().unwrap().replace("test_rom", "test_latest") + ".png");
             let latest_path = Path::new(p);
             if skip_known && latest_path.exists() {
                 println!("Skipping already tested ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
                 continue;
             }
 
-            let p = &(entry_path.to_str().unwrap().replace("tests", "test_ok") + ".png");
+            let p = &(entry_path.to_str().unwrap().replace("test_rom", "test_ok") + ".png");
             let ok_path = Path::new(p);
             if skip_ok && ok_path.exists() {
                 println!("Skipping already passing ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
