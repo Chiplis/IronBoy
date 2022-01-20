@@ -59,10 +59,13 @@ fn run_frame(gameboy: &mut Gameboy) {
 mod tests {
     use std::fs::{read, read_dir};
     use std::{env, io};
+    use std::collections::HashMap;
     use std::path::Path;
+    use std::sync::atomic::{AtomicI8, Ordering};
     use std::thread;
     use std::time::{Duration};
     use image::{RgbaImage};
+    use image::io::Reader;
     use crate::{Gameboy, MemoryMap, run_frame};
 
 
@@ -70,22 +73,18 @@ mod tests {
     fn test_roms() -> Result<(), io::Error> {
         let (tx, rx) = std::sync::mpsc::channel();
         let args: Vec<String> = env::args().collect();
+
         let skip_known = args.contains(&"skip-known".to_owned());
-        let skip_ok = args.contains(&"skip-ok".to_owned());
+        let skip_same = args.contains(&"skip-same".to_owned());
+
         for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))? {
             let entry_path = entry.as_ref().unwrap().path();
 
             let p = &(entry_path.to_str().unwrap().replace("test_rom", "test_latest") + ".png");
+            println!("{}", p);
             let latest_path = Path::new(p);
             if skip_known && latest_path.exists() {
                 println!("Skipping already tested ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
-                continue;
-            }
-
-            let p = &(entry_path.to_str().unwrap().replace("test_rom", "test_ok") + ".png");
-            let ok_path = Path::new(p);
-            if skip_ok && ok_path.exists() {
-                println!("Skipping already passing ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
                 continue;
             }
 
@@ -101,19 +100,35 @@ mod tests {
             }
             let mem = MemoryMap::new(&rom_vec, &rom);
             let mut gameboy = Gameboy::new(mem);
-
+            let mut tests_counter: HashMap<String, AtomicI8> = HashMap::new();
             let mut spawn = true;
             'inner: loop {
                 if spawn {
                     let tx_clone = tx.clone();
+                    let r = rom.as_str().to_owned();
                     thread::spawn(move || {
-                        thread::sleep(Duration::from_secs(15));
-                        tx_clone.send("").unwrap();
+                        let mut i = 0;
+                        while i < 16 {
+                            thread::sleep(Duration::from_secs(1));
+                            tx_clone.send(r.clone()).unwrap();
+                            i += 1;
+                        }
                     });
                     spawn = false;
                 }
 
-                for _ in rx.try_recv() {
+                for rom_tested in rx.try_recv() {
+                    let rom_clone = rom.clone().replace("\\", "/");
+                    if tests_counter.contains_key(&rom_tested) {
+                        tests_counter.get_mut(&rom_tested).unwrap().fetch_add(1, Ordering::SeqCst);
+                    } else {
+                        tests_counter.insert(rom_tested.clone(), AtomicI8::new(0));
+                    }
+
+                    if tests_counter.get(&rom_tested).unwrap().load(Ordering::SeqCst) == 15 && rom_tested == rom_clone {
+                        break 'inner;
+                    }
+
                     let map_pixel = |pixel: &u32| {
                         let pixels = pixel.to_be_bytes();
                         let a = pixels[0];
@@ -123,16 +138,25 @@ mod tests {
                         [r, g, b, a]
                     };
                     let pixels = gameboy.mem.ppu.pixels.iter().flat_map(map_pixel).collect::<Vec<u8>>();
-                    let rom_clone = rom.clone().replace("\\", "/");
                     let screenshot_path = rom_clone.as_str().split("/").collect::<Vec<&str>>();
                     let img_name = *screenshot_path.last().unwrap();
                     let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/") + "/test_output/" + img_name + ".png";
-                    println!("{}", screenshot_path);
                     RgbaImage::from_raw(160, 144, pixels)
                         .unwrap()
                         .save(Path::new(&screenshot_path))
                         .unwrap();
-                    break 'inner;
+                    let screenshot = Reader::open(screenshot_path.clone()).unwrap().decode().unwrap();
+                    let screenshot = screenshot.as_bytes();
+                    let ok_image = Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
+                    let latest_image = Reader::open(screenshot_path.clone().replace("test_output", "test_latest"));
+                    if ok_image.is_ok() && &ok_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
+                        println!("Ending {} test because result was confirmed as OK", screenshot_path);
+                        break 'inner;
+                    }
+                    if skip_same && latest_image.is_ok() && &latest_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
+                        println!("Ending {} test because result was same as previously saved one", screenshot_path);
+                        break 'inner;
+                    }
                 }
 
                 run_frame(&mut gameboy);
@@ -178,9 +202,9 @@ mod tests {
         for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_latest")))? {
             let p = {
                 let path = entry.map(|e| e.path()).unwrap();
-                path.to_str().unwrap().to_owned()
+                path.to_str().unwrap().to_owned().replace("\\", "/")
             };
-            let path = p.replace("\\", "/").split("/").collect::<Vec<&str>>();
+            let path = p.split("/").collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
 
