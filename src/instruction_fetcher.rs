@@ -58,13 +58,13 @@ impl InstructionFetcher {
                     },
 
                     0x20..=0x27 => match operands[bit_idx] {
-                        RegisterOperand::HL => SLA_HL,
-                        RegisterOperand::Register(id) => SLA_R8(id),
+                        RegisterOperand::HL => SLA(OpHL),
+                        RegisterOperand::Register(id) => SLA(OpRegister(id)),
                     },
 
                     0x28..=0x2F => match operands[bit_idx] {
-                        RegisterOperand::HL => SRA_HL,
-                        RegisterOperand::Register(id) => SRA_R8(id),
+                        RegisterOperand::HL => SRA(OpHL),
+                        RegisterOperand::Register(id) => SRA(OpRegister(id)),
                     },
 
                     0x30..=0x37 => match operands[bit_idx] {
@@ -73,12 +73,12 @@ impl InstructionFetcher {
                     },
 
                     0x38..=0x3F => match operands[bit_idx] {
-                        RegisterOperand::HL => SRL_HL,
-                        RegisterOperand::Register(id) => SRL_R8(id),
+                        RegisterOperand::HL => SRL(OpHL),
+                        RegisterOperand::Register(id) => SRL(OpRegister(id)),
                     },
                     0x40..=0x7F => match operands[bit_idx] {
-                        RegisterOperand::HL => BIT_U3_HL(Bit(mask[bit])),
-                        RegisterOperand::Register(id) => BIT_U3_R8(Bit(mask[bit]), id)
+                        RegisterOperand::HL => BIT_U3(Bit(mask[bit]), OpHL),
+                        RegisterOperand::Register(id) => BIT_U3(Bit(mask[bit]), OpRegister(id))
                     },
 
                     0x80..=0xBF => match operands[bit_idx] {

@@ -20,8 +20,7 @@ pub enum Command {
     ADD_HL_R16(DoubleRegisterId),
     ADD_SP_I8(i8),
     AND_A(InstructionOperand),
-    BIT_U3_HL(Bit),
-    BIT_U3_R8(Bit, RegisterId),
+    BIT_U3(Bit, InstructionOperand),
     CALL_CC_U16(ConditionCode, u16),
     CALL_U16(u16),
     CCF,
@@ -91,12 +90,9 @@ pub enum Command {
     SCF,
     SET_U3_HL(Bit),
     SET_U3_R8(Bit, RegisterId),
-    SLA_HL,
-    SLA_R8(RegisterId),
-    SRA_HL,
-    SRA_R8(RegisterId),
-    SRL_HL,
-    SRL_R8(RegisterId),
+    SLA(InstructionOperand),
+    SRA(InstructionOperand),
+    SRL(InstructionOperand),
     STOP,
     SUB_A(InstructionOperand),
     SWAP_HL,
@@ -114,10 +110,9 @@ impl Command {
                 OpRegister(_) | OpHL => 1,
                 OpByte(_) => 2
             }
-            LD_A_U8(..) | BIT_U3_R8(..) | BIT_U3_HL(..) | RES_U3_R8(..) | RES_U3_HL(..) |
+            LD_A_U8(..) | BIT_U3(..) | RES_U3_R8(..) | RES_U3_HL(..) |
             SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | RL_R8(..) | RL_HL | RLC_R8(..) |
-            RLC_HL | RR_R8(..) | RR_HL | RRC_R8(..) | RRC_HL | SLA_R8(..) | SLA_HL | SRA_R8(..) |
-            SRA_HL | SRL_R8(..) | SRL_HL | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) |
+            RLC_HL | RR_R8(..) | RR_HL | RRC_R8(..) | RRC_HL | SLA(..) | SRA(..) | SRL(..) | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) |
             LDH_A_U8(..) | LDH_U8_A(..) | ADD_SP_I8(..) | LD_HL_SP_I8(..) | LDH_HL_U8(..) => 2,
 
             LDH_U16_A(..) | LDH_A_U16(..) | LD_R16_U16(..) | CALL_U16(..) | CALL_CC_U16(..) |
@@ -136,21 +131,33 @@ impl Command {
                 OpByte(_) | OpHL => 2
             }
 
+            BIT_U3(_, op) => match op {
+                OpRegister(_) => 2,
+                OpHL => 3,
+                OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n)
+            }
+
             DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
             DEC_R8(..) | LD_R8_R8(..) | NOP | RRCA | STOP | RLA | RRA => 1,
 
-            INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | LD_HL_R8(..) |
-            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) | LDH_C_A | LDH_A_C |
-            SRL_R8(..) | LD_R8_HL(..) | LD_R16_A(..) |
-            LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A | RLC_R8(..) | RL_R8(..) | SLA_R8(..) |
-            SWAP_R8(..) | BIT_U3_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) | RR_R8(..) | SRA_R8(..) | RRC_R8(..) => 2,
+            SLA(op) | SRA(op) | SRL(op) => match op {
+                OpRegister(_) => 2,
+                OpHL => 4,
+                OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n)
+            }
 
-            POP_R16(..) | JR_I8(..) | LDH_U8_A(..) | BIT_U3_HL(..) |
+            INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | LD_HL_R8(..) |
+            LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) |
+            LDH_C_A | LDH_A_C | LD_R8_HL(..) | LD_R16_A(..) |
+            LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A | RLC_R8(..) | RL_R8(..) |
+            SWAP_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) | RR_R8(..) | RRC_R8(..) => 2,
+
+            POP_R16(..) | JR_I8(..) | LDH_U8_A(..) |
             DECH_HL | INCH_HL | LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
 
             LDH_U16_A(..) | PUSH_AF | RETI | RET | JP_U16(..) | PUSH_R16(..) |
-            ADD_SP_I8(..) | RST(..) | LDH_A_U16(..) | RLC_HL | RRC_HL | SLA_HL | SWAP_HL |
-            SRL_HL | RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL | SRA_HL => 4,
+            ADD_SP_I8(..) | RST(..) | LDH_A_U16(..) | RLC_HL | RRC_HL  | SWAP_HL |
+            RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL => 4,
 
             LD_U16_SP(..) => 5,
 

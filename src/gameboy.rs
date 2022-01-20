@@ -285,38 +285,29 @@ impl Gameboy {
                 self.reg.set_flags(z, false, false, carry);
             }
 
-            SRA_R8(_) | SLA_R8(_) | SRL_R8(_) | SRL_HL | SLA_HL | SRA_HL => {
-                let mut value = match command {
-                    SRL_HL | SRA_HL | SLA_HL => self.mem.read(hl),
-                    SLA_R8(id) | SRA_R8(id) | SRL_R8(id) => self[id].value,
-                    _ => panic!(),
+            SRA(op) | SLA(op) | SRL(op) => {
+                let mut value = self.get_op(op);
+                let carry = value & if let SLA(_) = command { 128 } else { 1 } != 0;
+
+                value = if let SRA(_) = command {
+                    (value as i8 >> 1) as u8
+                } else if let SRL(_) = command {
+                    value >> 1
+                } else {
+                    ((value as i8) << 1) as u8
                 };
-                let carry = match command {
-                    SRA_R8(_) | SRA_HL | SRL_R8(_) | SRL_HL => value & 1 != 0,
-                    _ => value & 128 != 0
-                };
-                value = match command {
-                    SRA_R8(_) | SRA_HL => ((value as i8) >> 1) as u8,
-                    SRL_HL | SRL_R8(_) => value >> 1,
-                    SLA_R8(_) | SLA_HL => ((value as i8) << 1) as u8,
+
+                match op {
+                    OpHL => self.mem.write(hl, value),
+                    OpRegister(id) => self[id].value = value,
                     _ => panic!()
                 };
-                match command {
-                    SRL_HL | SRA_HL | SLA_HL => self.mem.write(hl, value),
-                    SLA_R8(id) | SRA_R8(id) | SRL_R8(id) => self[id].value = value,
-                    _ => panic!()
-                };
+
                 self.reg.set_flags(value == 0, false, false, carry);
             }
 
-            BIT_U3_R8(bit, id) => {
-                self.reg.flags.z = (self[id].value & bit.0) ^ bit.0 == bit.0;
-                self.reg.flags.n = false;
-                self.reg.flags.h = true;
-            }
-
-            BIT_U3_HL(bit) => {
-                self.reg.flags.z = (self.mem.read(hl) & bit.0) ^ bit.0 == bit.0;
+            BIT_U3(bit, op) => {
+                self.reg.flags.z = (self.get_op(op) & bit.0) ^ bit.0 == bit.0;
                 self.reg.flags.n = false;
                 self.reg.flags.h = true;
             }
