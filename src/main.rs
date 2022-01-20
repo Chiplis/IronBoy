@@ -90,7 +90,7 @@ mod tests {
 
             let entry = entry?;
             let path = entry.path();
-            let rom = String::from(path.to_str().unwrap());
+            let rom = String::from(path.to_str().unwrap()).replace("\\", "/");
             if !rom.ends_with(".gb") { continue; }
 
             let rom_vec = read(rom.clone()).unwrap();
@@ -118,14 +118,14 @@ mod tests {
                 }
 
                 for rom_tested in rx.try_recv() {
-                    let rom_clone = rom.clone().replace("\\", "/");
+                    let rom_clone = rom.clone();
                     if tests_counter.contains_key(&rom_tested) {
                         tests_counter.get_mut(&rom_tested).unwrap().fetch_add(1, Ordering::SeqCst);
                     } else {
                         tests_counter.insert(rom_tested.clone(), AtomicI8::new(0));
                     }
 
-                    if tests_counter.get(&rom_tested).unwrap().load(Ordering::SeqCst) == 15 && rom_tested == rom_clone {
+                    if tests_counter.get(&rom_tested).unwrap().load(Ordering::SeqCst) >= 14 && rom_tested == rom_clone {
                         break 'inner;
                     }
 

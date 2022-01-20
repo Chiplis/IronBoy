@@ -59,7 +59,7 @@ impl MemoryMap {
         if !(self.ppu.write(address, value)
             || self.timer.write(address, value)
             || self.interrupt_handler.write(address, value)
-            || self.joypad.write(address, value)) && (address >= self.rom_size || self.rom_name.contains("cpu_instrs.gb")) {
+            || self.joypad.write(address, value)) && (address >= self.rom_size) {
             self.memory[address] = value
         }
         if trigger_cycle { self.micro_cycle() }
