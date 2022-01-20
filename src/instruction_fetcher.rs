@@ -38,23 +38,23 @@ impl InstructionFetcher {
 
                 match cb_opcode {
                     0x00..=0x07 => match operands[bit_idx] {
-                        RegisterOperand::HL => RLC_HL,
-                        RegisterOperand::Register(id) => RLC_R8(id),
+                        RegisterOperand::HL => RLC(OpHL, false),
+                        RegisterOperand::Register(id) => RLC(OpRegister(id), false),
                     },
 
                     0x08..=0x0F => match operands[bit_idx] {
-                        RegisterOperand::HL => RRC_HL,
-                        RegisterOperand::Register(id) => RRC_R8(id),
+                        RegisterOperand::HL => RRC(OpHL, false),
+                        RegisterOperand::Register(id) => RRC(OpRegister(id), false),
                     },
 
                     0x10..=0x17 => match operands[bit_idx] {
-                        RegisterOperand::HL => RL_HL,
-                        RegisterOperand::Register(id) => RL_R8(id),
+                        RegisterOperand::HL => RL(OpHL, false),
+                        RegisterOperand::Register(id) => RL(OpRegister(id), false),
                     },
 
                     0x18..=0x1F => match operands[bit_idx] {
-                        RegisterOperand::HL => RR_HL,
-                        RegisterOperand::Register(id) => RR_R8(id),
+                        RegisterOperand::HL => RR(OpHL, false),
+                        RegisterOperand::Register(id) => RR(OpRegister(id), false),
                     },
 
                     0x20..=0x27 => match operands[bit_idx] {
@@ -249,10 +249,10 @@ impl InstructionFetcher {
             0x76 => HALT,
             0xF3 => DI,
             0xFB => EI,
-            0x07 => RLCA,
-            0x17 => RLA,
-            0x0F => RRCA,
-            0x1F => RRA,
+            0x07 => RLC(OpRegister(A), true),
+            0x17 => RL(OpRegister(A), true),
+            0x0F => RRC(OpRegister(A), true),
+            0x1F => RR(OpRegister(A), true),
 
             0x10 => {
                 let opcode = ram.memory[pc as usize + 1];

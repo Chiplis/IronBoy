@@ -180,7 +180,7 @@ mod tests {
                 let path = entry.map(|e| e.path()).unwrap();
                 path.to_str().unwrap().to_owned()
             };
-            let path = p.split("/").collect::<Vec<&str>>();
+            let path = p.replace("\\", "/").split("/").collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
 

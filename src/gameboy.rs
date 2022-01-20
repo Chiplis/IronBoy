@@ -246,40 +246,33 @@ impl Gameboy {
 
             INC_R16(reg) => self.set_word_register_with_micro_cycle(reg.value().wrapping_add(1), reg),
 
-            RR_HL | RL_HL | RRC_HL | RLC_HL | RR_R8(_) | RL_R8(_) | RLA | RRA | RLC_R8(_) | RRC_R8(_) | RLCA | RRCA => {
-                let mut value = match command {
-                    RL_R8(id) | RR_R8(id) | RLC_R8(id) | RRC_R8(id) => self[id].value,
-                    RLA | RRA | RLCA | RRCA => self[A].value,
-                    RR_HL | RL_HL | RRC_HL | RLC_HL => self.mem.read(hl),
-                    _ => panic!(),
+            RR(op, small) | RL(op, small) | RRC(op, small) | RLC(op, small) => {
+                let mut value = self.get_op(op);
+                let carry = if let RLC(..) | RL(..) = command  {
+                    value & 128 != 0
+                } else {
+                    value & 1 != 0
                 };
-                let carry = match command {
-                    RLC_R8(_) | RL_R8(_) | RLA | RLCA | RLC_HL | RL_HL => value & 128 != 0,
-                    _ => value & 1 != 0,
-                };
-                let mask_condition = match command {
-                    RRC_R8(_) | RRC_HL | RRCA | RLC_R8(_) | RLC_HL | RLCA => carry,
-                    _ => self.reg.flags.c
+                let mask_condition = if let RRC(..) | RLC(..) = command {
+                    carry
+                } else {
+                    self.reg.flags.c
                 };
                 let mask = if mask_condition {
-                    match command {
-                        RRC_HL | RRC_R8(_) | RRCA | RR_R8(_) | RRA | RR_HL => 128,
-                        _ => 1
+                    if let RR(..) | RRC(..) = command {
+                        128
+                    } else {
+                        1
                     }
                 } else { 0 };
-                value = (match command {
-                    RLC_R8(_) | RL_R8(_) | RLA | RLCA | RLC_HL | RL_HL => value << 1,
-                    RRC_HL | RRC_R8(_) | RRCA | RR_R8(_) | RRA | RR_HL => value >> 1,
-                    _ => panic!()
-                }) | mask;
-                let z = match command {
-                    RLA | RRA | RLCA | RRCA => false,
-                    _ => value == 0
-                };
-                match command {
-                    RL_R8(id) | RR_R8(id) | RLC_R8(id) | RRC_R8(id) => self[id].value = value,
-                    RLA | RRA | RLCA | RRCA => self[A].value = value,
-                    RR_HL | RL_HL | RRC_HL | RLC_HL => self.mem.write(hl, value),
+
+                value = (if let RR(..) | RRC(..) = command { value >> 1 } else { value << 1 }) | mask;
+
+                let z = !small && value == 0;
+
+                match op {
+                    OpRegister(id) => self[id].value = value,
+                    OpHL => self.mem.write(hl, value),
                     _ => panic!()
                 };
                 self.reg.set_flags(z, false, false, carry);

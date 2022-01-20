@@ -73,18 +73,10 @@ pub enum Command {
     RET,
     RETI,
     RET_CC(ConditionCode),
-    RLA,
-    RLCA,
-    RLC_HL,
-    RLC_R8(RegisterId),
-    RL_HL,
-    RL_R8(RegisterId),
-    RRA,
-    RRCA,
-    RRC_HL,
-    RRC_R8(RegisterId),
-    RR_HL,
-    RR_R8(RegisterId),
+    RL(InstructionOperand, bool),
+    RLC(InstructionOperand, bool),
+    RR(InstructionOperand, bool),
+    RRC(InstructionOperand, bool),
     RST(RstVec),
     SBC_A(InstructionOperand),
     SCF,
@@ -110,9 +102,13 @@ impl Command {
                 OpRegister(_) | OpHL => 1,
                 OpByte(_) => 2
             }
+            RL(op, small) | RLC(op, small) | RR(op, small) | RRC(op, small) => match (op, small) {
+                (OpRegister(RegisterId::A), true) => 1,
+                (_, false) => 2,
+                (_, true) => panic!("Invalid operand/size combination for operation")
+            }
             LD_A_U8(..) | BIT_U3(..) | RES_U3_R8(..) | RES_U3_HL(..) |
-            SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | RL_R8(..) | RL_HL | RLC_R8(..) |
-            RLC_HL | RR_R8(..) | RR_HL | RRC_R8(..) | RRC_HL | SLA(..) | SRA(..) | SRL(..) | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) |
+            SET_U3_R8(..) | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | SLA(..) | SRA(..) | SRL(..) | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) |
             LDH_A_U8(..) | LDH_U8_A(..) | ADD_SP_I8(..) | LD_HL_SP_I8(..) | LDH_HL_U8(..) => 2,
 
             LDH_U16_A(..) | LDH_A_U16(..) | LD_R16_U16(..) | CALL_U16(..) | CALL_CC_U16(..) |
@@ -137,8 +133,8 @@ impl Command {
                 OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n)
             }
 
-            DAA | CPL | RLCA | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
-            DEC_R8(..) | LD_R8_R8(..) | NOP | RRCA | STOP | RLA | RRA => 1,
+            DAA | CPL | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) |
+            DEC_R8(..) | LD_R8_R8(..) | NOP | STOP => 1,
 
             SLA(op) | SRA(op) | SRL(op) => match op {
                 OpRegister(_) => 2,
@@ -146,18 +142,25 @@ impl Command {
                 OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n)
             }
 
+            RL(op, small) | RLC(op, small) | RR(op, small) | RRC(op, small) => match (op, small) {
+                (OpRegister(RegisterId::A), true) => 1,
+                (OpRegister(_), false) => 2,
+                (OpHL, false) => 4,
+                _ => panic!("Invalid operand/size combination for operation")
+            }
+
             INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | LD_HL_R8(..) |
             LD_A_U8(..) | ADD_HL_R16(..) | LD_A_R16(..) | DEC_R16(..) |
             LDH_C_A | LDH_A_C | LD_R8_HL(..) | LD_R16_A(..) |
-            LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A | RLC_R8(..) | RL_R8(..) |
-            SWAP_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) | RR_R8(..) | RRC_R8(..) => 2,
+            LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A |
+            SWAP_R8(..) | SET_U3_R8(..) | RES_U3_R8(..) => 2,
 
             POP_R16(..) | JR_I8(..) | LDH_U8_A(..) |
             DECH_HL | INCH_HL | LDH_HL_U8(..) | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
 
             LDH_U16_A(..) | PUSH_AF | RETI | RET | JP_U16(..) | PUSH_R16(..) |
-            ADD_SP_I8(..) | RST(..) | LDH_A_U16(..) | RLC_HL | RRC_HL  | SWAP_HL |
-            RES_U3_HL(..) | SET_U3_HL(..) | RL_HL | RR_HL => 4,
+            ADD_SP_I8(..) | RST(..) | LDH_A_U16(..) | SWAP_HL |
+            RES_U3_HL(..) | SET_U3_HL(..) => 4,
 
             LD_U16_SP(..) => 5,
 
