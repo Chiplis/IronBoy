@@ -61,7 +61,6 @@ mod tests {
     use std::{env, io};
     use std::collections::HashMap;
     use std::path::Path;
-    use std::sync::atomic::{AtomicI8, Ordering};
     use std::thread;
     use std::time::{Duration};
     use image::{RgbaImage};
@@ -73,42 +72,42 @@ mod tests {
     fn test_roms() -> Result<(), io::Error> {
         let (tx, rx) = std::sync::mpsc::channel();
         let args: Vec<String> = env::args().collect();
-
+        const TEST_DURATION: u8 = 16;
         let skip_known = args.contains(&"skip-known".to_owned());
         let skip_same = args.contains(&"skip-same".to_owned());
 
         for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))? {
-            let entry_path = entry.as_ref().unwrap().path();
+            let rom = String::from(entry.as_ref().unwrap().path().to_str().unwrap()).replace("\\", "/");
+            if !rom.ends_with(".gb") { continue; }
 
-            let p = &(entry_path.to_str().unwrap().replace("test_rom", "test_latest") + ".png");
-            println!("{}", p);
-            let latest_path = Path::new(p);
-            if skip_known && latest_path.exists() {
-                println!("Skipping already tested ROM: {}", entry.as_ref().unwrap().path().to_str().unwrap());
+            let latest_img_path = rom.clone()
+                .replace("test_rom", "test_latest")
+                .replace("\\", "/") + ".png";
+
+            println!("Testing: {}", rom);
+
+            let latest_image = Path::new(&latest_img_path);
+            if skip_known && latest_image.exists() {
+                println!("Skipping already tested ROM: {}", rom);
                 continue;
             }
 
-            let entry = entry?;
-            let path = entry.path();
-            let rom = String::from(path.to_str().unwrap()).replace("\\", "/");
-            if !rom.ends_with(".gb") { continue; }
-
-            let rom_vec = read(rom.clone()).unwrap();
+            let rom_vec = read(&rom).unwrap();
             if rom_vec.len() > 32768 {
                 println!("Still need to implement MBC for larger ROM's: {}", rom.clone());
                 continue;
             }
             let mem = MemoryMap::new(&rom_vec, &rom);
             let mut gameboy = Gameboy::new(mem);
-            let mut tests_counter: HashMap<String, AtomicI8> = HashMap::new();
+            let mut tests_counter: HashMap<String, u8> = HashMap::new();
             let mut spawn = true;
             'inner: loop {
                 if spawn {
                     let tx_clone = tx.clone();
-                    let r = rom.as_str().to_owned();
+                    let r = rom.clone();
                     thread::spawn(move || {
                         let mut i = 0;
-                        while i < 16 {
+                        while i != TEST_DURATION {
                             thread::sleep(Duration::from_secs(1));
                             tx_clone.send(r.clone()).unwrap();
                             i += 1;
@@ -118,14 +117,15 @@ mod tests {
                 }
 
                 for rom_tested in rx.try_recv() {
-                    let rom_clone = rom.clone();
+
                     if tests_counter.contains_key(&rom_tested) {
-                        tests_counter.get_mut(&rom_tested).unwrap().fetch_add(1, Ordering::SeqCst);
+                        let counter = tests_counter.get(&*rom_tested).unwrap() + 1;
+                        tests_counter.insert(rom_tested.clone(), counter);
                     } else {
-                        tests_counter.insert(rom_tested.clone(), AtomicI8::new(0));
+                        tests_counter.insert(rom_tested.clone(), 0);
                     }
 
-                    if tests_counter.get(&rom_tested).unwrap().load(Ordering::SeqCst) >= 14 && rom_tested == rom_clone {
+                    if tests_counter.get(&rom_tested).unwrap() >= &(TEST_DURATION - 1) && *rom_tested == rom {
                         break 'inner;
                     }
 
@@ -138,7 +138,8 @@ mod tests {
                         [r, g, b, a]
                     };
                     let pixels = gameboy.mem.ppu.pixels.iter().flat_map(map_pixel).collect::<Vec<u8>>();
-                    let screenshot_path = rom_clone.as_str().split("/").collect::<Vec<&str>>();
+
+                    let screenshot_path = rom.split("/").collect::<Vec<&str>>();
                     let img_name = *screenshot_path.last().unwrap();
                     let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/") + "/test_output/" + img_name + ".png";
                     RgbaImage::from_raw(160, 144, pixels)
