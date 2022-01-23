@@ -40,15 +40,15 @@ fn run_frame(gameboy: &mut Gameboy) {
         let previously_halted = gameboy.halted;
         let cycles = gameboy.cycle() as u16;
         elapsed_cycles += cycles as u32 * 4;
-        let mem_cycles = cycles - gameboy.mem.micro_ops;
+        let mem_cycles = cycles - gameboy.mem.cycles;
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
-            panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.micro_ops)
+            panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.cycles)
         } else if mem_cycles != 0 {
             for _ in 0..mem_cycles {
-                gameboy.mem.machine_cycle();
+                gameboy.mem.cycle();
             }
         }
-        gameboy.mem.micro_ops = 0;
+        gameboy.mem.cycles = 0;
     }
     let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
     let sleep_time = cycles_time - start.elapsed().as_secs_f64();

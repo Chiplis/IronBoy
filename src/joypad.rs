@@ -18,7 +18,7 @@ pub struct InputInterrupt;
 impl Joypad {
     pub fn new() -> Self { Self { action_buttons: 0x0F, direction_buttons: 0x0F, selected_buttons: Action } }
 
-    pub fn input_cycle(&mut self, window: &Window) -> Vec<InputInterrupt> {
+    pub fn machine_cycle(&mut self, window: &Window) -> Vec<InputInterrupt> {
         if window.is_key_down(Escape) { std::process::exit(0) }
 
         let previous_buttons = *self.buttons();

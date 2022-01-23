@@ -29,7 +29,7 @@ pub struct MemoryMap {
     joypad: Joypad,
     rom_size: usize,
     rom_name: String,
-    pub micro_ops: u16,
+    pub cycles: u16,
     dma_progress: usize,
     oam_corruption: Option<OamCorruptionCause>
 }
@@ -46,17 +46,16 @@ impl MemoryMap {
         let micro_ops = 0;
         let dma_progress = 0;
         let oam_corruption = None;
-        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_progress, oam_corruption };
+        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, cycles: micro_ops, dma_progress, oam_corruption };
         MemoryMap::init_memory(mem, rom)
     }
 
     fn in_oam<T: 'static + Into<usize> + Copy>(&self, address: T) -> bool {
-        if self.ppu.mode != OamSearch { return false; }
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         if address.type_id() == TypeId::of::<WordRegister>() {
             return (0xFE00_usize..=0xFEFF_usize).contains(&translated_address);
         } else {
-            return (0xFEA0_usize..=0xFEFF_usize).contains(&translated_address);
+            return (0xFE00_usize..=0xFEFF_usize).contains(&translated_address);
         }
     }
 
@@ -68,38 +67,18 @@ impl MemoryMap {
         }
     }
 
-    fn trigger_oam_read_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
-        if !self.in_oam(address) { return; }
-        self.oam_corruption = match self.oam_corruption {
-            None => Some(Read),
-            Some(IncDec) => Some(ReadWrite),
-            _ => panic!()
-        }
-    }
-
-    fn trigger_oam_write_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
-        if !self.in_oam(address) { return; }
-        self.oam_corruption = match self.oam_corruption {
-            None => Some(Write),
-            Some(IncDec) => Some(Write),
-            _ => panic!()
-        }
-    }
-
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         let value = self.read_without_cycle(address);
-        self.trigger_oam_read_corruption(address);
-        self.machine_cycle();
+        self.cycle();
         return value;
     }
 
     pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(&mut self, address: Address, value: Value) {
         self.write_without_cycle(address, value.into());
-        self.trigger_oam_write_corruption(address);
-        self.machine_cycle();
+        self.cycle();
     }
 
-    pub fn read_without_cycle<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
+    pub fn read_without_cycle<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         let read = self.ppu.read(translated_address)
@@ -121,10 +100,10 @@ impl MemoryMap {
         }
     }
 
-    pub fn machine_cycle(&mut self) {
-        self.micro_ops += 1;
+    pub fn cycle(&mut self) {
+        self.cycles += 1;
         self.dma_transfer();
-        self.cycle(1);
+        self.machine_cycle();
     }
 
     fn dma_transfer(&mut self) {
@@ -138,20 +117,20 @@ impl MemoryMap {
         }
     }
 
-    pub fn cycle(&mut self, cpu_cycles: usize) {
+    fn machine_cycle(&mut self) {
         let mut interrupts = vec![];
-        interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles, &self.oam_corruption) {
+        interrupts.append(&mut match self.ppu.machine_cycle(&self.oam_corruption) {
             StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
             Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
             StatTrigger(_) => vec![StatInt],
             _ => vec![]
         });
-        interrupts.append(&mut match self.timer.timer_cycle(cpu_cycles as u16) {
+        interrupts.append(&mut match self.timer.machine_cycle() {
             Some(_) => vec![TimerInt],
             None => vec![],
         });
 
-        interrupts.append(&mut self.joypad.input_cycle(&self.ppu.window).iter().map(|_| JoypadInt).collect());
+        interrupts.append(&mut self.joypad.machine_cycle(&self.ppu.window).iter().map(|_| JoypadInt).collect());
 
         self.oam_corruption = None;
         self.interrupt_handler.set(interrupts, true);

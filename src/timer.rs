@@ -26,7 +26,7 @@ impl Timer {
         }
     }
 
-    pub fn timer_cycle(&mut self, cpu_cycles: u16) -> Option<TimerInterrupt> {
+    pub fn machine_cycle(&mut self) -> Option<TimerInterrupt> {
         self.interrupt_served = false;
         let interrupt = if self.interrupt {
             self.tima = self.tma;
@@ -39,7 +39,7 @@ impl Timer {
         self.interrupt = false;
 
         let old_ticks = self.ticks;
-        self.ticks = self.ticks.wrapping_add(cpu_cycles * 4);
+        self.ticks = self.ticks.wrapping_add(4);
         self.tima_increase(old_ticks);
 
         return interrupt;

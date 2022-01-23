@@ -10,6 +10,7 @@ use crate::interrupt::IE_ADDRESS;
 use crate::instruction_fetcher::InstructionFetcher;
 use crate::instruction::Command::*;
 use std::cmp::max;
+use std::sync::atomic::{AtomicI8, Ordering};
 use crate::instruction::{Command, InstructionOperand};
 use crate::instruction::InstructionOperand::{OpByte, OpRegister, OpHL};
 use crate::interrupt::InterruptId::{VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt};
@@ -92,7 +93,7 @@ impl Gameboy {
             self.mem.memory.insert(self.reg.pc.value() as usize, x);
         }
         if command != HALT { command_cycles } else {
-            self.mem.micro_ops as u8
+            self.mem.cycles as u8
         }
     }
 
@@ -532,12 +533,15 @@ impl Gameboy {
     }
 
     fn micro_cycle(&mut self) {
-        self.mem.machine_cycle();
+        self.mem.cycle();
     }
 
     fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
         self.reg.pc = ProgramCounter(value);
-        if trigger_cycle { self.micro_cycle() }
+        if trigger_cycle {
+            self.mem.trigger_oam_inc_dec_corruption(self.reg.pc.value());
+            self.micro_cycle()
+        }
     }
 
     fn set_word_register(&mut self, value: u16, reg: WordRegister) {
@@ -545,7 +549,7 @@ impl Gameboy {
     }
 
     fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: WordRegister) {
-        self.reg.set_word_register_with_callback(value, reg, |mem| mem.machine_cycle(), &mut self.mem);
+        self.reg.set_word_register_with_callback(value, reg, |mem| mem.cycle(), &mut self.mem);
     }
 }
 
