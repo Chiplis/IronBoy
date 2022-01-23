@@ -8,6 +8,18 @@ use PpuMode::VBlank;
 use crate::timer::{Timer};
 use crate::joypad::{Joypad};
 use DmaState::{Inactive, Starting};
+use OamCorruptionCause::IncDec;
+use crate::memory_map::OamCorruptionCause::{Read, ReadWrite, Write};
+use crate::ppu::PpuMode::OamSearch;
+use crate::register::WordRegister;
+
+#[derive(Debug)]
+pub enum OamCorruptionCause {
+    IncDec,
+    Read,
+    Write,
+    ReadWrite
+}
 
 pub struct MemoryMap {
     pub memory: Vec<u8>,
@@ -19,6 +31,7 @@ pub struct MemoryMap {
     rom_name: String,
     pub micro_ops: u16,
     dma_progress: usize,
+    oam_corruption: Option<OamCorruptionCause>
 }
 
 impl MemoryMap {
@@ -32,17 +45,55 @@ impl MemoryMap {
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
         let dma_progress = 0;
-        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_progress };
+        let oam_corruption = None;
+        let mem = MemoryMap { joypad, ppu, interrupt_handler, timer, memory, rom_name, rom_size, micro_ops, dma_progress, oam_corruption };
         MemoryMap::init_memory(mem, rom)
+    }
+
+    fn in_oam<T: 'static + Into<usize> + Copy>(&self, address: T) -> bool {
+        if self.ppu.mode != OamSearch { return false; }
+        let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
+        if address.type_id() == TypeId::of::<WordRegister>() {
+            return (0xFE00_usize..=0xFEFF_usize).contains(&translated_address);
+        } else {
+            return (0xFEA0_usize..=0xFEFF_usize).contains(&translated_address);
+        }
+    }
+
+    pub fn trigger_oam_inc_dec_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
+        if !self.in_oam(address) { return; }
+        self.oam_corruption = match self.oam_corruption {
+            None => Some(IncDec),
+            _ => panic!()
+        }
+    }
+
+    fn trigger_oam_read_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
+        if !self.in_oam(address) { return; }
+        self.oam_corruption = match self.oam_corruption {
+            None => Some(Read),
+            Some(IncDec) => Some(ReadWrite),
+            _ => panic!()
+        }
+    }
+
+    fn trigger_oam_write_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
+        if !self.in_oam(address) { return; }
+        self.oam_corruption = match self.oam_corruption {
+            None => Some(Write),
+            Some(IncDec) => Some(Write),
+            _ => panic!()
+        }
     }
 
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         let value = self.read_without_cycle(address);
+        self.trigger_oam_read_corruption(address);
         self.micro_cycle();
         return value;
     }
 
-    pub(crate) fn read_without_cycle<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
+    pub fn read_without_cycle<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
         //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
         let read = self.ppu.read(translated_address)
@@ -62,7 +113,10 @@ impl MemoryMap {
             || self.joypad.write(address, value)) && (address >= self.rom_size) {
             self.memory[address] = value
         }
-        if trigger_cycle { self.micro_cycle() }
+        if trigger_cycle {
+            self.trigger_oam_write_corruption(address);
+            self.micro_cycle();
+        }
     }
 
     pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(&mut self, address: Address, value: Value) {
@@ -89,7 +143,7 @@ impl MemoryMap {
 
     pub fn cycle(&mut self, cpu_cycles: usize) {
         let mut interrupts = vec![];
-        interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles) {
+        interrupts.append(&mut match self.ppu.render_cycle(cpu_cycles, &self.oam_corruption) {
             StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
             Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
             StatTrigger(_) => vec![StatInt],
@@ -102,6 +156,7 @@ impl MemoryMap {
 
         interrupts.append(&mut self.joypad.input_cycle(&self.ppu.window).iter().map(|_| JoypadInt).collect());
 
+        self.oam_corruption = None;
         self.interrupt_handler.set(interrupts, true);
     }
 

@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
 use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt};
 use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
@@ -7,6 +8,8 @@ use crate::ppu::AddressingMode::{H8800, H8000};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use minifb::{WindowOptions, Window, ScaleMode, Scale};
 use DmaState::{Starting, Executing, Finished};
+use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
+use crate::memory_map::OamCorruptionCause;
 use crate::ppu::DmaState::Inactive;
 
 #[derive(PartialEq, Copy, Clone)]
@@ -46,7 +49,7 @@ pub struct PPU {
     pub window: Window,
     pub last_ticks: usize,
     pub old_mode: PpuMode,
-    pub last_lyc_check: bool
+    pub last_lyc_check: bool,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -112,7 +115,7 @@ impl PPU {
         }
     }
 
-    pub fn render_cycle(&mut self, cpu_cycles: usize) -> RenderCycle {
+    pub fn render_cycle(&mut self, cpu_cycles: usize, oam_corruption: &Option<OamCorruptionCause>) -> RenderCycle {
         self.old_mode = self.mode;
         self.last_ticks = cpu_cycles as usize * 4;
         self.ticks += self.last_ticks;
@@ -134,7 +137,11 @@ impl PPU {
         }
 
         self.ticks -= match self.mode {
-            OamSearch => if self.ticks < 80 { 0 } else {
+            OamSearch => if self.ticks < 80 {
+                self.handle_oam_corruption(oam_corruption);
+                0
+            } else {
+                self.handle_oam_corruption(oam_corruption);
                 self.mode = PixelTransfer;
                 80
             }
@@ -211,10 +218,10 @@ impl PPU {
 
             (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Starting) => {
                 Some(self.oam[address - 0xFE00])
-            },
+            }
             (0xFE00..=0xFE9F, ..) => {
                 Some(0xFF)
-            },
+            }
 
             (0xFF40, ..) => Some(self.lcdc.get()),
             (0xFF41, ..) => Some(self.stat()),
@@ -237,7 +244,7 @@ impl PPU {
 
             (0xFF40, ..) => {
                 self.lcdc.set(value)
-            },
+            }
             (0xFF41, ..) => {
                 *self.stat_mut() = value;
                 self.force_irq = true
@@ -302,7 +309,7 @@ impl PPU {
     fn lyc(&self) -> &u8 { &self.registers[4] }
 
     fn lyc_check(&self) -> bool {
-        if self.state == LcdOff { return self.last_lyc_check }
+        if self.state == LcdOff { return self.last_lyc_check; }
         self.ticks > 4 && (match (self.mode, self.ticks) {
             (VBlank, 5..=8) => 153,
             (VBlank, 9..=12) => !self.lyc(),
@@ -457,6 +464,44 @@ impl PPU {
         let offset = (y * 160 + x) as usize;
 
         self.pixels[offset] = u32::from_be_bytes([color.a, color.r, color.g, color.b]);
+    }
+
+    fn handle_oam_corruption(&mut self, oam_corruption: &Option<OamCorruptionCause>) {
+        match oam_corruption {
+            Some(IncDec | Write) => self.handle_oam_write_corruption(),
+            Some(Read) => self.handle_oam_read_corruption(),
+            Some(ReadWrite) => self.handle_oam_read_write_corruption(),
+            None => ()
+        }
+    }
+    fn handle_oam_read_write_corruption(&mut self) {
+        todo!()
+    }
+
+    fn handle_oam_read_corruption(&mut self) {
+        self.handle_oam_pattern_corruption(|a, b, c| b | (a & c));
+    }
+
+    fn handle_oam_write_corruption(&mut self) {
+        self.handle_oam_pattern_corruption(|a, b, c| ((a ^ c) & (b ^ c)) ^ c);
+    }
+
+    fn handle_oam_pattern_corruption(&mut self, pattern: fn(u16, u16, u16) -> u16) {
+        let oam_row = self.ticks / 4;
+        if oam_row == 0 { return; }
+
+        let rows = self.oam.split_at_mut((oam_row - 1) * 8).1;
+        let (previous_row, rest_rows) = rows.split_at_mut(8);
+        let current_row = rest_rows.split_at_mut(8).0;
+
+        println!("CURRENT: {:?}\n\nPREVIOUS: {:?}", current_row, previous_row);
+
+        let a = u16::from_le_bytes(current_row[0..2].as_ref().try_into().unwrap());
+        let b = u16::from_le_bytes(previous_row[0..2].as_ref().try_into().unwrap());
+        let c = u16::from_le_bytes(previous_row[4..6].as_ref().try_into().unwrap());
+
+        current_row[0..2].clone_from_slice(pattern(a, b, c).to_le_bytes().as_slice());
+        current_row[2..].clone_from_slice(&previous_row[2..]);
     }
 }
 

@@ -242,10 +242,14 @@ impl Gameboy {
             }
 
             DEC_R16(reg) => {
+                self.mem.trigger_oam_inc_dec_corruption(reg);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_sub(1), reg)
             }
 
-            INC_R16(reg) => self.set_word_register_with_micro_cycle(reg.value().wrapping_add(1), reg),
+            INC_R16(reg) => {
+                self.mem.trigger_oam_inc_dec_corruption(reg);
+                self.set_word_register_with_micro_cycle(reg.value().wrapping_add(1), reg)
+            },
 
             RR(op, small) | RL(op, small) | RRC(op, small) | RLC(op, small) => {
                 let mut value = self.get_op(op);

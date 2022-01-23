@@ -179,7 +179,6 @@ mod tests {
             let path = p.split("\\").flat_map(|p| p.split("/")).collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
-            println!("{:?}", directory);
             let ok_image = Reader::open(directory.clone() + "/test_ok/" + img_name);
             let latest_image = Reader::open(directory + "/test_latest/" + img_name);
             if ok_image.is_err() { continue; }
