@@ -1,9 +1,9 @@
 use std::ops::{Index, IndexMut};
 
 use crate::memory_map::MemoryMap;
-use crate::register::{ByteRegister, RegisterId, DoubleRegisterId, Register, ProgramCounter};
+use crate::register::{ByteRegister, RegisterId, WordRegister, Register};
 use crate::register::RegisterId::*;
-use crate::register::DoubleRegisterId::StackPointer;
+use crate::register::WordRegister::{ProgramCounter, StackPointer};
 use crate::interrupt::InterruptState::*;
 use crate::interrupt::IF_ADDRESS;
 use crate::interrupt::IE_ADDRESS;
@@ -21,7 +21,7 @@ pub struct Gameboy {
     pub ime: bool,
     pub mem: MemoryMap,
     pub halted: bool,
-    bugged_pc: Option<ProgramCounter>,
+    bugged_pc: Option<WordRegister>,
 }
 
 impl Gameboy {
@@ -58,13 +58,13 @@ impl Gameboy {
             return interrupt_cycles;
         }
 
-        let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.0, &self.reg, &mut self.mem);
+        let instruction = InstructionFetcher::fetch_instruction(self.reg.pc.value(), &self.reg, &mut self.mem);
         let (opcode, command) = (instruction.0, instruction.1);
         let line = self.mem.ppu.ly();
-        let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.0 + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
+        let _log = format!("op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}", opcode, self.reg.pc.value() + 1, self.reg.sp.value(), self[A].value, self[B].value, self[C].value, self[D].value, self[E].value, self[H].value, self[L].value, self.reg.flags.value(), line, self.mem.ppu.last_ticks);
         //println!("{}", log);
         //println!("{:?}", command);
-        self.reg.pc.0 += command.size() as u16;
+        self.set_pc(self.reg.pc.value() + command.size() as u16, false);
 
         self.execute_instruction(command)
     }
@@ -75,11 +75,12 @@ impl Gameboy {
         match self.bugged_pc {
             Some(ProgramCounter(pc)) => {
                 self.mem.memory.remove(pc as usize);
-                if pc < self.reg.pc.0 {
-                    self.reg.pc.0 -= 1
+                if pc < self.reg.pc.value() {
+                    self.set_pc(self.reg.pc.value() - 1, false);
                 }
             }
             None => {}
+            _ => panic!()
         }
 
         self.bugged_pc = None;
@@ -87,8 +88,8 @@ impl Gameboy {
         if !self.ime && self.halted && self.mem.read_without_cycle(IE_ADDRESS as u16) & self.mem.read_without_cycle(IF_ADDRESS as u16) & 0x1F != 0 {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);
-            let x = self.mem.read(self.reg.pc.0);
-            self.mem.memory.insert(self.reg.pc.0 as usize, x);
+            let x = self.mem.read(self.reg.pc);
+            self.mem.memory.insert(self.reg.pc.value() as usize, x);
         }
         if command != HALT { command_cycles } else {
             self.mem.micro_ops as u8
@@ -128,7 +129,7 @@ impl Gameboy {
                 self.micro_cycle();
                 self.ime = false;
                 self.mem.interrupt_handler.set(vec![*interrupt_id], false);
-                let [lo, hi] = self.reg.pc.0.to_le_bytes();
+                let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
@@ -373,7 +374,7 @@ impl Gameboy {
             }
             CALL_U16(n) => {
                 self.micro_cycle();
-                let [lo, hi] = self.reg.pc.0.to_le_bytes();
+                let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
@@ -383,7 +384,7 @@ impl Gameboy {
 
             JP_HL => self.set_pc(self.reg.hl().value(), false),
             JP_U16(n) => self.set_pc(n, true),
-            JR_I8(n) => self.set_pc((self.reg.pc.0 as i16 + n as i16) as u16, true),
+            JR_I8(n) => self.set_pc((self.reg.pc.value() as i16 + n as i16) as u16, true),
             CPL => {
                 self[A].value = !self[A].value;
                 self.reg.set_flags(self.reg.flags.z, true, true, self.reg.flags.c);
@@ -403,7 +404,7 @@ impl Gameboy {
                 self.ime = true;
             }
             RST(rst_vec) => {
-                let [lo, hi] = self.reg.pc.0.to_le_bytes();
+                let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.set_pc(rst_vec as u16, true);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, hi);
@@ -428,13 +429,13 @@ impl Gameboy {
 
             POP_R16(reg) => {
                 match reg {
-                    DoubleRegisterId::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
+                    WordRegister::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
                         for id in &[low, high] {
                             self[*id].value = self.mem.read(self.reg.sp);
                             self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
                         }
                     }
-                    DoubleRegisterId::AccFlag(..) => {
+                    WordRegister::AccFlag(..) => {
                         self.reg.flags.set(self.mem.read(self.reg.sp));
                         self[A].value = self.mem.read(self.reg.sp.value().wrapping_add(1));
                         self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
@@ -453,7 +454,7 @@ impl Gameboy {
             PUSH_R16(reg) => {
                 self.micro_cycle();
                 match reg {
-                    DoubleRegisterId::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
+                    WordRegister::Double(ByteRegister { value: _, id: high }, ByteRegister { value: _, id: low }) => {
                         for id in &[high, low] {
                             self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                             let value = self[*id].value;
@@ -510,10 +511,10 @@ impl Gameboy {
 
             JP_CC_U16(cc, n) => if self.reg.cc_flag(cc) { self.set_pc(n, false) } else { branch_taken = false }
 
-            JR_CC_I8(cc, n) => if self.reg.cc_flag(cc) { self.set_pc((self.reg.pc.0 as i16 + n as i16) as u16, false) } else { branch_taken = false }
+            JR_CC_I8(cc, n) => if self.reg.cc_flag(cc) { self.set_pc((self.reg.pc.value() as i16 + n as i16) as u16, false) } else { branch_taken = false }
 
             CALL_CC_U16(cc, n) => if self.reg.cc_flag(cc) {
-                let [lo, hi] = self.reg.pc.0.to_le_bytes();
+                let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
@@ -531,15 +532,15 @@ impl Gameboy {
     }
 
     fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
-        self.reg.pc.0 = value;
+        self.reg.pc = ProgramCounter(value);
         if trigger_cycle { self.micro_cycle() }
     }
 
-    fn set_word_register(&mut self, value: u16, reg: DoubleRegisterId) {
-        self.reg.set_word_register(value, reg);
+    fn set_word_register(&mut self, value: u16, reg: WordRegister) {
+        self.reg.set_word_register(value, reg, &mut self.mem);
     }
 
-    fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: DoubleRegisterId) {
+    fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: WordRegister) {
         self.reg.set_word_register_with_callback(value, reg, |mem| mem.micro_cycle(), &mut self.mem);
     }
 }

@@ -1,5 +1,6 @@
 use std::ops::{Index, IndexMut};
-use crate::register::DoubleRegisterId::{StackPointer};
+use WordRegister::{AccFlag, Double, ProgramCounter};
+use crate::register::WordRegister::{StackPointer};
 use crate::register::RegisterId::{A, B, D, H, L, E, C};
 use crate::memory_map::MemoryMap;
 
@@ -17,8 +18,8 @@ pub enum RegisterId {
 pub struct Register {
     registers: [ByteRegister; 7],
     pub flags: FlagRegister,
-    pub sp: DoubleRegisterId,
-    pub pc: ProgramCounter,
+    pub sp: WordRegister,
+    pub pc: WordRegister,
 }
 
 impl Register {
@@ -39,41 +40,34 @@ impl Register {
         }
     }
 
-    pub fn af(&self) -> DoubleRegisterId { DoubleRegisterId::AccFlag(self[A], self.flags) }
-    pub fn bc(&self) -> DoubleRegisterId { DoubleRegisterId::Double(self[B], self[C]) }
-    pub fn de(&self) -> DoubleRegisterId { DoubleRegisterId::Double(self[D], self[E]) }
-    pub fn hl(&self) -> DoubleRegisterId { DoubleRegisterId::Double(self[H], self[L]) }
+    pub fn af(&self) -> WordRegister { AccFlag(self[A], self.flags) }
+    pub fn bc(&self) -> WordRegister { Double(self[B], self[C]) }
+    pub fn de(&self) -> WordRegister { Double(self[D], self[E]) }
+    pub fn hl(&self) -> WordRegister { Double(self[H], self[L]) }
 
-    pub fn set_word_register(&mut self, value: u16, reg: DoubleRegisterId) {
-        let [lo, hi] = value.to_le_bytes();
-        match reg {
-            DoubleRegisterId::AccFlag(..) => {
-                self.set_flag(lo);
-                self[A].value = hi;
-            }
-            DoubleRegisterId::Double(a, b) => {
-                self[b.id].value = lo;
-                self[a.id].value = hi;
-            }
-            DoubleRegisterId::StackPointer(_) => self.sp = StackPointer(value)
-        };
+    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryMap) {
+        self.set_word_register_with_callback(value, reg, |_mem|(), mem);
     }
 
-    pub fn set_word_register_with_callback(&mut self, value: u16, reg: DoubleRegisterId, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
+    pub fn set_word_register_with_callback(&mut self, value: u16, reg: WordRegister, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
-            DoubleRegisterId::AccFlag(..) => {
+            AccFlag(..) => {
                 self.set_flag(lo);
                 callback(mem);
                 self[A].value = hi;
             }
-            DoubleRegisterId::Double(a, b) => {
+            Double(a, b) => {
                 self[b.id].value = lo;
                 callback(mem);
                 self[a.id].value = hi;
             }
-            DoubleRegisterId::StackPointer(_) => {
+            StackPointer(_) => {
                 self.sp = StackPointer(value);
+                callback(mem);
+            }
+            ProgramCounter(_) => {
+                self.pc = StackPointer(value);
                 callback(mem);
             }
         };
@@ -157,36 +151,34 @@ impl FlagRegister {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum DoubleRegisterId {
+pub enum WordRegister {
     Double(ByteRegister, ByteRegister),
     AccFlag(ByteRegister, FlagRegister),
     StackPointer(u16),
+    ProgramCounter(u16)
 }
 
 
-impl Into<usize> for DoubleRegisterId {
+impl Into<usize> for WordRegister {
     fn into(self) -> usize { self.value() as usize }
 }
 
 
-impl DoubleRegisterId {
+impl WordRegister {
     pub fn value(self) -> u16 {
         match self {
-            DoubleRegisterId::Double(h, l) => u16::from_le_bytes([l.value, h.value]),
-            DoubleRegisterId::AccFlag(a, FlagRegister { z, n, h, c }) => {
+            Double(h, l) => u16::from_le_bytes([l.value, h.value]),
+            AccFlag(a, FlagRegister { z, n, h, c }) => {
                 let bit_flag = |b: bool, v: u32| 2u8.pow(v) as u8 * if b { 1 } else { 0 };
                 u16::from_le_bytes([bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0), a.value])
             }
-            DoubleRegisterId::StackPointer(n) => n
+            StackPointer(n) | ProgramCounter(n) => n
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Bit(pub u8);
-
-#[derive(Copy, Clone, Debug)]
-pub struct ProgramCounter(pub u16);
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ConditionCode {

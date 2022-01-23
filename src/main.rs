@@ -212,7 +212,9 @@ mod tests {
             let output_image = Reader::open(directory.clone() + "/test_output/" + img_name);
             let latest_image = Reader::open(directory + "/test_latest/" + img_name);
 
-            if output_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
+            if output_image.is_err() {
+                differences.push("MISSING: ".to_owned() + &*img_name.replace(".png", ""));
+            } else if output_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
                 differences.push(img_name.replace(".png", ""));
             }
         }

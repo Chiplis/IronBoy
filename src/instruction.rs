@@ -1,7 +1,7 @@
 use Command::*;
 use crate::instruction::InstructionOperand::{OpByte, OpRegister, OpHL};
 
-use crate::register::{Bit, ConditionCode, DoubleRegisterId, RegisterId};
+use crate::register::{Bit, ConditionCode, WordRegister, RegisterId};
 
 pub struct Instruction(pub u8, pub Command);
 
@@ -17,7 +17,7 @@ pub enum InstructionOperand {
 pub enum Command {
     ADC_A(InstructionOperand),
     ADD_A(InstructionOperand),
-    ADD_HL_R16(DoubleRegisterId),
+    ADD_HL_R16(WordRegister),
     ADD_SP_I8(i8),
     AND_A(InstructionOperand),
     BIT_U3(Bit, InstructionOperand),
@@ -28,13 +28,13 @@ pub enum Command {
     CP_A(InstructionOperand),
     DAA,
     DECH_HL,
-    DEC_R16(DoubleRegisterId),
+    DEC_R16(WordRegister),
     DEC_R8(RegisterId),
     DI,
     EI,
     HALT,
     INCH_HL,
-    INC_R16(DoubleRegisterId),
+    INC_R16(WordRegister),
     INC_R8(RegisterId),
     JP_CC_U16(ConditionCode, u16),
     JP_HL,
@@ -50,14 +50,14 @@ pub enum Command {
     LDH_U8_A(u8),
     LD_A_HLD,
     LD_A_HLI,
-    LD_A_R16(DoubleRegisterId),
+    LD_A_R16(WordRegister),
     LD_A_U8(u8),
     LD_HLD_A,
     LD_HLI_A,
     LD_HL_R8(RegisterId),
     LD_HL_SP_I8(i8),
-    LD_R16_A(DoubleRegisterId),
-    LD_R16_U16(DoubleRegisterId, u16),
+    LD_R16_A(WordRegister),
+    LD_R16_U16(WordRegister, u16),
     LD_R8_HL(RegisterId),
     LD_R8_R8(RegisterId, RegisterId),
     LD_R8_U8(RegisterId, u8),
@@ -65,9 +65,9 @@ pub enum Command {
     LD_U16_SP(u16),
     NOP,
     OR_A(InstructionOperand),
-    POP_R16(DoubleRegisterId),
+    POP_R16(WordRegister),
     PUSH_AF,
-    PUSH_R16(DoubleRegisterId),
+    PUSH_R16(WordRegister),
     RES_U3_HL(Bit),
     RES_U3_R8(Bit, RegisterId),
     RET,
