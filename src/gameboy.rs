@@ -532,7 +532,7 @@ impl Gameboy {
     }
 
     fn micro_cycle(&mut self) {
-        self.mem.micro_cycle();
+        self.mem.machine_cycle();
     }
 
     fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
@@ -545,7 +545,7 @@ impl Gameboy {
     }
 
     fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: WordRegister) {
-        self.reg.set_word_register_with_callback(value, reg, |mem| mem.micro_cycle(), &mut self.mem);
+        self.reg.set_word_register_with_callback(value, reg, |mem| mem.machine_cycle(), &mut self.mem);
     }
 }
 

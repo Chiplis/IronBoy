@@ -89,8 +89,14 @@ impl MemoryMap {
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         let value = self.read_without_cycle(address);
         self.trigger_oam_read_corruption(address);
-        self.micro_cycle();
+        self.machine_cycle();
         return value;
+    }
+
+    pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(&mut self, address: Address, value: Value) {
+        self.write_without_cycle(address, value.into());
+        self.trigger_oam_write_corruption(address);
+        self.machine_cycle();
     }
 
     pub fn read_without_cycle<T: 'static + Into<usize> + Copy>(&self, address: T) -> u8 {
@@ -104,27 +110,18 @@ impl MemoryMap {
         read
     }
 
-    fn write_mem<T: Into<usize> + Copy>(&mut self, address: T, value: u8, trigger_cycle: bool) {
+    fn write_without_cycle<T: 'static + Into<usize> + Copy>(&mut self, address: T, value: u8) {
         //println!("Writing address {}", address.into());
-        let address = address.into();
-        if !(self.ppu.write(address, value)
-            || self.timer.write(address, value)
-            || self.interrupt_handler.write(address, value)
-            || self.joypad.write(address, value)) && (address >= self.rom_size) {
-            self.memory[address] = value
-        }
-        if trigger_cycle {
-            self.trigger_oam_write_corruption(address);
-            self.micro_cycle();
-        }
-    }
-
-    pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(&mut self, address: Address, value: Value) {
         let translated_address = if address.type_id() == TypeId::of::<u8>() { address.into() + 0xFF00 } else { address.into() };
-        self.write_mem(translated_address, value.into(), true)
+        if !(self.ppu.write(translated_address, value)
+            || self.timer.write(translated_address, value)
+            || self.interrupt_handler.write(translated_address, value)
+            || self.joypad.write(translated_address, value)) && (translated_address >= self.rom_size) {
+            self.memory[translated_address] = value
+        }
     }
 
-    pub fn micro_cycle(&mut self) {
+    pub fn machine_cycle(&mut self) {
         self.micro_ops += 1;
         self.dma_transfer();
         self.cycle(1);
@@ -162,38 +159,38 @@ impl MemoryMap {
 
     fn init_memory(mut mem: MemoryMap, rom: &Vec<u8>) -> MemoryMap {
         for (index, value) in rom.iter().enumerate() { mem.memory[index] = *value }
-        mem.write_mem(0xFF05_u16, 0, false);
-        mem.write_mem(0xFF06_u16, 0, false);
-        mem.write_mem(0xFF07_u16, 0, false);
-        mem.write_mem(0xFF10_u16, 0x80, false);
-        mem.write_mem(0xFF11_u16, 0xBF, false);
-        mem.write_mem(0xFF12_u16, 0xF3, false);
-        mem.write_mem(0xFF14_u16, 0xBF, false);
-        mem.write_mem(0xFF16_u16, 0x3F, false);
-        mem.write_mem(0xFF16_u16, 0x3F, false);
-        mem.write_mem(0xFF17_u16, 0, false);
-        mem.write_mem(0xFF19_u16, 0xBF, false);
-        mem.write_mem(0xFF1A_u16, 0x7F, false);
-        mem.write_mem(0xFF1B_u16, 0xFF, false);
-        mem.write_mem(0xFF1C_u16, 0x9F, false);
-        mem.write_mem(0xFF1E_u16, 0xFF, false);
-        mem.write_mem(0xFF20_u16, 0xFF, false);
-        mem.write_mem(0xFF21_u16, 0, false);
-        mem.write_mem(0xFF22_u16, 0, false);
-        mem.write_mem(0xFF23_u16, 0xBF, false);
-        mem.write_mem(0xFF24_u16, 0x77, false);
-        mem.write_mem(0xFF25_u16, 0xF3, false);
-        mem.write_mem(0xFF26_u16, 0xF1, false);
-        mem.write_mem(0xFF40_u16, 0x91, false);
-        mem.write_mem(0xFF42_u16, 0, false);
-        mem.write_mem(0xFF43_u16, 0, false);
-        mem.write_mem(0xFF45_u16, 0, false);
-        mem.write_mem(0xFF47_u16, 0xFC, false);
-        mem.write_mem(0xFF48_u16, 0xFF, false);
-        mem.write_mem(0xFF49_u16, 0xFF, false);
-        mem.write_mem(0xFF4A_u16, 0, false);
-        mem.write_mem(0xFF4B_u16, 0, false);
-        mem.write_mem(0xFF00_u16, 0xFF, false);
+        mem.write_without_cycle(0xFF05_u16, 0);
+        mem.write_without_cycle(0xFF06_u16, 0);
+        mem.write_without_cycle(0xFF07_u16, 0);
+        mem.write_without_cycle(0xFF10_u16, 0x80);
+        mem.write_without_cycle(0xFF11_u16, 0xBF);
+        mem.write_without_cycle(0xFF12_u16, 0xF3);
+        mem.write_without_cycle(0xFF14_u16, 0xBF);
+        mem.write_without_cycle(0xFF16_u16, 0x3F);
+        mem.write_without_cycle(0xFF16_u16, 0x3F);
+        mem.write_without_cycle(0xFF17_u16, 0);
+        mem.write_without_cycle(0xFF19_u16, 0xBF);
+        mem.write_without_cycle(0xFF1A_u16, 0x7F);
+        mem.write_without_cycle(0xFF1B_u16, 0xFF);
+        mem.write_without_cycle(0xFF1C_u16, 0x9F);
+        mem.write_without_cycle(0xFF1E_u16, 0xFF);
+        mem.write_without_cycle(0xFF20_u16, 0xFF);
+        mem.write_without_cycle(0xFF21_u16, 0);
+        mem.write_without_cycle(0xFF22_u16, 0);
+        mem.write_without_cycle(0xFF23_u16, 0xBF);
+        mem.write_without_cycle(0xFF24_u16, 0x77);
+        mem.write_without_cycle(0xFF25_u16, 0xF3);
+        mem.write_without_cycle(0xFF26_u16, 0xF1);
+        mem.write_without_cycle(0xFF40_u16, 0x91);
+        mem.write_without_cycle(0xFF42_u16, 0);
+        mem.write_without_cycle(0xFF43_u16, 0);
+        mem.write_without_cycle(0xFF45_u16, 0);
+        mem.write_without_cycle(0xFF47_u16, 0xFC);
+        mem.write_without_cycle(0xFF48_u16, 0xFF);
+        mem.write_without_cycle(0xFF49_u16, 0xFF);
+        mem.write_without_cycle(0xFF4A_u16, 0);
+        mem.write_without_cycle(0xFF4B_u16, 0);
+        mem.write_without_cycle(0xFF00_u16, 0xFF);
         mem
     }
 }

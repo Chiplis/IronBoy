@@ -494,14 +494,18 @@ impl PPU {
         let (previous_row, rest_rows) = rows.split_at_mut(8);
         let current_row = rest_rows.split_at_mut(8).0;
 
-        println!("CURRENT: {:?}\n\nPREVIOUS: {:?}", current_row, previous_row);
+        println!("\n\nCURRENT_F: {:?}\nPREVIOUS: {:?}", current_row, previous_row);
 
         let a = u16::from_le_bytes(current_row[0..2].as_ref().try_into().unwrap());
         let b = u16::from_le_bytes(previous_row[0..2].as_ref().try_into().unwrap());
         let c = u16::from_le_bytes(previous_row[4..6].as_ref().try_into().unwrap());
 
+
         current_row[0..2].clone_from_slice(pattern(a, b, c).to_le_bytes().as_slice());
+        println!("CURRENT_W: {:?}", current_row);
         current_row[2..].clone_from_slice(&previous_row[2..]);
+        println!("CURRENT_R: {:?}", current_row);
+
     }
 }
 
