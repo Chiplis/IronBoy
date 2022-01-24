@@ -1,0 +1,48 @@
+; this file was created with wlalink by ville helin <ville.helin@iki.fi>.
+; wla symbolic information for "/home/runner/work/mooneye-test-suite/mooneye-test-suite/build/acceptance/halt_ime0_ei.gb".
+
+[labels]
+01:48b9 clear_vram
+01:4884 disable_lcd_safe
+01:488a disable_lcd_safe@wait_ly_0
+01:48c3 memcpy
+01:48cc memset
+01:48dc print_inline_string
+01:48a2 print_load_font
+01:48ae print_newline
+01:48d5 print_string
+01:47f0 quit
+01:4805 quit@cb_return
+01:480a quit@wait_ly_1
+01:4810 quit@wait_ly_2
+01:4816 quit@wait_ly_3
+01:481c quit@wait_ly_4
+01:4826 quit@success
+01:484d quit@failure
+01:486c quit@halt
+01:486d quit@halt_execution_0
+01:4870 reset_screen
+01:4893 serial_send_byte
+01:4000 font
+00:0150 main
+00:0151 main@wait_ly_5
+00:0161 result_ime0
+00:0168 result_ime0@quit_inline_1
+00:0177 result_ime1
+00:017e result_ime1@quit_inline_2
+
+[definitions]
+0000000a _sizeof_clear_vram
+0000000f _sizeof_disable_lcd_safe
+00000009 _sizeof_memcpy
+00000009 _sizeof_memset
+00000006 _sizeof_print_inline_string
+0000000c _sizeof_print_load_font
+0000000b _sizeof_print_newline
+00000007 _sizeof_print_string
+00000080 _sizeof_quit
+00000014 _sizeof_reset_screen
+0000000f _sizeof_serial_send_byte
+000007f0 _sizeof_font
+00000011 _sizeof_main
+00000016 _sizeof_result_ime0

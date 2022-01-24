@@ -1,0 +1,96 @@
+; this file was created with wlalink by ville helin <ville.helin@iki.fi>.
+; wla symbolic information for "/home/runner/work/mooneye-test-suite/mooneye-test-suite/build/emulator-only/mbc1/ram_256kb.gb".
+
+[information]
+version 2
+
+[labels]
+01:48c7 clear_vram
+01:4884 disable_lcd_safe
+01:488a disable_lcd_safe@wait_ly_0
+01:48a2 memcmp
+01:48d1 memcpy
+01:48da memset
+01:48ea print_inline_string
+01:48b0 print_load_font
+01:48bc print_newline
+01:48e3 print_string
+01:47f0 quit
+01:4805 quit@cb_return
+01:480a quit@wait_ly_1
+01:4810 quit@wait_ly_2
+01:4816 quit@wait_ly_3
+01:481c quit@wait_ly_4
+01:4826 quit@success
+01:484d quit@failure
+01:486c quit@halt
+01:486d quit@halt_execution_0
+01:4870 reset_screen
+01:4893 serial_send_byte
+01:4000 font
+00:0150 main
+00:015f test_round1
+00:017d test_round2
+00:01e1 test_round3
+00:0241 test_round4
+00:02af test_round5
+00:030b test_round6
+00:033f test_finish
+00:0349 test_finish@quit_inline_1
+00:035a copy_bank_data
+00:0379 check_bank_data
+00:0399 all_ff
+00:03a9 all_00
+00:1000 bank_data
+00:1040 clear_ram
+00:1062 fail_round1
+00:106c fail_round1@quit_inline_2
+00:1083 fail_round2
+00:108d fail_round2@quit_inline_3
+00:10a4 fail_round3
+00:10ae fail_round3@quit_inline_4
+00:10c5 fail_round4
+00:10cf fail_round4@quit_inline_5
+00:10e6 fail_round5
+00:10f0 fail_round5@quit_inline_6
+00:1107 fail_round6
+00:1111 fail_round6@quit_inline_7
+00:ff80 memcmp_hram
+00:ff80 RAM_USAGE_SLOT_4_BANK_0_START
+00:ff9f RAM_USAGE_SLOT_4_BANK_0_END
+
+[definitions]
+0000000a _sizeof_clear_vram
+0000000f _sizeof_disable_lcd_safe
+0000000e _sizeof_memcmp
+00000009 _sizeof_memcpy
+00000009 _sizeof_memset
+00000006 _sizeof_print_inline_string
+0000000c _sizeof_print_load_font
+0000000b _sizeof_print_newline
+00000007 _sizeof_print_string
+00000080 _sizeof_quit
+00000014 _sizeof_reset_screen
+0000000f _sizeof_serial_send_byte
+000007f0 _sizeof_font
+00000020 _sizeof_memcmp_hram
+0000001f _sizeof_RAM_USAGE_SLOT_4_BANK_0_START
+0000000f _sizeof_main
+0000001e _sizeof_test_round1
+00000064 _sizeof_test_round2
+00000060 _sizeof_test_round3
+0000006e _sizeof_test_round4
+0000005c _sizeof_test_round5
+00000034 _sizeof_test_round6
+0000001b _sizeof_test_finish
+0000001f _sizeof_copy_bank_data
+00000020 _sizeof_check_bank_data
+00000010 _sizeof_all_ff
+00000c57 _sizeof_all_00
+00000040 _sizeof_bank_data
+00000022 _sizeof_clear_ram
+00000021 _sizeof_fail_round1
+00000021 _sizeof_fail_round2
+00000021 _sizeof_fail_round3
+00000021 _sizeof_fail_round4
+00000021 _sizeof_fail_round5
