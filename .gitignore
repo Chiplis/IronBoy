@@ -1,7 +1,5 @@
 /target
-/test_rom/*
 /.idea
-*.gb
 *.iml
 *.swp
 *.out
