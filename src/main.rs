@@ -126,7 +126,7 @@ mod tests {
                 let mem = MemoryMap::new(&rom_vec, &rom);
                 let mut gameboy = Gameboy::new(mem);
                 println!("Beginning test loop");
-                let mut tests_counter: HashMap<String, u8> = HashMap::new();
+                let mut tests_counter = 0;
                 let r = rom.clone();
                 let (tx, rx) = std::sync::mpsc::channel();
 
@@ -144,14 +144,8 @@ mod tests {
                 });
                 'inner: loop {
                     for rom_tested in rx.try_recv() {
-                        if tests_counter.contains_key(&rom_tested) {
-                            let counter = tests_counter.get(&*rom_tested).unwrap() + 1;
-                            tests_counter.insert(rom_tested.clone(), counter);
-                        } else {
-                            tests_counter.insert(rom_tested.clone(), 0);
-                        }
-
-                        if tests_counter.get(&rom_tested).unwrap() >= &(TEST_DURATION - 1) && *rom_tested == rom {
+                        tests_counter += 1;
+                        if tests_counter >= TEST_DURATION - 1 {
                             break 'inner;
                         }
 
