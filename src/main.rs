@@ -57,11 +57,15 @@ fn run_frame(gameboy: &mut Gameboy) {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{read, read_dir};
+    use std::fs::{DirEntry, read, read_dir, ReadDir};
     use std::{env, io};
     use std::collections::HashMap;
+    use std::io::Error;
+    use std::iter::FromIterator;
     use std::path::Path;
+    use std::sync::mpsc::channel;
     use std::thread;
+    use std::thread::sleep;
     use std::time::{Duration};
     use image::{RgbaImage};
     use image::io::Reader;
@@ -70,100 +74,137 @@ mod tests {
 
     #[test]
     fn test_roms() -> Result<(), io::Error> {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (test_status_tx, test_status_rv) = channel();
         let args: Vec<String> = env::args().collect();
-        const TEST_DURATION: u8 = 16;
+
         let skip_known = args.contains(&"skip-known".to_owned());
         let skip_same = args.contains(&"skip-same".to_owned());
 
-        for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))? {
-            let rom = String::from(entry.as_ref().unwrap().path().to_str().unwrap()).replace("\\", "/");
-            if !rom.ends_with(".gb") { continue; }
+        let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
+        let all_tests: Vec<DirEntry> = all_tests.filter(|entry| {
+            {
+                match entry {
+                    Err(_) => panic!("Error while parsing test file"),
+                    Ok(e) => {
+                        let rom = String::from(entry.as_ref().unwrap().path().to_str().unwrap()).replace("\\", "/");
+                        let latest_img_path = rom.clone()
+                            .replace("test_rom", "test_latest")
+                            .replace("\\", "/") + ".png";
 
-            let latest_img_path = rom.clone()
-                .replace("test_rom", "test_latest")
-                .replace("\\", "/") + ".png";
-
-            println!("Testing: {}", rom);
-
-            let latest_image = Path::new(&latest_img_path);
-            if skip_known && latest_image.exists() {
-                println!("Skipping already tested ROM: {}", rom);
-                continue;
-            }
-
-            let rom_vec = read(&rom).unwrap();
-            if rom_vec.len() > 32768 {
-                println!("Still need to implement MBC for larger ROM's: {}", rom.clone());
-                continue;
-            }
-            let mem = MemoryMap::new(&rom_vec, &rom);
-            let mut gameboy = Gameboy::new(mem);
-            let mut tests_counter: HashMap<String, u8> = HashMap::new();
-            let mut spawn = true;
-            'inner: loop {
-                if spawn {
-                    let tx_clone = tx.clone();
-                    let r = rom.clone();
-                    thread::spawn(move || {
-                        let mut i = 0;
-                        while i != TEST_DURATION {
-                            thread::sleep(Duration::from_secs(1));
-                            tx_clone.send(r.clone()).unwrap();
-                            i += 1;
+                        let latest_image = Path::new(&latest_img_path);
+                        if skip_known && latest_image.exists() {
+                            println!("Skipping already tested ROM: {}", rom);
+                            return false;
                         }
-                    });
-                    spawn = false;
-                }
+                        if !rom.ends_with(".gb") {
+                            println!("Skipping non ROM file: {rom}");
+                            return false;
+                        }
+                        let rom_vec = read(&rom).unwrap();
+                        if rom_vec.len() > 32768 {
+                            println!("Still need to implement MBC for larger ROM's: {}", rom.clone());
+                            return false;
+                        }
 
-                for rom_tested in rx.try_recv() {
-
-                    if tests_counter.contains_key(&rom_tested) {
-                        let counter = tests_counter.get(&*rom_tested).unwrap() + 1;
-                        tests_counter.insert(rom_tested.clone(), counter);
-                    } else {
-                        tests_counter.insert(rom_tested.clone(), 0);
-                    }
-
-                    if tests_counter.get(&rom_tested).unwrap() >= &(TEST_DURATION - 1) && *rom_tested == rom {
-                        break 'inner;
-                    }
-
-                    let map_pixel = |pixel: &u32| {
-                        let pixels = pixel.to_be_bytes();
-                        let a = pixels[0];
-                        let r = pixels[1];
-                        let g = pixels[2];
-                        let b = pixels[3];
-                        [r, g, b, a]
-                    };
-                    let pixels = gameboy.mem.ppu.pixels.iter().flat_map(map_pixel).collect::<Vec<u8>>();
-
-                    let screenshot_path = rom.split("/").collect::<Vec<&str>>();
-                    let img_name = *screenshot_path.last().unwrap();
-                    let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/") + "/test_output/" + img_name + ".png";
-                    RgbaImage::from_raw(160, 144, pixels)
-                        .unwrap()
-                        .save(Path::new(&screenshot_path))
-                        .unwrap();
-                    let screenshot = Reader::open(screenshot_path.clone()).unwrap().decode().unwrap();
-                    let screenshot = screenshot.as_bytes();
-                    let ok_image = Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
-                    let latest_image = Reader::open(screenshot_path.clone().replace("test_output", "test_latest"));
-                    if ok_image.is_ok() && &ok_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
-                        println!("Ending {} test because result was confirmed as OK", screenshot_path);
-                        break 'inner;
-                    }
-                    if skip_same && latest_image.is_ok() && &latest_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
-                        println!("Ending {} test because result was same as previously saved one", screenshot_path);
-                        break 'inner;
+                        return true;
                     }
                 }
+            }
+        }).map(|entry| entry.unwrap()).collect();
+        let total = all_tests.len();
+        let mut ms = 0;
+        for entry in all_tests {
+            let tx_finish = test_status_tx.clone();
+            ms += 1;
+            thread::spawn(move || {
+                const TEST_DURATION: u8 = 50;
+                let rom = String::from(entry.path().to_str().unwrap()).replace("\\", "/");
 
-                run_frame(&mut gameboy);
+                println!("Sleeping for {}", 100 * ms);
+                sleep(Duration::from_millis(100 * ms as u64));
+                let rom_vec = read(&rom).unwrap();
+                let mem = MemoryMap::new(&rom_vec, &rom);
+                let mut gameboy = Gameboy::new(mem);
+                println!("Beginning test loop");
+                let mut tests_counter: HashMap<String, u8> = HashMap::new();
+                let r = rom.clone();
+                let (tx, rx) = std::sync::mpsc::channel();
+
+                thread::spawn(move || {
+                    let mut i = 0;
+                    while i != TEST_DURATION {
+                        thread::sleep(Duration::from_secs(1));
+                        print!("Sending tx {i} times for {r}");
+                        match tx.send(r.clone()) {
+                            Err(e) => println!("Panicked with {e} while sending."),
+                            _ => (),
+                        };
+                        i += 1;
+                    }
+                });
+                'inner: loop {
+                    for rom_tested in rx.try_recv() {
+                        if tests_counter.contains_key(&rom_tested) {
+                            let counter = tests_counter.get(&*rom_tested).unwrap() + 1;
+                            tests_counter.insert(rom_tested.clone(), counter);
+                        } else {
+                            tests_counter.insert(rom_tested.clone(), 0);
+                        }
+
+                        if tests_counter.get(&rom_tested).unwrap() >= &(TEST_DURATION - 1) && *rom_tested == rom {
+                            break 'inner;
+                        }
+
+                        let map_pixel = |pixel: &u32| {
+                            let pixels = pixel.to_be_bytes();
+                            let a = pixels[0];
+                            let r = pixels[1];
+                            let g = pixels[2];
+                            let b = pixels[3];
+                            [r, g, b, a]
+                        };
+                        let pixels = gameboy.mem.ppu.pixels.iter().flat_map(map_pixel).collect::<Vec<u8>>();
+
+                        let screenshot_path = rom.split("/").collect::<Vec<&str>>();
+                        let img_name = *screenshot_path.last().unwrap();
+                        let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/") + "/test_output/" + img_name + ".png";
+                        RgbaImage::from_raw(160, 144, pixels)
+                            .unwrap()
+                            .save(Path::new(&screenshot_path))
+                            .unwrap();
+                        let screenshot = Reader::open(screenshot_path.clone()).unwrap().decode().unwrap();
+                        let screenshot = screenshot.as_bytes();
+                        let ok_image = Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
+                        let latest_image = Reader::open(screenshot_path.clone().replace("test_output", "test_latest"));
+                        if ok_image.is_ok() && &ok_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
+                            println!("Ending {} test because result was confirmed as OK", screenshot_path);
+                            break 'inner;
+                        }
+                        if skip_same && latest_image.is_ok() && &latest_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
+                            println!("Ending {} test because result was same as previously saved one", screenshot_path);
+                            break 'inner;
+                        }
+                    }
+
+                    run_frame(&mut gameboy);
+                }
+                tx_finish.send(ms).unwrap();
+            });
+        }
+        let mut count = 0;
+        while count != total {
+            match test_status_rv.recv() {
+                Ok(_) => {
+                    println!("Increased counter {count}/{total}");
+                    count += 1
+                }
+                Err(e) => println!("Error receiving: {e}")
+            }
+            if count == total {
+                return Ok(());
             }
         }
-        Ok(())
+        Err(Error::last_os_error())
     }
 
     #[test]
