@@ -1,8 +1,8 @@
+use crate::memory_map::MemoryMap;
+use crate::register::RegisterId::{A, B, C, D, E, H, L};
+use crate::register::WordRegister::StackPointer;
 use std::ops::{Index, IndexMut};
 use WordRegister::{AccFlag, Double, ProgramCounter};
-use crate::register::WordRegister::{StackPointer};
-use crate::register::RegisterId::{A, B, D, H, L, E, C};
-use crate::memory_map::MemoryMap;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegisterId {
@@ -32,24 +32,43 @@ impl Register {
                 ByteRegister { value: 0x00, id: D },
                 ByteRegister { value: 0xD8, id: E },
                 ByteRegister { value: 0x01, id: H },
-                ByteRegister { value: 0x4D, id: L }
+                ByteRegister { value: 0x4D, id: L },
             ],
             pc: ProgramCounter(0x0100),
             sp: StackPointer(0xFFFE),
-            flags: FlagRegister { z: true, n: false, h: true, c: true }
+            flags: FlagRegister {
+                z: true,
+                n: false,
+                h: true,
+                c: true,
+            },
         }
     }
 
-    pub fn af(&self) -> WordRegister { AccFlag(self[A], self.flags) }
-    pub fn bc(&self) -> WordRegister { Double(self[B], self[C]) }
-    pub fn de(&self) -> WordRegister { Double(self[D], self[E]) }
-    pub fn hl(&self) -> WordRegister { Double(self[H], self[L]) }
-
-    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryMap) {
-        self.set_word_register_with_callback(value, reg, |_mem|(), mem);
+    pub fn af(&self) -> WordRegister {
+        AccFlag(self[A], self.flags)
+    }
+    pub fn bc(&self) -> WordRegister {
+        Double(self[B], self[C])
+    }
+    pub fn de(&self) -> WordRegister {
+        Double(self[D], self[E])
+    }
+    pub fn hl(&self) -> WordRegister {
+        Double(self[H], self[L])
     }
 
-    pub fn set_word_register_with_callback(&mut self, value: u16, reg: WordRegister, callback: fn(&mut MemoryMap), mem: &mut MemoryMap) {
+    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryMap) {
+        self.set_word_register_with_callback(value, reg, |_mem| (), mem);
+    }
+
+    pub fn set_word_register_with_callback(
+        &mut self,
+        value: u16,
+        reg: WordRegister,
+        callback: fn(&mut MemoryMap),
+        mem: &mut MemoryMap,
+    ) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
             AccFlag(..) => {
@@ -78,7 +97,7 @@ impl Register {
             ConditionCode::Z => self.flags.z,
             ConditionCode::NZ => !self.flags.z,
             ConditionCode::C => self.flags.c,
-            ConditionCode::NC => !self.flags.c
+            ConditionCode::NC => !self.flags.c,
         }
     }
 
@@ -100,13 +119,16 @@ impl Register {
 
 impl Index<RegisterId> for Register {
     type Output = ByteRegister;
-    fn index(&self, index: RegisterId) -> &Self::Output { &self.registers[index as usize] }
+    fn index(&self, index: RegisterId) -> &Self::Output {
+        &self.registers[index as usize]
+    }
 }
 
 impl IndexMut<RegisterId> for Register {
-    fn index_mut(&mut self, index: RegisterId) -> &mut Self::Output { &mut self.registers[index as usize] }
+    fn index_mut(&mut self, index: RegisterId) -> &mut Self::Output {
+        &mut self.registers[index as usize]
+    }
 }
-
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ByteRegister {
@@ -115,7 +137,9 @@ pub struct ByteRegister {
 }
 
 impl Into<u8> for ByteRegister {
-    fn into(self) -> u8 { self.value }
+    fn into(self) -> u8 {
+        self.value
+    }
 }
 
 impl Into<usize> for ByteRegister {
@@ -155,14 +179,14 @@ pub enum WordRegister {
     Double(ByteRegister, ByteRegister),
     AccFlag(ByteRegister, FlagRegister),
     StackPointer(u16),
-    ProgramCounter(u16)
+    ProgramCounter(u16),
 }
-
 
 impl Into<usize> for WordRegister {
-    fn into(self) -> usize { self.value() as usize }
+    fn into(self) -> usize {
+        self.value() as usize
+    }
 }
-
 
 impl WordRegister {
     pub fn value(self) -> u16 {
@@ -170,9 +194,12 @@ impl WordRegister {
             Double(h, l) => u16::from_le_bytes([l.value, h.value]),
             AccFlag(a, FlagRegister { z, n, h, c }) => {
                 let bit_flag = |b: bool, v: u32| 2u8.pow(v) as u8 * if b { 1 } else { 0 };
-                u16::from_le_bytes([bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0), a.value])
+                u16::from_le_bytes([
+                    bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0),
+                    a.value,
+                ])
             }
-            StackPointer(n) | ProgramCounter(n) => n
+            StackPointer(n) | ProgramCounter(n) => n,
         }
     }
 }

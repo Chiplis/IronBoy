@@ -3,19 +3,19 @@ use std::{env, thread};
 use gameboy::Gameboy;
 
 use crate::memory_map::MemoryMap;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
-use std::fs::{read};
+use std::fs::read;
 
-mod instruction_fetcher;
+mod gameboy;
 mod instruction;
-mod register;
+mod instruction_fetcher;
+mod interrupt;
+mod joypad;
 mod memory_map;
 mod ppu;
-mod interrupt;
+mod register;
 mod timer;
-mod gameboy;
-mod joypad;
 
 const FREQUENCY: u32 = 4194304;
 
@@ -52,25 +52,26 @@ fn run_frame(gameboy: &mut Gameboy) {
     }
     let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
     let sleep_time = cycles_time - start.elapsed().as_secs_f64();
-    if sleep_time > 0.0 { thread::sleep(Duration::from_secs_f64(sleep_time)); }
+    if sleep_time > 0.0 {
+        thread::sleep(Duration::from_secs_f64(sleep_time));
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{DirEntry, read, read_dir, ReadDir};
+    use std::fs::{read, read_dir, DirEntry};
     use std::{env, io};
-    use std::collections::HashMap;
+
     use std::io::Error;
-    use std::iter::FromIterator;
+
+    use crate::{run_frame, Gameboy, MemoryMap};
+    use image::io::Reader;
+    use image::RgbaImage;
     use std::path::Path;
     use std::sync::mpsc::channel;
     use std::thread;
     use std::thread::sleep;
-    use std::time::{Duration};
-    use image::{RgbaImage};
-    use image::io::Reader;
-    use crate::{Gameboy, MemoryMap, run_frame};
-
+    use std::time::Duration;
 
     #[test]
     fn test_roms() -> Result<(), io::Error> {
@@ -81,36 +82,41 @@ mod tests {
         let skip_same = args.contains(&"skip-same".to_owned());
 
         let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
-        let all_tests: Vec<DirEntry> = all_tests.filter(|entry| {
-            {
-                match entry {
-                    Err(_) => panic!("Error while parsing test file"),
-                    Ok(e) => {
-                        let rom = String::from(entry.as_ref().unwrap().path().to_str().unwrap()).replace("\\", "/");
-                        let latest_img_path = rom.clone()
-                            .replace("test_rom", "test_latest")
-                            .replace("\\", "/") + ".png";
+        let all_tests: Vec<DirEntry> = all_tests
+            .filter(|entry| match entry {
+                Err(_) => panic!("Error while parsing test file"),
+                Ok(_e) => {
+                    let rom = String::from(entry.as_ref().unwrap().path().to_str().unwrap())
+                        .replace("\\", "/");
+                    let latest_img_path = rom
+                        .clone()
+                        .replace("test_rom", "test_latest")
+                        .replace("\\", "/")
+                        + ".png";
 
-                        let latest_image = Path::new(&latest_img_path);
-                        if skip_known && latest_image.exists() {
-                            println!("Skipping already tested ROM: {}", rom);
-                            return false;
-                        }
-                        if !rom.ends_with(".gb") {
-                            println!("Skipping non ROM file: {rom}");
-                            return false;
-                        }
-                        let rom_vec = read(&rom).unwrap();
-                        if rom_vec.len() > 32768 {
-                            println!("Still need to implement MBC for larger ROM's: {}", rom.clone());
-                            return false;
-                        }
-
-                        return true;
+                    let latest_image = Path::new(&latest_img_path);
+                    if skip_known && latest_image.exists() {
+                        println!("Skipping already tested ROM: {}", rom);
+                        return false;
                     }
+                    if !rom.ends_with(".gb") {
+                        println!("Skipping non ROM file: {rom}");
+                        return false;
+                    }
+                    let rom_vec = read(&rom).unwrap();
+                    if rom_vec.len() > 32768 {
+                        println!(
+                            "Still need to implement MBC for larger ROM's: {}",
+                            rom.clone()
+                        );
+                        return false;
+                    }
+
+                    return true;
                 }
-            }
-        }).map(|entry| entry.unwrap()).collect();
+            })
+            .map(|entry| entry.unwrap())
+            .collect();
         let total = all_tests.len();
         let mut idx = 0;
         for entry in all_tests {
@@ -143,7 +149,7 @@ mod tests {
                     }
                 });
                 'inner: loop {
-                    for rom_tested in rx.try_recv() {
+                    for _rom_tested in rx.try_recv() {
                         tests_counter += 1;
                         if tests_counter >= TEST_DURATION - 1 {
                             break 'inner;
@@ -157,25 +163,54 @@ mod tests {
                             let b = pixels[3];
                             [r, g, b, a]
                         };
-                        let pixels = gameboy.mem.ppu.pixels.iter().flat_map(map_pixel).collect::<Vec<u8>>();
+                        let pixels = gameboy
+                            .mem
+                            .ppu
+                            .pixels
+                            .iter()
+                            .flat_map(map_pixel)
+                            .collect::<Vec<u8>>();
 
                         let screenshot_path = rom.split("/").collect::<Vec<&str>>();
                         let img_name = *screenshot_path.last().unwrap();
-                        let screenshot_path = screenshot_path[0..screenshot_path.len() - 2].join("/") + "/test_output/" + img_name + ".png";
+                        let screenshot_path = screenshot_path[0..screenshot_path.len() - 2]
+                            .join("/")
+                            + "/test_output/"
+                            + img_name
+                            + ".png";
                         RgbaImage::from_raw(160, 144, pixels)
                             .unwrap()
                             .save(Path::new(&screenshot_path))
                             .unwrap();
-                        let screenshot = Reader::open(screenshot_path.clone()).unwrap().decode().unwrap();
+                        let screenshot = Reader::open(screenshot_path.clone())
+                            .unwrap()
+                            .decode()
+                            .unwrap();
                         let screenshot = screenshot.as_bytes();
-                        let ok_image = Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
-                        let latest_image = Reader::open(screenshot_path.clone().replace("test_output", "test_latest"));
-                        if ok_image.is_ok() && &ok_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
-                            println!("Ending {} test because result was confirmed as OK", screenshot_path);
+                        let ok_image =
+                            Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
+                        let latest_image = Reader::open(
+                            screenshot_path
+                                .clone()
+                                .replace("test_output", "test_latest"),
+                        );
+                        if ok_image.is_ok()
+                            && &ok_image.unwrap().decode().unwrap().as_bytes() == &screenshot
+                        {
+                            println!(
+                                "Ending {} test because result was confirmed as OK",
+                                screenshot_path
+                            );
                             break 'inner;
                         }
-                        if skip_same && latest_image.is_ok() && &latest_image.unwrap().decode().unwrap().as_bytes() == &screenshot {
-                            println!("Ending {} test because result was same as previously saved one", screenshot_path);
+                        if skip_same
+                            && latest_image.is_ok()
+                            && &latest_image.unwrap().decode().unwrap().as_bytes() == &screenshot
+                        {
+                            println!(
+                                "Ending {} test because result was same as previously saved one",
+                                screenshot_path
+                            );
                             break 'inner;
                         }
                     }
@@ -192,7 +227,7 @@ mod tests {
                     println!("Increased counter {count}/{total}");
                     count += 1
                 }
-                Err(e) => println!("Error receiving: {e}")
+                Err(e) => println!("Error receiving: {e}"),
             }
             if count == total {
                 return Ok(());
@@ -211,13 +246,20 @@ mod tests {
                 let path = entry.map(|e| e.path()).unwrap();
                 path.to_str().unwrap().to_owned()
             };
-            let path = p.split("\\").flat_map(|p| p.split("/")).collect::<Vec<&str>>();
+            let path = p
+                .split("\\")
+                .flat_map(|p| p.split("/"))
+                .collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
             let ok_image = Reader::open(directory.clone() + "/test_ok/" + img_name);
             let latest_image = Reader::open(directory + "/test_latest/" + img_name);
-            if ok_image.is_err() { continue; }
-            if ok_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
+            if ok_image.is_err() {
+                continue;
+            }
+            if ok_image.unwrap().decode().unwrap().as_bytes()
+                != latest_image.unwrap().decode().unwrap().as_bytes()
+            {
                 regressions.push(img_name.replace(".png", ""));
             }
         }
@@ -248,7 +290,9 @@ mod tests {
 
             if output_image.is_err() {
                 differences.push("MISSING: ".to_owned() + &*img_name.replace(".png", ""));
-            } else if output_image.unwrap().decode().unwrap().as_bytes() != latest_image.unwrap().decode().unwrap().as_bytes() {
+            } else if output_image.unwrap().decode().unwrap().as_bytes()
+                != latest_image.unwrap().decode().unwrap().as_bytes()
+            {
                 differences.push(img_name.replace(".png", ""));
             }
         }

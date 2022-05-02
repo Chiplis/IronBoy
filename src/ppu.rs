@@ -1,17 +1,17 @@
-use std::cmp::{max, min};
-use std::convert::TryInto;
-use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
-use crate::ppu::StatInterrupt::{Low, ModeInt, LycInt};
-use crate::ppu::PpuState::{LcdOff, ProcessingMode, ModeChange};
-use crate::ppu::TileMapArea::{H9C00, H9800};
-use crate::ppu::ObjSize::{StackedTile, SingleTile};
-use crate::ppu::AddressingMode::{H8800, H8000};
-use crate::ppu::RenderCycle::{Normal, StatTrigger};
-use minifb::{WindowOptions, Window, ScaleMode, Scale};
-use DmaState::{Starting, Executing, Finished};
-use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::memory_map::OamCorruptionCause;
+use crate::ppu::AddressingMode::{H8000, H8800};
 use crate::ppu::DmaState::Inactive;
+use crate::ppu::ObjSize::{SingleTile, StackedTile};
+use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
+use crate::ppu::PpuState::{LcdOff, ModeChange, ProcessingMode};
+use crate::ppu::RenderCycle::{Normal, StatTrigger};
+use crate::ppu::StatInterrupt::{Low, LycInt, ModeInt};
+use crate::ppu::TileMapArea::{H9800, H9C00};
+use minifb::{Scale, ScaleMode, Window, WindowOptions};
+use std::cmp::min;
+use std::convert::TryInto;
+use DmaState::{Executing, Finished, Starting};
+use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum DmaState {
@@ -90,7 +90,9 @@ impl PPU {
                 scale_mode: ScaleMode::Stretch,
                 topmost: false,
                 none: false,
-            }).unwrap();
+            },
+        )
+        .unwrap();
         PPU {
             mode: HBlank,
             tile_block_a: [0; 2048],
@@ -137,38 +139,58 @@ impl PPU {
         }
 
         self.ticks -= match self.mode {
-            OamSearch => if self.ticks < 80 {
-                self.handle_oam_corruption(oam_corruption);
-                0
-            } else {
-                self.mode = PixelTransfer;
-                80
-            }
-
-            PixelTransfer => if self.ticks < 172 { 0 } else {
-                self.mode = HBlank;
-                172
-            }
-
-            HBlank => if self.ticks < 204 { 0 } else {
-                *self.ly_mut() += 1;
-                self.last_lyc_check = self.lyc_check();
-                self.mode = if self.ly() == 144 {
-                    self.window.update_with_buffer(&self.pixels, 160, 144).unwrap();
-                    VBlank
+            OamSearch => {
+                if self.ticks < 80 {
+                    self.handle_oam_corruption(oam_corruption);
+                    0
                 } else {
-                    self.draw_scanline();
-                    OamSearch
-                };
-                204
+                    self.mode = PixelTransfer;
+                    80
+                }
             }
 
-            VBlank => if self.ticks < 456 { 0 } else {
-                *self.ly_mut() += 1;
-                self.last_lyc_check = self.lyc_check();
-                *self.ly_mut() %= 154;
-                self.mode = if *self.ly_mut() == 0 { OamSearch } else { VBlank };
-                456
+            PixelTransfer => {
+                if self.ticks < 172 {
+                    0
+                } else {
+                    self.mode = HBlank;
+                    172
+                }
+            }
+
+            HBlank => {
+                if self.ticks < 204 {
+                    0
+                } else {
+                    *self.ly_mut() += 1;
+                    self.last_lyc_check = self.lyc_check();
+                    self.mode = if self.ly() == 144 {
+                        self.window
+                            .update_with_buffer(&self.pixels, 160, 144)
+                            .unwrap();
+                        VBlank
+                    } else {
+                        self.draw_scanline();
+                        OamSearch
+                    };
+                    204
+                }
+            }
+
+            VBlank => {
+                if self.ticks < 456 {
+                    0
+                } else {
+                    *self.ly_mut() += 1;
+                    self.last_lyc_check = self.lyc_check();
+                    *self.ly_mut() %= 154;
+                    self.mode = if *self.ly_mut() == 0 {
+                        OamSearch
+                    } else {
+                        VBlank
+                    };
+                    456
+                }
             }
         };
         if self.state == PpuState::LcdOff {
@@ -176,7 +198,11 @@ impl PPU {
             self.last_lyc_check = self.lyc_check();
             self.ticks += 2;
         } else {
-            self.state = if self.old_mode == self.mode { ProcessingMode(self.mode) } else { ModeChange(self.old_mode, self.mode) };
+            self.state = if self.old_mode == self.mode {
+                ProcessingMode(self.mode)
+            } else {
+                ModeChange(self.old_mode, self.mode)
+            };
         }
         let ret = self.cycle_result(self.old_mode);
         //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
@@ -188,20 +214,45 @@ impl PPU {
         let trigger_stat_interrupt = match (self.stat_line, new_interrupts) {
             (Low, [.., Some(ModeInt(m))]) if m == self.mode && old_mode != m => true,
             (Low, [.., Some(LycInt)]) => true,
-            _ => false
+            _ => false,
         };
-        self.stat_line = *new_interrupts.iter().find(|i| i.is_some()).map(|i| i.as_ref()).flatten().unwrap_or(&Low);
+        self.stat_line = *new_interrupts
+            .iter()
+            .find(|i| i.is_some())
+            .map(|i| i.as_ref())
+            .flatten()
+            .unwrap_or(&Low);
         self.force_irq = false;
-        if trigger_stat_interrupt { StatTrigger(self.state) } else { Normal(self.state) }
+        if trigger_stat_interrupt {
+            StatTrigger(self.state)
+        } else {
+            Normal(self.state)
+        }
     }
 
     fn stat_interrupts(&mut self) -> [Option<StatInterrupt>; 4] {
         let stat = self.stat();
         [
-            if stat & 0x08 != 0 || self.force_irq { Some(ModeInt(OamSearch)) } else { None },
-            if stat & 0x10 != 0 || self.force_irq { Some(ModeInt(VBlank)) } else { None },
-            if stat & 0x20 != 0 || self.force_irq { Some(ModeInt(HBlank)) } else { None },
-            if self.lyc_check() && (stat & 0x40 != 0 || self.force_irq) { Some(LycInt) } else { None }
+            if stat & 0x08 != 0 || self.force_irq {
+                Some(ModeInt(OamSearch))
+            } else {
+                None
+            },
+            if stat & 0x10 != 0 || self.force_irq {
+                Some(ModeInt(VBlank))
+            } else {
+                None
+            },
+            if stat & 0x20 != 0 || self.force_irq {
+                Some(ModeInt(HBlank))
+            } else {
+                None
+            },
+            if self.lyc_check() && (stat & 0x40 != 0 || self.force_irq) {
+                Some(LycInt)
+            } else {
+                None
+            },
         ]
     }
 
@@ -226,7 +277,7 @@ impl PPU {
             (0xFF40, ..) => Some(self.lcdc.get()),
             (0xFF41, ..) => Some(self.stat()),
             (0xFF42..=0xFF4B, ..) => Some(self.registers[address - 0xFF41]),
-            _ => None
+            _ => None,
         }
     }
 
@@ -239,12 +290,12 @@ impl PPU {
             (0x9800..=0x9BFF, ..) => self.tile_map_a[address - 0x9800] = value,
             (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
 
-            (0xFE00..=0xFE9F, HBlank | VBlank, Inactive | Starting) => self.oam[address - 0xFE00] = value,
+            (0xFE00..=0xFE9F, HBlank | VBlank, Inactive | Starting) => {
+                self.oam[address - 0xFE00] = value
+            }
             (0xFE00..=0xFE9F, ..) => self.handle_oam_write_corruption(),
 
-            (0xFF40, ..) => {
-                self.lcdc.set(value)
-            }
+            (0xFF40, ..) => self.lcdc.set(value),
             (0xFF41, ..) => {
                 *self.stat_mut() = value;
                 self.force_irq = true
@@ -258,9 +309,11 @@ impl PPU {
                 self.registers[address - 0xFF41] = value;
             }
 
-            (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, ..) => self.registers[address - 0xFF41] = value,
+            (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, ..) => {
+                self.registers[address - 0xFF41] = value
+            }
 
-            _ => return false
+            _ => return false,
         }
         true
     }
@@ -273,7 +326,11 @@ impl PPU {
             }
             Executing => {
                 self.dma_progress += 1;
-                if self.dma_progress == self.oam.len() { Finished } else { Executing }
+                if self.dma_progress == self.oam.len() {
+                    Finished
+                } else {
+                    Executing
+                }
             }
             Starting => Executing,
             Finished => Inactive,
@@ -281,51 +338,83 @@ impl PPU {
     }
 
     fn stat(&self) -> u8 {
-        let stat = self.registers[0] & 0xF8 | match (self.mode, self.ticks) {
-            (OamSearch, 0..=6) => 0,
-            (VBlank, 0..=4) if self.ly() == 144 => 0,
-            (HBlank, _) => 0,
-            (VBlank, _) => 1,
-            (OamSearch, _) => 2,
-            (PixelTransfer, _) => 3
-        } | if self.lyc_check() { 0x04 } else { 0x0 } | 0x80;
+        let stat = self.registers[0] & 0xF8
+            | match (self.mode, self.ticks) {
+                (OamSearch, 0..=6) => 0,
+                (VBlank, 0..=4) if self.ly() == 144 => 0,
+                (HBlank, _) => 0,
+                (VBlank, _) => 1,
+                (OamSearch, _) => 2,
+                (PixelTransfer, _) => 3,
+            }
+            | if self.lyc_check() { 0x04 } else { 0x0 }
+            | 0x80;
         //println!("LY: {} | LYC: {}, State: {:?} | STAT: {}", self.ly(), self.lyc(), self.state, stat);
         stat
     }
 
-    fn stat_mut(&mut self) -> &mut u8 { &mut self.registers[0] }
+    fn stat_mut(&mut self) -> &mut u8 {
+        &mut self.registers[0]
+    }
 
-    fn scy(&self) -> &u8 { &self.registers[1] }
+    fn scy(&self) -> &u8 {
+        &self.registers[1]
+    }
 
-    fn scx(&self) -> &u8 { &self.registers[2] }
+    fn scx(&self) -> &u8 {
+        &self.registers[2]
+    }
 
     pub fn ly(&self) -> u8 {
         let ly = self.registers[3];
-        if ly != 153 { ly } else if self.ticks <= 4 { ly } else { 0 }
+        if ly != 153 {
+            ly
+        } else if self.ticks <= 4 {
+            ly
+        } else {
+            0
+        }
     }
 
-    pub fn ly_mut(&mut self) -> &mut u8 { &mut self.registers[3] }
+    pub fn ly_mut(&mut self) -> &mut u8 {
+        &mut self.registers[3]
+    }
 
-    fn lyc(&self) -> &u8 { &self.registers[4] }
+    fn lyc(&self) -> &u8 {
+        &self.registers[4]
+    }
 
     fn lyc_check(&self) -> bool {
-        if self.state == LcdOff { return self.last_lyc_check; }
-        self.ticks > 4 && (match (self.mode, self.ticks) {
-            (VBlank, 5..=8) => 153,
-            (VBlank, 9..=12) => !self.lyc(),
-            (..) => self.ly()
-        }) == *self.lyc()
+        if self.state == LcdOff {
+            return self.last_lyc_check;
+        }
+        self.ticks > 4
+            && (match (self.mode, self.ticks) {
+                (VBlank, 5..=8) => 153,
+                (VBlank, 9..=12) => !self.lyc(),
+                (..) => self.ly(),
+            }) == *self.lyc()
     }
 
-    fn bgp(&self) -> &u8 { &self.registers[6] }
+    fn bgp(&self) -> &u8 {
+        &self.registers[6]
+    }
 
-    fn obp0(&self) -> &u8 { &self.registers[7] }
+    fn obp0(&self) -> &u8 {
+        &self.registers[7]
+    }
 
-    fn obp1(&self) -> &u8 { &self.registers[8] }
+    fn obp1(&self) -> &u8 {
+        &self.registers[8]
+    }
 
-    fn wy(&self) -> &u8 { &self.registers[9] }
+    fn wy(&self) -> &u8 {
+        &self.registers[9]
+    }
 
-    fn wx(&self) -> &u8 { &self.registers[10] }
+    fn wx(&self) -> &u8 {
+        &self.registers[10]
+    }
 
     fn render_background_window(&mut self) {
         let scx = *self.scx();
@@ -334,17 +423,28 @@ impl PPU {
         let wy = *self.wy();
         let ly = self.ly();
 
-
         let use_window = wy <= ly && self.lcdc.window_enabled();
 
-        let background_area = if use_window { self.lcdc.window_tile_map_area() } else { self.lcdc.background_tile_map_area() } as usize;
+        let background_area = if use_window {
+            self.lcdc.window_tile_map_area()
+        } else {
+            self.lcdc.background_tile_map_area()
+        } as usize;
 
-        let vertical_position = if use_window { ly.wrapping_sub(wy) } else { scy.wrapping_add(ly) } as usize;
+        let vertical_position = if use_window {
+            ly.wrapping_sub(wy)
+        } else {
+            scy.wrapping_add(ly)
+        } as usize;
 
         let tile_row = (vertical_position / 8) as usize * 32;
 
         for pixel in 0..160 {
-            let horizontal_position = if use_window && pixel >= wx { pixel.wrapping_sub(wx) } else { pixel.wrapping_add(scx) };
+            let horizontal_position = if use_window && pixel >= wx {
+                pixel.wrapping_sub(wx)
+            } else {
+                pixel.wrapping_add(scx)
+            };
 
             let tile_col = (horizontal_position / 8) as usize;
 
@@ -377,26 +477,35 @@ impl PPU {
     }
 
     fn draw_scanline(&mut self) {
-        if self.lcdc.background_window_enabled() { self.render_background_window() }
-        if self.lcdc.sprite_enabled() { self.render_sprites() }
+        if self.lcdc.background_window_enabled() {
+            self.render_background_window()
+        }
+        if self.lcdc.sprite_enabled() {
+            self.render_sprites()
+        }
     }
 
     fn render_sprites(&mut self) {
         let ly = self.ly();
         let tile_length = self.lcdc.object_size() as u8;
 
-        if ly > 143 { return; }
+        if ly > 143 {
+            return;
+        }
 
         for sprite_index in (0..160).step_by(4) {
             let sprite = Sprite::new(self, sprite_index);
 
-            if ly >= sprite.vertical_position && ly < (sprite.vertical_position.wrapping_add(tile_length)) {
+            if ly >= sprite.vertical_position
+                && ly < (sprite.vertical_position.wrapping_add(tile_length))
+            {
                 let line: i32 = ly as i32 - sprite.vertical_position as i32;
                 let line = (if sprite.attributes.flipped_vertically {
                     (line - tile_length as i32) * -1
                 } else {
                     line
-                }) as u16 * 2;
+                }) as u16
+                    * 2;
 
                 let data_address = 0x8000 + ((sprite.location * 16) + line) as usize;
 
@@ -411,9 +520,12 @@ impl PPU {
                         color_bit
                     };
 
-                    let color_num = (((pixel_data_right >> color_bit) & 0b1) << 1) | ((pixel_data_left >> color_bit) & 0b1);
+                    let color_num = (((pixel_data_right >> color_bit) & 0b1) << 1)
+                        | ((pixel_data_left >> color_bit) & 0b1);
 
-                    if color_num == 0 { continue; }
+                    if color_num == 0 {
+                        continue;
+                    }
 
                     let color = self.get_color(color_num, sprite.attributes.palette);
 
@@ -421,9 +533,16 @@ impl PPU {
 
                     let pixel = sprite.horizontal_position.wrapping_add(x_pix);
 
-                    if pixel > 159 { continue; }
+                    if pixel > 159 {
+                        continue;
+                    }
 
-                    self.set_sprite_pixel(pixel as u32, ly as u32, sprite.attributes.obj_to_background_priority, color)
+                    self.set_sprite_pixel(
+                        pixel as u32,
+                        ly as u32,
+                        sprite.attributes.obj_to_background_priority,
+                        color,
+                    )
                 }
             }
         }
@@ -455,7 +574,8 @@ impl PPU {
         let [a, r, g, b] = self.pixels[offset].to_be_bytes();
         let pixel = Color { a, r, g, b };
 
-        if pixel != WHITE && pri {} else {
+        if pixel != WHITE && pri {
+        } else {
             self.set_pixel(x, y, color)
         }
     }
@@ -471,7 +591,7 @@ impl PPU {
             Some(IncDec | Write) => self.handle_oam_write_corruption(),
             Some(Read) => self.handle_oam_read_corruption(),
             Some(ReadWrite) => self.handle_oam_read_write_corruption(),
-            None => ()
+            None => (),
         }
     }
     fn handle_oam_read_write_corruption(&mut self) {
@@ -506,7 +626,6 @@ impl PPU {
         current_row[0..2].clone_from_slice(pattern.as_slice());
         current_row[2..].clone_from_slice(&previous_row[2..]);
         //println!("CURRENT_R: {:?}", current_row);
-
     }
 }
 
@@ -567,19 +686,56 @@ enum ObjSize {
 }
 
 impl LcdControl {
-    fn new(register: u8) -> Self { Self { reg: register } }
-    fn enabled(&self) -> bool { self.reg & 0x80 != 0 }
-    fn window_tile_map_area(&self) -> TileMapArea { if self.reg & 0x40 != 0 { H9C00 } else { H9800 } }
-    fn window_enabled(&self) -> bool { self.reg & 0x20 != 0 && self.reg & 0x01 != 0 }
-    fn addressing_mode(&self) -> AddressingMode { if self.reg & 0x10 != 0 { H8000 } else { H8800 } }
-    fn background_tile_map_area(&self) -> TileMapArea { if self.reg & 0x08 != 0 { H9C00 } else { H9800 } }
-    fn object_size(&self) -> ObjSize { if self.reg & 0x04 != 0 { StackedTile } else { SingleTile } }
-    fn sprite_enabled(&self) -> bool { self.reg & 0x02 != 0 }
-    fn background_window_enabled(&self) -> bool { self.reg & 0x01 != 0 }
-    fn get(&self) -> u8 { self.reg }
-    fn set(&mut self, value: u8) { self.reg = value }
+    fn new(register: u8) -> Self {
+        Self { reg: register }
+    }
+    fn enabled(&self) -> bool {
+        self.reg & 0x80 != 0
+    }
+    fn window_tile_map_area(&self) -> TileMapArea {
+        if self.reg & 0x40 != 0 {
+            H9C00
+        } else {
+            H9800
+        }
+    }
+    fn window_enabled(&self) -> bool {
+        self.reg & 0x20 != 0 && self.reg & 0x01 != 0
+    }
+    fn addressing_mode(&self) -> AddressingMode {
+        if self.reg & 0x10 != 0 {
+            H8000
+        } else {
+            H8800
+        }
+    }
+    fn background_tile_map_area(&self) -> TileMapArea {
+        if self.reg & 0x08 != 0 {
+            H9C00
+        } else {
+            H9800
+        }
+    }
+    fn object_size(&self) -> ObjSize {
+        if self.reg & 0x04 != 0 {
+            StackedTile
+        } else {
+            SingleTile
+        }
+    }
+    fn sprite_enabled(&self) -> bool {
+        self.reg & 0x02 != 0
+    }
+    fn background_window_enabled(&self) -> bool {
+        self.reg & 0x01 != 0
+    }
+    fn get(&self) -> u8 {
+        self.reg
+    }
+    fn set(&mut self, value: u8) {
+        self.reg = value
+    }
 }
-
 
 struct Sprite {
     vertical_position: u8,
@@ -612,7 +768,11 @@ impl SpriteAttributes {
             flipped_vertically: attrs & 0x40 != 0,
             flipped_horizontally: attrs & 0x20 != 0,
             obj_to_background_priority: attrs & 0x80 != 0,
-            palette: *if attrs & 0x10 != 0 { ppu.obp1() } else { ppu.obp0() },
+            palette: *if attrs & 0x10 != 0 {
+                ppu.obp1()
+            } else {
+                ppu.obp0()
+            },
         }
     }
 }

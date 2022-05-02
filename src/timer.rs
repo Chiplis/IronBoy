@@ -63,7 +63,7 @@ impl Timer {
             Timer::TIMA => Some(self.tima),
             Timer::TMA => Some(self.tma),
             Timer::TAC => Some(self.tac),
-            _ => None
+            _ => None,
         }
     }
 
@@ -86,15 +86,15 @@ impl Timer {
                     self.tima = value
                 }
             }
-            Timer::TAC => {
-                self.tac = value
-            }
-            _ => return false
+            Timer::TAC => self.tac = value,
+            _ => return false,
         };
         true
     }
 
-    fn timer_enabled(&self) -> bool { self.tac & 0x04 != 0 }
+    fn timer_enabled(&self) -> bool {
+        self.tac & 0x04 != 0
+    }
 
     fn frequency(&self) -> u16 {
         2_u16.pow(match self.tac & 0x03 {
