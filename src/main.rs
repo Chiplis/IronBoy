@@ -112,16 +112,16 @@ mod tests {
             }
         }).map(|entry| entry.unwrap()).collect();
         let total = all_tests.len();
-        let mut ms = 0;
+        let mut idx = 0;
         for entry in all_tests {
             let tx_finish = test_status_tx.clone();
-            ms += 1;
+            idx += 1;
             thread::spawn(move || {
-                const TEST_DURATION: u8 = 50;
+                const TEST_DURATION: u8 = 30;
                 let rom = String::from(entry.path().to_str().unwrap()).replace("\\", "/");
 
-                println!("Sleeping for {}", 100 * ms);
-                sleep(Duration::from_millis(100 * ms as u64));
+                println!("Sleeping for {}", 100 * idx);
+                sleep(Duration::from_millis(100 * idx as u64));
                 let rom_vec = read(&rom).unwrap();
                 let mem = MemoryMap::new(&rom_vec, &rom);
                 let mut gameboy = Gameboy::new(mem);
@@ -188,7 +188,7 @@ mod tests {
 
                     run_frame(&mut gameboy);
                 }
-                tx_finish.send(ms).unwrap();
+                tx_finish.send(idx).unwrap();
             });
         }
         let mut count = 0;
