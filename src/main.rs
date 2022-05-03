@@ -83,39 +83,36 @@ mod tests {
 
         let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
         let all_tests: Vec<DirEntry> = all_tests
-            .filter(|entry| match entry {
-                Err(_) => panic!("Error while parsing test file"),
-                Ok(_e) => {
-                    let rom = String::from(entry.as_ref().unwrap().path().to_str().unwrap())
-                        .replace("\\", "/");
-                    let latest_img_path = rom
-                        .clone()
-                        .replace("test_rom", "test_latest")
-                        .replace("\\", "/")
-                        + ".png";
-
-                    let latest_image = Path::new(&latest_img_path);
-                    if skip_known && latest_image.exists() {
-                        println!("Skipping already tested ROM: {}", rom);
-                        return false;
-                    }
-                    if !rom.ends_with(".gb") {
-                        println!("Skipping non ROM file: {rom}");
-                        return false;
-                    }
-                    let rom_vec = read(&rom).unwrap();
-                    if rom_vec.len() > 32768 {
-                        println!(
-                            "Still need to implement MBC for larger ROM's: {}",
-                            rom.clone()
-                        );
-                        return false;
-                    }
-
-                    return true;
-                }
-            })
             .map(|entry| entry.unwrap())
+            .filter(|entry| {
+                let rom = String::from(entry.path().to_str().unwrap())
+                    .replace("\\", "/");
+                let latest_img_path = rom
+                    .clone()
+                    .replace("test_rom", "test_latest")
+                    .replace("\\", "/")
+                    + ".png";
+
+                let latest_image = Path::new(&latest_img_path);
+                if skip_known && latest_image.exists() {
+                    println!("Skipping already tested ROM: {}", rom);
+                    return false;
+                }
+                if !rom.ends_with(".gb") {
+                    println!("Skipping non ROM file: {rom}");
+                    return false;
+                }
+                let rom_vec = read(&rom).unwrap();
+                if rom_vec.len() > 32768 {
+                    println!(
+                        "Still need to implement MBC for larger ROM's: {}",
+                        rom.clone()
+                    );
+                    return false;
+                }
+
+                return true;
+            })
             .collect();
         let total = all_tests.len();
         let mut idx = 0;
@@ -126,7 +123,7 @@ mod tests {
                 const TEST_DURATION: u8 = 30;
                 let rom = String::from(entry.path().to_str().unwrap()).replace("\\", "/");
 
-                println!("Sleeping for {}", 100 * idx);
+                println!("Sleeping for {}", 50 * idx);
                 sleep(Duration::from_millis(100 * idx as u64));
                 let rom_vec = read(&rom).unwrap();
                 let mem = MemoryMap::new(&rom_vec, &rom);
