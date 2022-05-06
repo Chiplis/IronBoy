@@ -51,6 +51,7 @@ pub struct PPU {
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
+    pub oam_corruption: Option<OamCorruptionCause>
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -103,6 +104,7 @@ impl PPU {
             oam: [0; 160],
             registers: [0; 11],
             lcdc,
+            oam_corruption: None,
             ticks: 0,
             stat_line: Low,
             state: LcdOff,
@@ -132,16 +134,19 @@ impl PPU {
             self.old_mode = HBlank;
             self.last_lyc_check = self.lyc_check();
             *self.ly_mut() = 0;
-            self.state = PpuState::LcdOff;
+            self.state = LcdOff;
+            self.oam_corruption = None;
             self.force_irq = false;
             self.ticks = 0;
             return Normal(self.state);
+        } else if self.state == LcdOff {
+            self.mode = OamSearch;
+            self.old_mode = OamSearch;
         }
 
         self.ticks -= match self.mode {
             OamSearch => {
                 if self.ticks < 80 {
-                    self.handle_oam_corruption(oam_corruption);
                     0
                 } else {
                     self.mode = PixelTransfer;
@@ -193,7 +198,11 @@ impl PPU {
                 }
             }
         };
-        if self.state == PpuState::LcdOff {
+
+        self.handle_oam_corruption();
+        self.oam_corruption = None;
+
+        if self.state == LcdOff {
             self.state = ProcessingMode(self.mode);
             self.last_lyc_check = self.lyc_check();
             self.ticks += 2;
@@ -270,7 +279,11 @@ impl PPU {
                 Some(self.oam[address - 0xFE00])
             }
             (0xFE00..=0xFE9F, ..) => {
-                self.handle_oam_read_corruption();
+                self.oam_corruption = match self.oam_corruption {
+                    None => Some(Read),
+                    Some(IncDec) => Some(ReadWrite),
+                    _ => panic!()
+                };
                 Some(0xFF)
             }
 
@@ -290,10 +303,16 @@ impl PPU {
             (0x9800..=0x9BFF, ..) => self.tile_map_a[address - 0x9800] = value,
             (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
 
+
+            (0xFE00..=0xFE9F, OamSearch, ..) => {
+                self.oam_corruption = Some(Write);
+            }
+
             (0xFE00..=0xFE9F, HBlank | VBlank, Inactive | Starting) => {
                 self.oam[address - 0xFE00] = value
             }
-            (0xFE00..=0xFE9F, ..) => self.handle_oam_write_corruption(),
+
+            (0xFE00..=0xFE9F, ..) => (),
 
             (0xFF40, ..) => self.lcdc.set(value),
             (0xFF41, ..) => {
@@ -311,6 +330,10 @@ impl PPU {
 
             (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, ..) => {
                 self.registers[address - 0xFF41] = value
+            }
+
+            (0xFE00..=0xFEFF, ..) => {
+                self.oam[address - 0xFE00] = value
             }
 
             _ => return false,
@@ -586,16 +609,23 @@ impl PPU {
         self.pixels[offset] = u32::from_be_bytes([color.a, color.r, color.g, color.b]);
     }
 
-    fn handle_oam_corruption(&mut self, oam_corruption: &Option<OamCorruptionCause>) {
-        match oam_corruption {
-            Some(IncDec | Write) => self.handle_oam_write_corruption(),
+    fn handle_oam_corruption(&mut self) {
+        if self.mode != OamSearch {
+            self.oam_corruption = None;
+            return;
+        }
+
+        println!("{:?}", self.oam_corruption);
+        match self.oam_corruption {
+            Some(Write | IncDec) => self.handle_oam_write_corruption(),
             Some(Read) => self.handle_oam_read_corruption(),
             Some(ReadWrite) => self.handle_oam_read_write_corruption(),
-            None => (),
+            _ => (),
         }
     }
+
     fn handle_oam_read_write_corruption(&mut self) {
-        todo!()
+        return; // TODO: ReadWrite behavior seems different than Read/Write/IncDec
     }
 
     fn handle_oam_read_corruption(&mut self) {
@@ -607,25 +637,21 @@ impl PPU {
     }
 
     fn handle_oam_pattern_corruption(&mut self, pattern: fn(u16, u16, u16) -> u16) {
-        println!("Ticks: {}", self.ticks);
         let oam_row = min(19, self.ticks / 4);
-        println!("Row: {:?}", oam_row);
-
+        if oam_row == 0 {
+            return;
+        }
         let mut rows = self.oam.chunks_mut(8);
 
         let (previous_row, current_row) = (rows.nth(oam_row - 1).unwrap(), rows.nth(0).unwrap());
-
-        //println!("\n\nCURRENT_F: {:?}\nPREVIOUS: {:?}", current_row, previous_row);
 
         let a = u16::from_le_bytes(current_row[0..2].as_ref().try_into().unwrap());
         let b = u16::from_le_bytes(previous_row[0..2].as_ref().try_into().unwrap());
         let c = u16::from_le_bytes(previous_row[4..6].as_ref().try_into().unwrap());
 
         let pattern = pattern(a, b, c).to_le_bytes();
-        //println!("PATTERN: {:?}", pattern);
         current_row[0..2].clone_from_slice(pattern.as_slice());
         current_row[2..].clone_from_slice(&previous_row[2..]);
-        //println!("CURRENT_R: {:?}", current_row);
     }
 }
 

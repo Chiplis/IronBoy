@@ -77,7 +77,7 @@ impl MemoryMap {
         if !self.in_oam(address) {
             return;
         }
-        self.oam_corruption = match self.oam_corruption {
+        self.ppu.oam_corruption = match self.ppu.oam_corruption {
             None => Some(IncDec),
             _ => panic!(),
         }
