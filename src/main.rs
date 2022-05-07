@@ -85,8 +85,7 @@ mod tests {
         let all_tests: Vec<DirEntry> = all_tests
             .map(|entry| entry.unwrap())
             .filter(|entry| {
-                let rom = String::from(entry.path().to_str().unwrap())
-                    .replace("\\", "/");
+                let rom = String::from(entry.path().to_str().unwrap()).replace("\\", "/");
                 let latest_img_path = rom
                     .clone()
                     .replace("test_rom", "test_latest")

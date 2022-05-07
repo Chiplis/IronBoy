@@ -154,7 +154,7 @@ impl MemoryMap {
 
     fn machine_cycle(&mut self) {
         let mut interrupts = vec![];
-        interrupts.append(&mut match self.ppu.machine_cycle(&self.oam_corruption) {
+        interrupts.append(&mut match self.ppu.machine_cycle() {
             StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
             Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
             StatTrigger(_) => vec![StatInt],

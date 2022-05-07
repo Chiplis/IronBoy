@@ -21,7 +21,7 @@ pub enum DmaState {
     Finished,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum PpuMode {
     OamSearch,
     PixelTransfer,
@@ -51,7 +51,7 @@ pub struct PPU {
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
-    pub oam_corruption: Option<OamCorruptionCause>
+    pub oam_corruption: Option<OamCorruptionCause>,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -66,7 +66,7 @@ pub enum RenderCycle {
     StatTrigger(PpuState),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 enum StatInterrupt {
     ModeInt(PpuMode),
     LycInt,
@@ -120,7 +120,7 @@ impl PPU {
         }
     }
 
-    pub fn machine_cycle(&mut self, oam_corruption: &Option<OamCorruptionCause>) -> RenderCycle {
+    pub fn machine_cycle(&mut self) -> RenderCycle {
         self.old_mode = self.mode;
         self.ticks += 4;
 
@@ -221,16 +221,11 @@ impl PPU {
     fn cycle_result(&mut self, old_mode: PpuMode) -> RenderCycle {
         let new_interrupts = self.stat_interrupts();
         let trigger_stat_interrupt = match (self.stat_line, new_interrupts) {
-            (Low, [.., Some(ModeInt(m))]) if m == self.mode && old_mode != m => true,
-            (Low, [.., Some(LycInt)]) => true,
+            (Low, [.., (ModeInt(m)), _]) if m == self.mode && old_mode != m => true,
+            (Low, [.., (LycInt)]) => true,
             _ => false,
         };
-        self.stat_line = *new_interrupts
-            .iter()
-            .find(|i| i.is_some())
-            .map(|i| i.as_ref())
-            .flatten()
-            .unwrap_or(&Low);
+        self.stat_line = *new_interrupts.iter().find(|&i| i != &Low).unwrap_or(&Low);
         self.force_irq = false;
         if trigger_stat_interrupt {
             StatTrigger(self.state)
@@ -239,28 +234,28 @@ impl PPU {
         }
     }
 
-    fn stat_interrupts(&mut self) -> [Option<StatInterrupt>; 4] {
+    fn stat_interrupts(&mut self) -> [StatInterrupt; 4] {
         let stat = self.stat();
         [
             if stat & 0x08 != 0 || self.force_irq {
-                Some(ModeInt(OamSearch))
+                (ModeInt(OamSearch))
             } else {
-                None
+                Low
             },
             if stat & 0x10 != 0 || self.force_irq {
-                Some(ModeInt(VBlank))
+                (ModeInt(VBlank))
             } else {
-                None
+                Low
             },
             if stat & 0x20 != 0 || self.force_irq {
-                Some(ModeInt(HBlank))
+                (ModeInt(HBlank))
             } else {
-                None
+                Low
             },
             if self.lyc_check() && (stat & 0x40 != 0 || self.force_irq) {
-                Some(LycInt)
+                (LycInt)
             } else {
-                None
+                Low
             },
         ]
     }
@@ -282,7 +277,7 @@ impl PPU {
                 self.oam_corruption = match self.oam_corruption {
                     None => Some(Read),
                     Some(IncDec) => Some(ReadWrite),
-                    _ => panic!()
+                    _ => panic!(),
                 };
                 Some(0xFF)
             }
@@ -302,7 +297,6 @@ impl PPU {
             (0x9000..=0x97FF, ..) => self.tile_block_c[address - 0x9000] = value,
             (0x9800..=0x9BFF, ..) => self.tile_map_a[address - 0x9800] = value,
             (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
-
 
             (0xFE00..=0xFE9F, OamSearch, ..) => {
                 self.oam_corruption = Some(Write);
@@ -332,9 +326,7 @@ impl PPU {
                 self.registers[address - 0xFF41] = value
             }
 
-            (0xFE00..=0xFEFF, ..) => {
-                self.oam[address - 0xFE00] = value
-            }
+            (0xFE00..=0xFEFF, ..) => self.oam[address - 0xFE00] = value,
 
             _ => return false,
         }
