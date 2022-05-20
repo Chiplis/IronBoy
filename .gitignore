@@ -4,3 +4,5 @@
 *.swp
 *.out
 /rom/
+/gb-test-roms/
+/mooneye-test-suite/

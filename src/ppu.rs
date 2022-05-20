@@ -130,20 +130,48 @@ impl PPU {
         }
 
         if !self.lcdc.enabled() {
-            self.mode = HBlank;
-            self.old_mode = HBlank;
-            self.last_lyc_check = self.lyc_check();
-            *self.ly_mut() = 0;
-            self.state = LcdOff;
-            self.oam_corruption = None;
-            self.force_irq = false;
-            self.ticks = 0;
+            self.reset_state();
             return Normal(self.state);
         } else if self.state == LcdOff {
             self.mode = OamSearch;
             self.old_mode = OamSearch;
         }
 
+        self.handle_mode_transition();
+        self.handle_oam_corruption();
+        self.handle_lcd_startup();
+
+        let ret = self.cycle_result(self.old_mode);
+        //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
+        ret
+    }
+
+    fn reset_state(&mut self) {
+        self.mode = HBlank;
+        self.old_mode = HBlank;
+        self.last_lyc_check = self.lyc_check();
+        *self.ly_mut() = 0;
+        self.state = LcdOff;
+        self.oam_corruption = None;
+        self.force_irq = false;
+        self.ticks = 0;
+    }
+
+    fn handle_lcd_startup(&mut self) {
+        if self.state == LcdOff {
+            self.state = ProcessingMode(self.mode);
+            self.last_lyc_check = self.lyc_check();
+            self.ticks += 2;
+        } else {
+            self.state = if self.old_mode == self.mode {
+                ProcessingMode(self.mode)
+            } else {
+                ModeChange(self.old_mode, self.mode)
+            };
+        }
+    }
+
+    fn handle_mode_transition(&mut self) {
         self.ticks -= match self.mode {
             OamSearch => {
                 if self.ticks < 80 {
@@ -170,9 +198,6 @@ impl PPU {
                     *self.ly_mut() += 1;
                     self.last_lyc_check = self.lyc_check();
                     self.mode = if self.ly() == 144 {
-                        self.window
-                            .update_with_buffer(&self.pixels, 160, 144)
-                            .unwrap();
                         VBlank
                     } else {
                         self.draw_scanline();
@@ -190,6 +215,9 @@ impl PPU {
                     self.last_lyc_check = self.lyc_check();
                     *self.ly_mut() %= 154;
                     self.mode = if *self.ly_mut() == 0 {
+                        self.window
+                            .update_with_buffer(&self.pixels, 160, 144)
+                            .unwrap();
                         OamSearch
                     } else {
                         VBlank
@@ -198,31 +226,13 @@ impl PPU {
                 }
             }
         };
-
-        self.handle_oam_corruption();
-        self.oam_corruption = None;
-
-        if self.state == LcdOff {
-            self.state = ProcessingMode(self.mode);
-            self.last_lyc_check = self.lyc_check();
-            self.ticks += 2;
-        } else {
-            self.state = if self.old_mode == self.mode {
-                ProcessingMode(self.mode)
-            } else {
-                ModeChange(self.old_mode, self.mode)
-            };
-        }
-        let ret = self.cycle_result(self.old_mode);
-        //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
-        ret
     }
 
     fn cycle_result(&mut self, old_mode: PpuMode) -> RenderCycle {
         let new_interrupts = self.stat_interrupts();
         let trigger_stat_interrupt = match (self.stat_line, new_interrupts) {
-            (Low, [.., (ModeInt(m)), _]) if m == self.mode && old_mode != m => true,
-            (Low, [.., (LycInt)]) => true,
+            (Low, [.., ModeInt(m), _]) if m == self.mode && old_mode != m => true,
+            (Low, [.., LycInt]) => true,
             _ => false,
         };
         self.stat_line = *new_interrupts.iter().find(|&i| i != &Low).unwrap_or(&Low);
@@ -238,22 +248,22 @@ impl PPU {
         let stat = self.stat();
         [
             if stat & 0x08 != 0 || self.force_irq {
-                (ModeInt(OamSearch))
+                ModeInt(OamSearch)
             } else {
                 Low
             },
             if stat & 0x10 != 0 || self.force_irq {
-                (ModeInt(VBlank))
+                ModeInt(VBlank)
             } else {
                 Low
             },
             if stat & 0x20 != 0 || self.force_irq {
-                (ModeInt(HBlank))
+                ModeInt(HBlank)
             } else {
                 Low
             },
             if self.lyc_check() && (stat & 0x40 != 0 || self.force_irq) {
-                (LycInt)
+                LycInt
             } else {
                 Low
             },
@@ -273,6 +283,7 @@ impl PPU {
             (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Starting) => {
                 Some(self.oam[address - 0xFE00])
             }
+
             (0xFE00..=0xFE9F, ..) => {
                 self.oam_corruption = match self.oam_corruption {
                     None => Some(Read),
@@ -281,6 +292,8 @@ impl PPU {
                 };
                 Some(0xFF)
             }
+
+            (0xFE00..=0xFEFF, ..) => Some(0xFF),
 
             (0xFF40, ..) => Some(self.lcdc.get()),
             (0xFF41, ..) => Some(self.stat()),
@@ -298,7 +311,7 @@ impl PPU {
             (0x9800..=0x9BFF, ..) => self.tile_map_a[address - 0x9800] = value,
             (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
 
-            (0xFE00..=0xFE9F, OamSearch, ..) => {
+            (0xFE00..=0xFEFF, OamSearch, ..) => {
                 self.oam_corruption = Some(Write);
             }
 
@@ -306,7 +319,7 @@ impl PPU {
                 self.oam[address - 0xFE00] = value
             }
 
-            (0xFE00..=0xFE9F, ..) => (),
+            (0xFE00..=0xFEFF, ..) => (),
 
             (0xFF40, ..) => self.lcdc.set(value),
             (0xFF41, ..) => {
@@ -325,8 +338,6 @@ impl PPU {
             (0xFF42..=0xFF43 | 0xFF45 | 0xFF47..=0xFF4B, ..) => {
                 self.registers[address - 0xFF41] = value
             }
-
-            (0xFE00..=0xFEFF, ..) => self.oam[address - 0xFE00] = value,
 
             _ => return false,
         }
@@ -607,13 +618,14 @@ impl PPU {
             return;
         }
 
-        println!("{:?}", self.oam_corruption);
+        // println!("{:?}", self.oam_corruption);
         match self.oam_corruption {
             Some(Write | IncDec) => self.handle_oam_write_corruption(),
             Some(Read) => self.handle_oam_read_corruption(),
             Some(ReadWrite) => self.handle_oam_read_write_corruption(),
             _ => (),
-        }
+        };
+        self.oam_corruption = None;
     }
 
     fn handle_oam_read_write_corruption(&mut self) {
