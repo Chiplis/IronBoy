@@ -16,6 +16,7 @@ mod memory_map;
 mod ppu;
 mod register;
 mod timer;
+mod serial;
 
 const FREQUENCY: u32 = 4194304;
 

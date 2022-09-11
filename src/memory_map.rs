@@ -1,5 +1,5 @@
 use crate::interrupt::InterruptHandler;
-use crate::interrupt::InterruptId::{JoypadInt, StatInt, TimerInt, VBlankInt};
+use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
 use crate::joypad::Joypad;
 use crate::ppu::PpuState::ModeChange;
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
@@ -11,6 +11,7 @@ use OamCorruptionCause::IncDec;
 use PpuMode::VBlank;
 
 use crate::register::WordRegister;
+use crate::serial::Serial;
 
 #[derive(Debug)]
 pub enum OamCorruptionCause {
@@ -24,10 +25,10 @@ pub struct MemoryMap {
     pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PPU,
+    serial: Serial,
     timer: Timer,
     joypad: Joypad,
     rom_size: usize,
-    rom_name: String,
     pub cycles: u16,
     dma_progress: usize,
     oam_corruption: Option<OamCorruptionCause>,
@@ -40,22 +41,22 @@ impl MemoryMap {
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new();
         let rom_size = rom.len() as usize;
-        let rom_name = rom_name.to_owned();
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
         let dma_progress = 0;
         let oam_corruption = None;
+        let serial = Serial::new();
         let mem = MemoryMap {
             joypad,
             ppu,
             interrupt_handler,
             timer,
             memory,
-            rom_name,
             rom_size,
             cycles: micro_ops,
             dma_progress,
             oam_corruption,
+            serial,
         };
         MemoryMap::init_memory(mem, rom)
     }
@@ -111,6 +112,7 @@ impl MemoryMap {
             .or(self.interrupt_handler.read(translated_address))
             .or(self.timer.read(translated_address))
             .or(self.joypad.read(translated_address))
+            .or(self.serial.read(translated_address))
             .unwrap_or(self.memory[translated_address]);
         read
     }
@@ -125,7 +127,8 @@ impl MemoryMap {
         if !(self.ppu.write(translated_address, value)
             || self.timer.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
-            || self.joypad.write(translated_address, value))
+            || self.joypad.write(translated_address, value)
+            || self.serial.write(translated_address, value))
             && (translated_address >= self.rom_size)
         {
             self.memory[translated_address] = value
@@ -160,9 +163,15 @@ impl MemoryMap {
             StatTrigger(_) => vec![StatInt],
             _ => vec![],
         });
+
         interrupts.append(&mut match self.timer.machine_cycle() {
             Some(_) => vec![TimerInt],
             None => vec![],
+        });
+
+        interrupts.append(&mut match self.serial.serial_cycle() {
+            Some(_) => vec![SerialInt],
+            None => vec![]
         });
 
         interrupts.append(
