@@ -29,6 +29,10 @@ impl Serial {
     }
 
     pub(crate) fn serial_cycle(&mut self) -> Option<SerialInterrupt> {
+        if self.control & 1 != 1 {
+            return None;
+        }
+
         self.transfer = match self.transfer {
             Transfer(x) => Transfer(x + 1),
             Off => Off
