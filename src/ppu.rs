@@ -451,12 +451,6 @@ impl PPU {
 
         let use_window = wy <= ly && self.lcdc.window_enabled();
 
-        let background_area = if use_window {
-            self.lcdc.window_tile_map_area()
-        } else {
-            self.lcdc.background_tile_map_area()
-        } as usize;
-
         let vertical_position = if use_window {
             ly.wrapping_sub(wy)
         } else {
@@ -471,6 +465,12 @@ impl PPU {
             } else {
                 pixel.wrapping_add(scx)
             };
+
+            let background_area = if use_window && pixel >= wx {
+                self.lcdc.window_tile_map_area()
+            } else {
+                self.lcdc.background_tile_map_area()
+            } as usize;
 
             let tile_col = (horizontal_position / 8) as usize;
 
