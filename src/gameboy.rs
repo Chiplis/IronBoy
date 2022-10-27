@@ -63,7 +63,8 @@ impl Gameboy {
 
         let instruction =
             InstructionFetcher::fetch_instruction(self.reg.pc.value(), &self.reg, &mut self.mem);
-        let (opcode, command) = (instruction.0, instruction.1);
+        let (_, command) = (instruction.0, instruction.1);
+        /*
         let line = self.mem.ppu.ly();
         let _log = format!(
             "op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}",
@@ -81,8 +82,9 @@ impl Gameboy {
             line,
             self.mem.ppu.last_ticks
         );
-        //println!("{}", log);
-        //println!("{:?}", command);
+        println!("{}", log);
+        println!("{:?}", command);
+        */
         self.set_pc(self.reg.pc.value() + command.size() as u16, false);
 
         self.execute_instruction(command)
@@ -107,9 +109,9 @@ impl Gameboy {
         if !self.ime
             && self.halted
             && self.mem.read_without_cycle(IE_ADDRESS as u16)
-                & self.mem.read_without_cycle(IF_ADDRESS as u16)
-                & 0x1F
-                != 0
+            & self.mem.read_without_cycle(IF_ADDRESS as u16)
+            & 0x1F
+            != 0
         {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);

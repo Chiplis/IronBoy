@@ -1,6 +1,5 @@
 use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
 use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Priority, Requested};
-use std::collections::HashMap;
 use std::ops::Index;
 
 
@@ -23,7 +22,8 @@ pub enum InterruptState {
 }
 
 pub struct InterruptHandler {
-    registers: HashMap<usize, u8>,
+    flag: u8,
+    enable: u8,
     vblank: InterruptMask,
     stat: InterruptMask,
     serial: InterruptMask,
@@ -35,18 +35,17 @@ pub const IE_ADDRESS: usize = 0xFFFF;
 pub const IF_ADDRESS: usize = 0xFF0F;
 
 impl InterruptHandler {
-
     pub fn new() -> Self {
-        let mut registers = HashMap::new();
-        registers.insert(IF_ADDRESS, 0x00);
-        registers.insert(IE_ADDRESS, 0x00);
+        let flag = 0x00;
+        let enable = 0x00;
         let vblank = InterruptMask(0x01);
         let stat = InterruptMask(0x02);
         let timer = InterruptMask(0x04);
         let serial = InterruptMask(0x08);
         let joypad = InterruptMask(0x10);
         InterruptHandler {
-            registers,
+            flag,
+            enable,
             vblank,
             stat,
             timer,
@@ -56,10 +55,9 @@ impl InterruptHandler {
     }
 
     fn calc_state(&self, interrupt: InterruptId) -> InterruptState {
-        let ie_flag = self.registers[&IE_ADDRESS];
-        let if_flag = self.registers[&IF_ADDRESS];
-        let enabled = ie_flag & self[interrupt].0 != 0;
-        let requested = if_flag & self[interrupt].0 != 0;
+        let mask = self[interrupt].0;
+        let enabled = self.enable & mask != 0;
+        let requested = self.flag & mask != 0;
         return if requested && enabled {
             Active
         } else if enabled {
@@ -74,7 +72,7 @@ impl InterruptHandler {
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
         for priority_interrupt in [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt] {
             if priority_interrupt != interrupt && self.calc_state(priority_interrupt) == Active {
-                return Priority(priority_interrupt)
+                return Priority(priority_interrupt);
             } else if priority_interrupt == interrupt {
                 return self.calc_state(priority_interrupt);
             }
@@ -86,24 +84,34 @@ impl InterruptHandler {
         if set {
             interrupts
                 .iter()
-                .for_each(|i| *self.registers.get_mut(&IF_ADDRESS).unwrap() |= self[*i].0)
+                .for_each(|i| self.flag |= self[*i].0)
         } else {
             interrupts
                 .iter()
-                .for_each(|i| *self.registers.get_mut(&IF_ADDRESS).unwrap() &= !self[*i].0)
+                .for_each(|i| self.flag &= !self[*i].0)
         }
     }
 
     pub fn read(&self, address: usize) -> Option<u8> {
-        self.registers.get(&address).copied()
+        match address {
+            IE_ADDRESS => Some(self.enable),
+            IF_ADDRESS => Some(self.flag),
+            _ => None
+        }
     }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        if !self.registers.contains_key(&address) {
-            return false;
+        match address {
+            IE_ADDRESS => {
+                self.enable = value | 0xE0;
+                true
+            }
+            IF_ADDRESS => {
+                self.flag = value | 0xE0;
+                true
+            }
+            _ => false
         }
-        self.registers.insert(address, value | 0xE0);
-        true
     }
 }
 
