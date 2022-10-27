@@ -70,14 +70,17 @@ impl InterruptHandler {
     }
 
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
-        for priority_interrupt in [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt] {
-            if priority_interrupt != interrupt && self.calc_state(priority_interrupt) == Active {
-                return Priority(priority_interrupt);
-            } else if priority_interrupt == interrupt {
-                return self.calc_state(priority_interrupt);
-            }
+        let priority = [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt]
+            .iter()
+            .take_while(|&&i| i != interrupt)
+            .filter(|&&i| self.calc_state(i) == Active)
+            .next();
+
+        return if let Some(&priority) = priority {
+            Priority(priority)
+        } else {
+            self.calc_state(interrupt)
         }
-        unreachable!()
     }
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
