@@ -170,7 +170,6 @@ impl Gameboy {
                 self.set_pc(*interrupt_id as u16, true);
                 true
             }
-            Priority(priority_id) => self.trigger_interrupt(&priority_id),
             Inactive | Enabled | Requested => false,
         }
     }

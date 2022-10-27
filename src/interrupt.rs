@@ -1,5 +1,5 @@
 use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
-use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Priority, Requested};
+use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Requested};
 use std::ops::Index;
 
 
@@ -17,8 +17,7 @@ pub enum InterruptState {
     Active,
     Inactive,
     Enabled,
-    Requested,
-    Priority(InterruptId),
+    Requested
 }
 
 pub struct InterruptHandler {
@@ -77,7 +76,7 @@ impl InterruptHandler {
             .next();
 
         return if let Some(&priority) = priority {
-            Priority(priority)
+            self.calc_state(priority)
         } else {
             self.calc_state(interrupt)
         }
