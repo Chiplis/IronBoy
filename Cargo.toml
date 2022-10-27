@@ -14,6 +14,8 @@ image = "0.23.14"
 
 [profile.release]
 incremental = true
+opt-level = 3
 
 [profile.dev]
 incremental = true
+opt-level = 0
