@@ -3,6 +3,7 @@ use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Priority, Requ
 use std::collections::HashMap;
 use std::ops::Index;
 
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum InterruptId {
     VBlankInt = 0x40,
@@ -34,6 +35,7 @@ pub const IE_ADDRESS: usize = 0xFFFF;
 pub const IF_ADDRESS: usize = 0xFF0F;
 
 impl InterruptHandler {
+
     pub fn new() -> Self {
         let mut registers = HashMap::new();
         registers.insert(IF_ADDRESS, 0x00);
@@ -53,13 +55,12 @@ impl InterruptHandler {
         }
     }
 
-    pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
+    fn calc_state(&self, interrupt: InterruptId) -> InterruptState {
         let ie_flag = self.registers[&IE_ADDRESS];
         let if_flag = self.registers[&IF_ADDRESS];
         let enabled = ie_flag & self[interrupt].0 != 0;
         let requested = if_flag & self[interrupt].0 != 0;
-        let active = requested && enabled;
-        let state = if active {
+        return if requested && enabled {
             Active
         } else if enabled {
             Enabled
@@ -68,37 +69,17 @@ impl InterruptHandler {
         } else {
             Inactive
         };
-        match interrupt {
-            VBlankInt => state,
-            StatInt => {
-                if self.get_state(VBlankInt) != Active {
-                    state
-                } else {
-                    Priority(VBlankInt)
-                }
-            }
-            TimerInt => {
-                if self.get_state(StatInt) != Active {
-                    state
-                } else {
-                    Priority(StatInt)
-                }
-            }
-            SerialInt => {
-                if self.get_state(TimerInt) != Active {
-                    state
-                } else {
-                    Priority(TimerInt)
-                }
-            }
-            JoypadInt => {
-                if self.get_state(SerialInt) != Active {
-                    state
-                } else {
-                    Priority(SerialInt)
-                }
+    }
+
+    pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
+        for priority_interrupt in [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt] {
+            if priority_interrupt != interrupt && self.calc_state(priority_interrupt) == Active {
+                return Priority(priority_interrupt)
+            } else if priority_interrupt == interrupt {
+                return self.calc_state(priority_interrupt);
             }
         }
+        unreachable!()
     }
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
