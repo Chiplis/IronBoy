@@ -57,15 +57,12 @@ impl InterruptHandler {
         let mask = self[interrupt].0;
         let enabled = self.enable & mask != 0;
         let requested = self.flag & mask != 0;
-        return if requested && enabled {
-            Active
-        } else if enabled {
-            Enabled
-        } else if requested {
-            Requested
-        } else {
-            Inactive
-        };
+        match (requested, enabled) {
+            (true, true) => Active,
+            (true, false) => Requested,
+            (false, true) => Enabled,
+            (false, false) => Inactive,
+        }
     }
 
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
