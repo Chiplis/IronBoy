@@ -65,6 +65,7 @@ impl InterruptHandler {
         }
     }
 
+    #[inline(always)]
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
         let priority = [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt]
             .iter()
@@ -73,7 +74,7 @@ impl InterruptHandler {
             .next();
 
         return if let Some(&priority) = priority {
-            self.calc_state(priority)
+            Active
         } else {
             self.calc_state(interrupt)
         }
