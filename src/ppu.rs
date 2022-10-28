@@ -141,7 +141,6 @@ impl PixelProcessingUnit {
         self.handle_oam_corruption();
         self.handle_lcd_startup();
 
-        
         //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
         self.cycle_result(self.old_mode)
     }
@@ -364,7 +363,6 @@ impl PixelProcessingUnit {
     }
 
     fn stat(&self) -> u8 {
-        
         //println!("LY: {} | LYC: {}, State: {:?} | STAT: {}", self.ly(), self.lyc(), self.state, stat);
         self.registers[0] & 0xF8
             | match (self.mode, self.ticks) {
@@ -627,7 +625,7 @@ impl PixelProcessingUnit {
     }
 
     fn handle_oam_read_write_corruption(&mut self) {
-         // TODO: ReadWrite behavior seems different than Read/Write/IncDec
+        // TODO: ReadWrite behavior seems different than Read/Write/IncDec
     }
 
     fn handle_oam_read_corruption(&mut self) {

@@ -87,11 +87,8 @@ mod tests {
             .map(|entry| entry.unwrap())
             .filter(|entry| {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-                let latest_img_path = rom
-                    
-                    .replace("test_rom", "test_latest")
-                    .replace('\\', "/")
-                    + ".png";
+                let latest_img_path =
+                    rom.replace("test_rom", "test_latest").replace('\\', "/") + ".png";
 
                 let latest_image = Path::new(&latest_img_path);
                 if skip_known && latest_image.exists() {
@@ -104,10 +101,7 @@ mod tests {
                 }
                 let rom_vec = read(&rom).unwrap();
                 if rom_vec.len() > 32768 {
-                    println!(
-                        "Still need to implement MBC for larger ROM's: {}",
-                        rom
-                    );
+                    println!("Still need to implement MBC for larger ROM's: {}", rom);
                     return false;
                 }
 

@@ -3,13 +3,12 @@ use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
 use crate::ppu::PpuState::ModeChange;
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
-use crate::ppu::{DmaState, PpuMode, PixelProcessingUnit};
+use crate::ppu::{DmaState, PixelProcessingUnit, PpuMode};
 use crate::timer::Timer;
 use std::any::{Any, TypeId};
 use DmaState::{Inactive, Starting};
 use OamCorruptionCause::IncDec;
 use PpuMode::VerticalBlank;
-
 
 use crate::serial::LinkCable;
 
@@ -103,9 +102,8 @@ impl MemoryMap {
         } else {
             address.into()
         };
-        
-        self
-            .ppu
+
+        self.ppu
             .read(translated_address)
             .or_else(|| self.interrupt_handler.read(translated_address))
             .or_else(|| self.timer.read(translated_address))

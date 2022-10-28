@@ -107,13 +107,12 @@ impl Command {
                 (_, false) => 2,
                 (_, true) => panic!("Invalid operand/size combination for operation"),
             },
-            LdAU8(..) | BitU3(..) | ResU3R8(..) | ResU3Hl(..) | SetU3R8(..)
-            | SetU3Hl(..) | SwapR8(..) | SwapHl | Sla(..) | Sra(..) | Srl(..)
-            | LdR8U8(..) | JrI8(..) | JrCcI8(..) | LdhAU8(..) | LdhU8A(..)
-            | AddSpI8(..) | LdHlSpI8(..) | LdhHlU8(..) => 2,
+            LdAU8(..) | BitU3(..) | ResU3R8(..) | ResU3Hl(..) | SetU3R8(..) | SetU3Hl(..)
+            | SwapR8(..) | SwapHl | Sla(..) | Sra(..) | Srl(..) | LdR8U8(..) | JrI8(..)
+            | JrCcI8(..) | LdhAU8(..) | LdhU8A(..) | AddSpI8(..) | LdHlSpI8(..) | LdhHlU8(..) => 2,
 
-            LdhU16A(..) | LdhAU16(..) | LdR16U16(..) | CallU16(..) | CallCcU16(..)
-            | JpU16(..) | JpCcU16(..) | LdU16Sp(..) => 3,
+            LdhU16A(..) | LdhAU16(..) | LdR16U16(..) | CallU16(..) | CallCcU16(..) | JpU16(..)
+            | JpCcU16(..) | LdU16Sp(..) => 3,
             _ => 1,
         }
     }
@@ -134,8 +133,8 @@ impl Command {
                 OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n),
             },
 
-            Daa | Cpl | Scf | Ccf | Halt | DisableInterrupt | EnableInterrupt | JpHl | IncR8(..) | DecR8(..)
-            | LdR8R8(..) | Nop | Stop => 1,
+            Daa | Cpl | Scf | Ccf | Halt | DisableInterrupt | EnableInterrupt | JpHl
+            | IncR8(..) | DecR8(..) | LdR8R8(..) | Nop | Stop => 1,
 
             Sla(op) | Sra(op) | Srl(op) => match op {
                 OpRegister(_) => 2,
@@ -151,15 +150,14 @@ impl Command {
             },
 
             IncR16(..) | LdSpHl | LdR8U8(..) | LdHlR8(..) | LdAU8(..) | AddHlR16(..)
-            | LdAR16(..) | DecR16(..) | LdhCA | LdhAC | LdR8Hl(..) | LdR16A(..)
-            | LdAHld | LdAHli | LdHldA | LdHliA | SwapR8(..) | SetU3R8(..)
-            | ResU3R8(..) => 2,
+            | LdAR16(..) | DecR16(..) | LdhCA | LdhAC | LdR8Hl(..) | LdR16A(..) | LdAHld
+            | LdAHli | LdHldA | LdHliA | SwapR8(..) | SetU3R8(..) | ResU3R8(..) => 2,
 
-            PopR16(..) | JrI8(..) | LdhU8A(..) | DechHl | InchHl | LdhHlU8(..)
-            | LdHlSpI8(..) | LdhAU8(..) | LdR16U16(..) => 3,
+            PopR16(..) | JrI8(..) | LdhU8A(..) | DechHl | InchHl | LdhHlU8(..) | LdHlSpI8(..)
+            | LdhAU8(..) | LdR16U16(..) => 3,
 
-            LdhU16A(..) | PushAf | Reti | Ret | JpU16(..) | PushR16(..) | AddSpI8(..)
-            | Rst(..) | LdhAU16(..) | SwapHl | ResU3Hl(..) | SetU3Hl(..) => 4,
+            LdhU16A(..) | PushAf | Reti | Ret | JpU16(..) | PushR16(..) | AddSpI8(..) | Rst(..)
+            | LdhAU16(..) | SwapHl | ResU3Hl(..) | SetU3Hl(..) => 4,
 
             LdU16Sp(..) => 5,
 

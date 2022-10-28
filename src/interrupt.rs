@@ -68,7 +68,8 @@ impl InterruptHandler {
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
         let priority = [VBlank, Stat, Timing, Serial, Input]
             .iter()
-            .take_while(|&&i| i != interrupt).find(|&&i| self.calc_state(i) == Active);
+            .take_while(|&&i| i != interrupt)
+            .find(|&&i| self.calc_state(i) == Active);
 
         if priority.is_some() {
             Active
