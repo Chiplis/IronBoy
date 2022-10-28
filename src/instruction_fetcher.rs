@@ -1,16 +1,18 @@
 use std::cmp::max;
 use std::iter::FromIterator;
+use RegisterOperand::Operand;
 
 use crate::instruction::Command::*;
 use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Instruction, RstVec};
+use crate::instruction_fetcher::RegisterOperand::HL;
 use crate::memory_map::MemoryMap;
 use crate::register::RegisterId::*;
 use crate::register::{Bit, ConditionCode, Register, RegisterId};
 
 enum RegisterOperand {
     HL,
-    Register(RegisterId),
+    Operand(RegisterId),
 }
 
 pub struct InstructionFetcher;
@@ -20,10 +22,16 @@ impl InstructionFetcher {
     pub fn fetch_instruction(pc: u16, reg: &Register, ram: &mut MemoryMap) -> Instruction {
         let opcode = ram.read(pc);
         let register_ids = [B, C, D, E, H, L, A];
-
-        let mut operands =
-            Vec::from_iter(register_ids.iter().map(|r| RegisterOperand::Register(*r)));
-        operands.insert(operands.len() - 1, RegisterOperand::HL);
+        let operands = [
+            Operand(B),
+            Operand(C),
+            Operand(D),
+            Operand(E),
+            Operand(H),
+            Operand(L),
+            HL,
+            Operand(A),
+        ];
         let operand_idx = ((opcode & 0x0F) % 8) as usize;
         let register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
 
@@ -45,56 +53,56 @@ impl InstructionFetcher {
                     match cb_opcode {
                         0x00..=0x07 => match operands[bit_idx] {
                             RegisterOperand::HL => RLC(OpHL, false),
-                            RegisterOperand::Register(id) => RLC(OpRegister(id), false),
+                            Operand(id) => RLC(OpRegister(id), false),
                         },
 
                         0x08..=0x0F => match operands[bit_idx] {
                             RegisterOperand::HL => RRC(OpHL, false),
-                            RegisterOperand::Register(id) => RRC(OpRegister(id), false),
+                            Operand(id) => RRC(OpRegister(id), false),
                         },
 
                         0x10..=0x17 => match operands[bit_idx] {
                             RegisterOperand::HL => RL(OpHL, false),
-                            RegisterOperand::Register(id) => RL(OpRegister(id), false),
+                            Operand(id) => RL(OpRegister(id), false),
                         },
 
                         0x18..=0x1F => match operands[bit_idx] {
                             RegisterOperand::HL => RR(OpHL, false),
-                            RegisterOperand::Register(id) => RR(OpRegister(id), false),
+                            Operand(id) => RR(OpRegister(id), false),
                         },
 
                         0x20..=0x27 => match operands[bit_idx] {
                             RegisterOperand::HL => SLA(OpHL),
-                            RegisterOperand::Register(id) => SLA(OpRegister(id)),
+                            Operand(id) => SLA(OpRegister(id)),
                         },
 
                         0x28..=0x2F => match operands[bit_idx] {
                             RegisterOperand::HL => SRA(OpHL),
-                            RegisterOperand::Register(id) => SRA(OpRegister(id)),
+                            Operand(id) => SRA(OpRegister(id)),
                         },
 
                         0x30..=0x37 => match operands[bit_idx] {
                             RegisterOperand::HL => SWAP_HL,
-                            RegisterOperand::Register(id) => SWAP_R8(id),
+                            Operand(id) => SWAP_R8(id),
                         },
 
                         0x38..=0x3F => match operands[bit_idx] {
                             RegisterOperand::HL => SRL(OpHL),
-                            RegisterOperand::Register(id) => SRL(OpRegister(id)),
+                            Operand(id) => SRL(OpRegister(id)),
                         },
                         0x40..=0x7F => match operands[bit_idx] {
                             RegisterOperand::HL => BIT_U3(Bit(mask[bit]), OpHL),
-                            RegisterOperand::Register(id) => BIT_U3(Bit(mask[bit]), OpRegister(id)),
+                            Operand(id) => BIT_U3(Bit(mask[bit]), OpRegister(id)),
                         },
 
                         0x80..=0xBF => match operands[bit_idx] {
                             RegisterOperand::HL => RES_U3_HL(Bit(mask[bit])),
-                            RegisterOperand::Register(id) => RES_U3_R8(Bit(mask[bit]), id),
+                            Operand(id) => RES_U3_R8(Bit(mask[bit]), id),
                         },
 
                         0xC0..=0xFF => match operands[bit_idx] {
                             RegisterOperand::HL => SET_U3_HL(Bit(mask[bit])),
-                            RegisterOperand::Register(id) => SET_U3_R8(Bit(mask[bit]), id),
+                            Operand(id) => SET_U3_R8(Bit(mask[bit]), id),
                         },
                     }
                 }
@@ -108,11 +116,11 @@ impl InstructionFetcher {
 
                 0x40..=0x6F => match operands[operand_idx] {
                     RegisterOperand::HL => LD_R8_HL(register_ids[register_idx]),
-                    RegisterOperand::Register(id) => LD_R8_R8(register_ids[register_idx], id),
+                    Operand(id) => LD_R8_R8(register_ids[register_idx], id),
                 },
 
                 0x70..=0x75 => match operands[operand_idx] {
-                    RegisterOperand::Register(id) => LD_HL_R8(id),
+                    Operand(id) => LD_HL_R8(id),
                     RegisterOperand::HL => panic!(),
                 },
 
@@ -124,55 +132,55 @@ impl InstructionFetcher {
 
                 0x80..=0x87 => match operands[operand_idx] {
                     RegisterOperand::HL => ADD_A(OpHL),
-                    RegisterOperand::Register(id) => ADD_A(OpRegister(id)),
+                    Operand(id) => ADD_A(OpRegister(id)),
                 },
 
                 0x88..=0x8F => match operands[operand_idx] {
                     RegisterOperand::HL => ADC_A(OpHL),
-                    RegisterOperand::Register(id) => ADC_A(OpRegister(id)),
+                    Operand(id) => ADC_A(OpRegister(id)),
                 },
 
                 0x90..=0x97 => match operands[operand_idx] {
                     RegisterOperand::HL => SUB_A(OpHL),
-                    RegisterOperand::Register(id) => SUB_A(OpRegister(id)),
+                    Operand(id) => SUB_A(OpRegister(id)),
                 },
 
                 0x98..=0x9F => match operands[operand_idx] {
                     RegisterOperand::HL => SBC_A(OpHL),
-                    RegisterOperand::Register(id) => SBC_A(OpRegister(id)),
+                    Operand(id) => SBC_A(OpRegister(id)),
                 },
 
                 0xA0..=0xA7 => match operands[operand_idx] {
                     RegisterOperand::HL => AND_A(OpHL),
-                    RegisterOperand::Register(id) => AND_A(OpRegister(id)),
+                    Operand(id) => AND_A(OpRegister(id)),
                 },
 
                 0xA8..=0xAF => match operands[operand_idx] {
                     RegisterOperand::HL => XOR_A(OpHL),
-                    RegisterOperand::Register(id) => XOR_A(OpRegister(id)),
+                    Operand(id) => XOR_A(OpRegister(id)),
                 },
 
                 0xB0..=0xB7 => match operands[operand_idx] {
                     RegisterOperand::HL => OR_A(OpHL),
-                    RegisterOperand::Register(id) => OR_A(OpRegister(id)),
+                    Operand(id) => OR_A(OpRegister(id)),
                 },
 
                 0xB8..=0xBF => match operands[operand_idx] {
                     RegisterOperand::HL => CP_A(OpHL),
-                    RegisterOperand::Register(id) => CP_A(OpRegister(id)),
+                    Operand(id) => CP_A(OpRegister(id)),
                 },
 
                 0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
                     match operands[(opcode as usize - 4) / 8] {
                         RegisterOperand::HL => INCH_HL,
-                        RegisterOperand::Register(id) => INC_R8(id),
+                        Operand(id) => INC_R8(id),
                     }
                 }
 
                 0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
                     match operands[(opcode as usize - 5) / 8] {
                         RegisterOperand::HL => DECH_HL,
-                        RegisterOperand::Register(id) => DEC_R8(id),
+                        Operand(id) => DEC_R8(id),
                     }
                 }
 

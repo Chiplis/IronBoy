@@ -109,9 +109,9 @@ impl Gameboy {
         if !self.ime
             && self.halted
             && self.mem.read_without_cycle(IE_ADDRESS as u16)
-            & self.mem.read_without_cycle(IF_ADDRESS as u16)
-            & 0x1F
-            != 0
+                & self.mem.read_without_cycle(IF_ADDRESS as u16)
+                & 0x1F
+                != 0
         {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);

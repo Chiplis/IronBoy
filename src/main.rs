@@ -15,8 +15,8 @@ mod joypad;
 mod memory_map;
 mod ppu;
 mod register;
-mod timer;
 mod serial;
+mod timer;
 
 const FREQUENCY: u32 = 4194304;
 

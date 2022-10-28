@@ -3,7 +3,7 @@ use crate::serial::State::{Off, Transfer};
 #[derive(PartialEq)]
 pub enum State {
     Off,
-    Transfer(u8)
+    Transfer(u8),
 }
 
 pub struct Serial {
@@ -16,7 +16,11 @@ pub struct SerialInterrupt;
 
 impl Serial {
     pub(crate) fn new() -> Self {
-        Serial { data: 0, control: 0, transfer: Off }
+        Serial {
+            data: 0,
+            control: 0,
+            transfer: Off,
+        }
     }
 
     fn set_control(&mut self, control: u8) {
@@ -35,7 +39,7 @@ impl Serial {
 
         self.transfer = match self.transfer {
             Transfer(x) => Transfer(x + 1),
-            Off => Off
+            Off => Off,
         };
 
         return if self.transfer == Transfer(8) {
@@ -43,7 +47,7 @@ impl Serial {
             Some(SerialInterrupt)
         } else {
             None
-        }
+        };
     }
 
     pub(crate) fn read(&self, address: usize) -> Option<u8> {
@@ -58,7 +62,7 @@ impl Serial {
         match address {
             0xFF01 => self.data = value,
             0xFF02 => self.set_control(value),
-            _ => return false
+            _ => return false,
         }
         true
     }

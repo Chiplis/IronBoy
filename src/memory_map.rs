@@ -171,7 +171,7 @@ impl MemoryMap {
 
         interrupts.append(&mut match self.serial.serial_cycle() {
             Some(_) => vec![SerialInt],
-            None => vec![]
+            None => vec![],
         });
 
         interrupts.append(

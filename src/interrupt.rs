@@ -2,7 +2,6 @@ use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBl
 use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Requested};
 use std::ops::Index;
 
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum InterruptId {
     VBlankInt = 0x40,
@@ -17,7 +16,7 @@ pub enum InterruptState {
     Active,
     Inactive,
     Enabled,
-    Requested
+    Requested,
 }
 
 pub struct InterruptHandler {
@@ -77,18 +76,14 @@ impl InterruptHandler {
             Active
         } else {
             self.calc_state(interrupt)
-        }
+        };
     }
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
         if set {
-            interrupts
-                .iter()
-                .for_each(|i| self.flag |= self[*i].0)
+            interrupts.iter().for_each(|i| self.flag |= self[*i].0)
         } else {
-            interrupts
-                .iter()
-                .for_each(|i| self.flag &= !self[*i].0)
+            interrupts.iter().for_each(|i| self.flag &= !self[*i].0)
         }
     }
 
@@ -96,7 +91,7 @@ impl InterruptHandler {
         match address {
             IE_ADDRESS => Some(self.enable),
             IF_ADDRESS => Some(self.flag),
-            _ => None
+            _ => None,
         }
     }
 
@@ -110,7 +105,7 @@ impl InterruptHandler {
                 self.flag = value | 0xE0;
                 true
             }
-            _ => false
+            _ => false,
         }
     }
 }
