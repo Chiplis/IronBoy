@@ -1,8 +1,7 @@
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Requested};
-use std::ops::Index;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum InterruptId {
     VBlank = 0x40,
     Stat = 0x48,
@@ -22,11 +21,6 @@ pub enum InterruptState {
 pub struct InterruptHandler {
     flag: u8,
     enable: u8,
-    vblank: InterruptMask,
-    stat: InterruptMask,
-    serial: InterruptMask,
-    timer: InterruptMask,
-    joypad: InterruptMask,
 }
 
 pub const IE_ADDRESS: usize = 0xFFFF;
@@ -36,24 +30,24 @@ impl InterruptHandler {
     pub fn new() -> Self {
         let flag = 0x00;
         let enable = 0x00;
-        let vblank = InterruptMask(0x01);
-        let stat = InterruptMask(0x02);
-        let timer = InterruptMask(0x04);
-        let serial = InterruptMask(0x08);
-        let joypad = InterruptMask(0x10);
         InterruptHandler {
             flag,
             enable,
-            vblank,
-            stat,
-            timer,
-            serial,
-            joypad,
+        }
+    }
+
+    fn mask(interrupt: InterruptId) -> u8 {
+        match interrupt {
+            VBlank => 0x01,
+            Stat => 0x02,
+            Timing => 0x04,
+            Serial => 0x08,
+            Input => 0x10
         }
     }
 
     fn calc_state(&self, interrupt: InterruptId) -> InterruptState {
-        let mask = self[interrupt].0;
+        let mask = Self::mask(interrupt);
         let enabled = self.enable & mask != 0;
         let requested = self.flag & mask != 0;
         match (requested, enabled) {
@@ -64,25 +58,23 @@ impl InterruptHandler {
         }
     }
 
-    #[inline(always)]
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
-        let priority = [VBlank, Stat, Timing, Serial, Input]
-            .iter()
-            .take_while(|&&i| i != interrupt)
-            .find(|&&i| self.calc_state(i) == Active);
-
-        if priority.is_some() {
+        let inter = Self::mask(interrupt);
+        return if inter > VBlank as u8 && self.calc_state(VBlank) == Active
+            || inter > Stat as u8 && self.calc_state(Stat) == Active
+            || inter > Timing as u8 && self.calc_state(Timing) == Active
+            || inter > Serial as u8 && self.calc_state(Serial) == Active {
             Active
         } else {
             self.calc_state(interrupt)
-        }
+        };
     }
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
         if set {
-            interrupts.iter().for_each(|i| self.flag |= self[*i].0)
+            interrupts.iter().for_each(|i| self.flag |= Self::mask(*i))
         } else {
-            interrupts.iter().for_each(|i| self.flag &= !self[*i].0)
+            interrupts.iter().for_each(|i| self.flag &= !Self::mask(*i))
         }
     }
 
@@ -105,22 +97,6 @@ impl InterruptHandler {
                 true
             }
             _ => false,
-        }
-    }
-}
-
-pub struct InterruptMask(u8);
-
-impl Index<InterruptId> for InterruptHandler {
-    type Output = InterruptMask;
-
-    fn index(&self, id: InterruptId) -> &Self::Output {
-        match id {
-            VBlank => &self.vblank,
-            Stat => &self.stat,
-            Timing => &self.timer,
-            Serial => &self.serial,
-            Input => &self.joypad,
         }
     }
 }

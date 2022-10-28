@@ -6,5 +6,4 @@
 /rom/
 /gb-test-roms/
 /mooneye-test-suite/
-flamegraph.svg
 perf.data*
