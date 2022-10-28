@@ -86,11 +86,11 @@ mod tests {
         let all_tests: Vec<DirEntry> = all_tests
             .map(|entry| entry.unwrap())
             .filter(|entry| {
-                let rom = String::from(entry.path().to_str().unwrap()).replace("\\", "/");
+                let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
                 let latest_img_path = rom
-                    .clone()
+                    
                     .replace("test_rom", "test_latest")
-                    .replace("\\", "/")
+                    .replace('\\', "/")
                     + ".png";
 
                 let latest_image = Path::new(&latest_img_path);
@@ -106,22 +106,20 @@ mod tests {
                 if rom_vec.len() > 32768 {
                     println!(
                         "Still need to implement MBC for larger ROM's: {}",
-                        rom.clone()
+                        rom
                     );
                     return false;
                 }
 
-                return true;
+                true
             })
             .collect();
         let total = all_tests.len();
-        let mut idx = 0;
-        for entry in all_tests {
+        for (idx, entry) in all_tests.into_iter().enumerate() {
             let tx_finish = test_status_tx.clone();
-            idx += 1;
             thread::spawn(move || {
                 const TEST_DURATION: u8 = 30;
-                let rom = String::from(entry.path().to_str().unwrap()).replace("\\", "/");
+                let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
 
                 println!("Sleeping for {}", 50 * idx);
                 sleep(Duration::from_millis(100 * idx as u64));
@@ -138,15 +136,14 @@ mod tests {
                     while i != TEST_DURATION {
                         thread::sleep(Duration::from_secs(1));
                         print!("Sending tx {i} times for {r}");
-                        match tx.send(r.clone()) {
-                            Err(e) => println!("Panicked with {e} while sending."),
-                            _ => (),
+                        if let Err(e) = tx.send(r.clone()) {
+                            println!("Panicked with {e} while sending.")
                         };
                         i += 1;
                     }
                 });
                 'inner: loop {
-                    for _rom_tested in rx.try_recv() {
+                    if rx.try_recv().is_ok() {
                         tests_counter += 1;
                         if tests_counter >= TEST_DURATION - 1 {
                             break 'inner;
@@ -168,7 +165,7 @@ mod tests {
                             .flat_map(map_pixel)
                             .collect::<Vec<u8>>();
 
-                        let screenshot_path = rom.split("/").collect::<Vec<&str>>();
+                        let screenshot_path = rom.split('/').collect::<Vec<&str>>();
                         let img_name = *screenshot_path.last().unwrap();
                         let screenshot_path = screenshot_path[0..screenshot_path.len() - 2]
                             .join("/")
@@ -192,7 +189,7 @@ mod tests {
                                 .replace("test_output", "test_latest"),
                         );
                         if ok_image.is_ok()
-                            && &ok_image.unwrap().decode().unwrap().as_bytes() == &screenshot
+                            && ok_image.unwrap().decode().unwrap().as_bytes() == screenshot
                         {
                             println!(
                                 "Ending {} test because result was confirmed as OK",
@@ -202,7 +199,7 @@ mod tests {
                         }
                         if skip_same
                             && latest_image.is_ok()
-                            && &latest_image.unwrap().decode().unwrap().as_bytes() == &screenshot
+                            && latest_image.unwrap().decode().unwrap().as_bytes() == screenshot
                         {
                             println!(
                                 "Ending {} test because result was same as previously saved one",
@@ -244,8 +241,8 @@ mod tests {
                 path.to_str().unwrap().to_owned()
             };
             let path = p
-                .split("\\")
-                .flat_map(|p| p.split("/"))
+                .split('\\')
+                .flat_map(|p| p.split('/'))
                 .collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
@@ -276,9 +273,9 @@ mod tests {
         for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_latest")))? {
             let p = {
                 let path = entry.map(|e| e.path()).unwrap();
-                path.to_str().unwrap().to_owned().replace("\\", "/")
+                path.to_str().unwrap().to_owned().replace('\\', "/")
             };
-            let path = p.split("/").collect::<Vec<&str>>();
+            let path = p.split('/').collect::<Vec<&str>>();
             let directory = path[0..path.len() - 2].join("/");
             let img_name = path.last().unwrap();
 

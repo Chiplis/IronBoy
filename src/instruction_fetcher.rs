@@ -1,5 +1,4 @@
 use std::cmp::max;
-use std::iter::FromIterator;
 use RegisterOperand::Operand;
 
 use crate::instruction::Command::*;
@@ -52,316 +51,316 @@ impl InstructionFetcher {
 
                     match cb_opcode {
                         0x00..=0x07 => match operands[bit_idx] {
-                            RegisterOperand::HL => RLC(OpHL, false),
-                            Operand(id) => RLC(OpRegister(id), false),
+                            RegisterOperand::HL => Rlc(OpHL, false),
+                            Operand(id) => Rlc(OpRegister(id), false),
                         },
 
                         0x08..=0x0F => match operands[bit_idx] {
-                            RegisterOperand::HL => RRC(OpHL, false),
-                            Operand(id) => RRC(OpRegister(id), false),
+                            RegisterOperand::HL => Rrc(OpHL, false),
+                            Operand(id) => Rrc(OpRegister(id), false),
                         },
 
                         0x10..=0x17 => match operands[bit_idx] {
-                            RegisterOperand::HL => RL(OpHL, false),
-                            Operand(id) => RL(OpRegister(id), false),
+                            RegisterOperand::HL => Rl(OpHL, false),
+                            Operand(id) => Rl(OpRegister(id), false),
                         },
 
                         0x18..=0x1F => match operands[bit_idx] {
-                            RegisterOperand::HL => RR(OpHL, false),
-                            Operand(id) => RR(OpRegister(id), false),
+                            RegisterOperand::HL => Rr(OpHL, false),
+                            Operand(id) => Rr(OpRegister(id), false),
                         },
 
                         0x20..=0x27 => match operands[bit_idx] {
-                            RegisterOperand::HL => SLA(OpHL),
-                            Operand(id) => SLA(OpRegister(id)),
+                            RegisterOperand::HL => Sla(OpHL),
+                            Operand(id) => Sla(OpRegister(id)),
                         },
 
                         0x28..=0x2F => match operands[bit_idx] {
-                            RegisterOperand::HL => SRA(OpHL),
-                            Operand(id) => SRA(OpRegister(id)),
+                            RegisterOperand::HL => Sra(OpHL),
+                            Operand(id) => Sra(OpRegister(id)),
                         },
 
                         0x30..=0x37 => match operands[bit_idx] {
-                            RegisterOperand::HL => SWAP_HL,
-                            Operand(id) => SWAP_R8(id),
+                            RegisterOperand::HL => SwapHl,
+                            Operand(id) => SwapR8(id),
                         },
 
                         0x38..=0x3F => match operands[bit_idx] {
-                            RegisterOperand::HL => SRL(OpHL),
-                            Operand(id) => SRL(OpRegister(id)),
+                            RegisterOperand::HL => Srl(OpHL),
+                            Operand(id) => Srl(OpRegister(id)),
                         },
                         0x40..=0x7F => match operands[bit_idx] {
-                            RegisterOperand::HL => BIT_U3(Bit(mask[bit]), OpHL),
-                            Operand(id) => BIT_U3(Bit(mask[bit]), OpRegister(id)),
+                            RegisterOperand::HL => BitU3(Bit(mask[bit]), OpHL),
+                            Operand(id) => BitU3(Bit(mask[bit]), OpRegister(id)),
                         },
 
                         0x80..=0xBF => match operands[bit_idx] {
-                            RegisterOperand::HL => RES_U3_HL(Bit(mask[bit])),
-                            Operand(id) => RES_U3_R8(Bit(mask[bit]), id),
+                            RegisterOperand::HL => ResU3Hl(Bit(mask[bit])),
+                            Operand(id) => ResU3R8(Bit(mask[bit]), id),
                         },
 
                         0xC0..=0xFF => match operands[bit_idx] {
-                            RegisterOperand::HL => SET_U3_HL(Bit(mask[bit])),
-                            Operand(id) => SET_U3_R8(Bit(mask[bit]), id),
+                            RegisterOperand::HL => SetU3Hl(Bit(mask[bit])),
+                            Operand(id) => SetU3R8(Bit(mask[bit]), id),
                         },
                     }
                 }
 
-                0x06 => LD_R8_U8(B, ram.read(pc + 1)),
-                0x0E => LD_R8_U8(C, ram.read(pc + 1)),
-                0x16 => LD_R8_U8(D, ram.read(pc + 1)),
-                0x1E => LD_R8_U8(E, ram.read(pc + 1)),
-                0x26 => LD_R8_U8(H, ram.read(pc + 1)),
-                0x2E => LD_R8_U8(L, ram.read(pc + 1)),
+                0x06 => LdR8U8(B, ram.read(pc + 1)),
+                0x0E => LdR8U8(C, ram.read(pc + 1)),
+                0x16 => LdR8U8(D, ram.read(pc + 1)),
+                0x1E => LdR8U8(E, ram.read(pc + 1)),
+                0x26 => LdR8U8(H, ram.read(pc + 1)),
+                0x2E => LdR8U8(L, ram.read(pc + 1)),
 
                 0x40..=0x6F => match operands[operand_idx] {
-                    RegisterOperand::HL => LD_R8_HL(register_ids[register_idx]),
-                    Operand(id) => LD_R8_R8(register_ids[register_idx], id),
+                    RegisterOperand::HL => LdR8Hl(register_ids[register_idx]),
+                    Operand(id) => LdR8R8(register_ids[register_idx], id),
                 },
 
                 0x70..=0x75 => match operands[operand_idx] {
-                    Operand(id) => LD_HL_R8(id),
+                    Operand(id) => LdHlR8(id),
                     RegisterOperand::HL => panic!(),
                 },
 
-                0x78..=0x7D => LD_R8_R8(A, register_ids[opcode as usize - 0x78]),
+                0x78..=0x7D => LdR8R8(A, register_ids[opcode as usize - 0x78]),
 
-                0x77 => LD_HL_R8(A),
-                0x7E => LD_R8_HL(A),
-                0x7F => LD_R8_R8(A, A),
+                0x77 => LdHlR8(A),
+                0x7E => LdR8Hl(A),
+                0x7F => LdR8R8(A, A),
 
                 0x80..=0x87 => match operands[operand_idx] {
-                    RegisterOperand::HL => ADD_A(OpHL),
-                    Operand(id) => ADD_A(OpRegister(id)),
+                    RegisterOperand::HL => AddA(OpHL),
+                    Operand(id) => AddA(OpRegister(id)),
                 },
 
                 0x88..=0x8F => match operands[operand_idx] {
-                    RegisterOperand::HL => ADC_A(OpHL),
-                    Operand(id) => ADC_A(OpRegister(id)),
+                    RegisterOperand::HL => AdcA(OpHL),
+                    Operand(id) => AdcA(OpRegister(id)),
                 },
 
                 0x90..=0x97 => match operands[operand_idx] {
-                    RegisterOperand::HL => SUB_A(OpHL),
-                    Operand(id) => SUB_A(OpRegister(id)),
+                    RegisterOperand::HL => SubA(OpHL),
+                    Operand(id) => SubA(OpRegister(id)),
                 },
 
                 0x98..=0x9F => match operands[operand_idx] {
-                    RegisterOperand::HL => SBC_A(OpHL),
-                    Operand(id) => SBC_A(OpRegister(id)),
+                    RegisterOperand::HL => SbcA(OpHL),
+                    Operand(id) => SbcA(OpRegister(id)),
                 },
 
                 0xA0..=0xA7 => match operands[operand_idx] {
-                    RegisterOperand::HL => AND_A(OpHL),
-                    Operand(id) => AND_A(OpRegister(id)),
+                    RegisterOperand::HL => AndA(OpHL),
+                    Operand(id) => AndA(OpRegister(id)),
                 },
 
                 0xA8..=0xAF => match operands[operand_idx] {
-                    RegisterOperand::HL => XOR_A(OpHL),
-                    Operand(id) => XOR_A(OpRegister(id)),
+                    RegisterOperand::HL => XorA(OpHL),
+                    Operand(id) => XorA(OpRegister(id)),
                 },
 
                 0xB0..=0xB7 => match operands[operand_idx] {
-                    RegisterOperand::HL => OR_A(OpHL),
-                    Operand(id) => OR_A(OpRegister(id)),
+                    RegisterOperand::HL => OrA(OpHL),
+                    Operand(id) => OrA(OpRegister(id)),
                 },
 
                 0xB8..=0xBF => match operands[operand_idx] {
-                    RegisterOperand::HL => CP_A(OpHL),
-                    Operand(id) => CP_A(OpRegister(id)),
+                    RegisterOperand::HL => CpA(OpHL),
+                    Operand(id) => CpA(OpRegister(id)),
                 },
 
                 0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => {
                     match operands[(opcode as usize - 4) / 8] {
-                        RegisterOperand::HL => INCH_HL,
-                        Operand(id) => INC_R8(id),
+                        RegisterOperand::HL => InchHl,
+                        Operand(id) => IncR8(id),
                     }
                 }
 
                 0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => {
                     match operands[(opcode as usize - 5) / 8] {
-                        RegisterOperand::HL => DECH_HL,
-                        Operand(id) => DEC_R8(id),
+                        RegisterOperand::HL => DechHl,
+                        Operand(id) => DecR8(id),
                     }
                 }
 
-                0x36 => LDH_HL_U8(ram.read(pc + 1)),
+                0x36 => LdhHlU8(ram.read(pc + 1)),
 
-                0x0A => LD_A_R16(reg.bc()),
-                0x1A => LD_A_R16(reg.de()),
+                0x0A => LdAR16(reg.bc()),
+                0x1A => LdAR16(reg.de()),
 
-                0xFA => LDH_A_U16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0xFA => LdhAU16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
 
-                0x3E => LD_A_U8(ram.read(pc + 1)),
+                0x3E => LdAU8(ram.read(pc + 1)),
 
-                0x02 => LD_R16_A(reg.bc()),
-                0x12 => LD_R16_A(reg.de()),
+                0x02 => LdR16A(reg.bc()),
+                0x12 => LdR16A(reg.de()),
 
-                0xEA => LDH_U16_A(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0xEA => LdhU16A(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
 
-                0xF2 => LDH_A_C,
-                0xE2 => LDH_C_A,
+                0xF2 => LdhAC,
+                0xE2 => LdhCA,
 
-                0x3A => LD_A_HLD,
-                0x32 => LD_HLD_A,
-                0x2A => LD_A_HLI,
-                0x22 => LD_HLI_A,
+                0x3A => LdAHld,
+                0x32 => LdHldA,
+                0x2A => LdAHli,
+                0x22 => LdHliA,
 
-                0xE0 => LDH_U8_A(ram.read(pc + 1)),
-                0xF0 => LDH_A_U8(ram.read(pc + 1)),
+                0xE0 => LdhU8A(ram.read(pc + 1)),
+                0xF0 => LdhAU8(ram.read(pc + 1)),
 
-                0x01 => LD_R16_U16(
+                0x01 => LdR16U16(
                     reg.bc(),
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
-                0x11 => LD_R16_U16(
+                0x11 => LdR16U16(
                     reg.de(),
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
-                0x21 => LD_R16_U16(
+                0x21 => LdR16U16(
                     reg.hl(),
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
-                0x31 => LD_R16_U16(
+                0x31 => LdR16U16(
                     reg.sp,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
 
-                0xF9 => LD_SP_HL,
-                0xF8 => LD_HL_SP_I8(ram.read(pc + 1) as i8),
+                0xF9 => LdSpHl,
+                0xF8 => LdHlSpI8(ram.read(pc + 1) as i8),
 
-                0x08 => LD_U16_SP(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0x08 => LdU16Sp(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
 
-                0xF5 => PUSH_AF,
-                0xC5 => PUSH_R16(reg.bc()),
-                0xD5 => PUSH_R16(reg.de()),
-                0xE5 => PUSH_R16(reg.hl()),
+                0xF5 => PushAf,
+                0xC5 => PushR16(reg.bc()),
+                0xD5 => PushR16(reg.de()),
+                0xE5 => PushR16(reg.hl()),
 
-                0xC1 => POP_R16(reg.bc()),
-                0xD1 => POP_R16(reg.de()),
-                0xE1 => POP_R16(reg.hl()),
-                0xF1 => POP_R16(reg.af()),
+                0xC1 => PopR16(reg.bc()),
+                0xD1 => PopR16(reg.de()),
+                0xE1 => PopR16(reg.hl()),
+                0xF1 => PopR16(reg.af()),
 
-                0xC6 => ADD_A(OpByte(ram.read(pc + 1))),
-                0xCE => ADC_A(OpByte(ram.read(pc + 1))),
-                0xD6 => SUB_A(OpByte(ram.read(pc + 1))),
-                0xDE => SBC_A(OpByte(ram.read(pc + 1))),
-                0xE6 => AND_A(OpByte(ram.read(pc + 1))),
-                0xF6 => OR_A(OpByte(ram.read(pc + 1))),
-                0xEE => XOR_A(OpByte(ram.read(pc + 1))),
-                0xFE => CP_A(OpByte(ram.read(pc + 1))),
+                0xC6 => AddA(OpByte(ram.read(pc + 1))),
+                0xCE => AdcA(OpByte(ram.read(pc + 1))),
+                0xD6 => SubA(OpByte(ram.read(pc + 1))),
+                0xDE => SbcA(OpByte(ram.read(pc + 1))),
+                0xE6 => AndA(OpByte(ram.read(pc + 1))),
+                0xF6 => OrA(OpByte(ram.read(pc + 1))),
+                0xEE => XorA(OpByte(ram.read(pc + 1))),
+                0xFE => CpA(OpByte(ram.read(pc + 1))),
 
-                0x09 => ADD_HL_R16(reg.bc()),
-                0x19 => ADD_HL_R16(reg.de()),
-                0x29 => ADD_HL_R16(reg.hl()),
-                0x39 => ADD_HL_R16(reg.sp),
+                0x09 => AddHlR16(reg.bc()),
+                0x19 => AddHlR16(reg.de()),
+                0x29 => AddHlR16(reg.hl()),
+                0x39 => AddHlR16(reg.sp),
 
-                0x03 => INC_R16(reg.bc()),
-                0x13 => INC_R16(reg.de()),
-                0x23 => INC_R16(reg.hl()),
-                0x33 => INC_R16(reg.sp),
+                0x03 => IncR16(reg.bc()),
+                0x13 => IncR16(reg.de()),
+                0x23 => IncR16(reg.hl()),
+                0x33 => IncR16(reg.sp),
 
-                0x0B => DEC_R16(reg.bc()),
-                0x1B => DEC_R16(reg.de()),
-                0x2B => DEC_R16(reg.hl()),
-                0x3B => DEC_R16(reg.sp),
+                0x0B => DecR16(reg.bc()),
+                0x1B => DecR16(reg.de()),
+                0x2B => DecR16(reg.hl()),
+                0x3B => DecR16(reg.sp),
 
-                0xE8 => ADD_SP_I8(ram.read(pc + 1) as i8),
+                0xE8 => AddSpI8(ram.read(pc + 1) as i8),
 
-                0x27 => DAA,
-                0x2F => CPL,
-                0x3F => CCF,
-                0x37 => SCF,
-                0x00 => NOP,
-                0x76 => HALT,
-                0xF3 => DI,
-                0xFB => EI,
-                0x07 => RLC(OpRegister(A), true),
-                0x17 => RL(OpRegister(A), true),
-                0x0F => RRC(OpRegister(A), true),
-                0x1F => RR(OpRegister(A), true),
+                0x27 => Daa,
+                0x2F => Cpl,
+                0x3F => Ccf,
+                0x37 => Scf,
+                0x00 => Nop,
+                0x76 => Halt,
+                0xF3 => DisableInterrupt,
+                0xFB => EnableInterrupt,
+                0x07 => Rlc(OpRegister(A), true),
+                0x17 => Rl(OpRegister(A), true),
+                0x0F => Rrc(OpRegister(A), true),
+                0x1F => Rr(OpRegister(A), true),
 
                 0x10 => {
                     let opcode = ram.memory[pc as usize + 1];
                     match opcode {
-                        0x00 => STOP,
+                        0x00 => Stop,
                         _ => panic!("Invalid opcode after STOP: {}", opcode),
                     }
                 }
 
-                0xC3 => JP_U16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
-                0xC2 => JP_CC_U16(
+                0xC3 => JpU16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0xC2 => JpCcU16(
                     ConditionCode::NZ,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
-                0xCA => JP_CC_U16(
+                0xCA => JpCcU16(
                     ConditionCode::Z,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
-                0xD2 => JP_CC_U16(
+                0xD2 => JpCcU16(
                     ConditionCode::NC,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
 
-                0xDA => JP_CC_U16(
+                0xDA => JpCcU16(
                     ConditionCode::C,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
-                0xE9 => JP_HL,
+                0xE9 => JpHl,
 
-                0x18 => JR_I8(ram.read(pc + 1) as i8),
-                0x20 => JR_CC_I8(ConditionCode::NZ, ram.read(pc + 1) as i8),
-                0x28 => JR_CC_I8(ConditionCode::Z, ram.read(pc + 1) as i8),
-                0x30 => JR_CC_I8(ConditionCode::NC, ram.read(pc + 1) as i8),
-                0x38 => JR_CC_I8(ConditionCode::C, ram.read(pc + 1) as i8),
-                0xCD => CALL_U16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0x18 => JrI8(ram.read(pc + 1) as i8),
+                0x20 => JrCcI8(ConditionCode::NZ, ram.read(pc + 1) as i8),
+                0x28 => JrCcI8(ConditionCode::Z, ram.read(pc + 1) as i8),
+                0x30 => JrCcI8(ConditionCode::NC, ram.read(pc + 1) as i8),
+                0x38 => JrCcI8(ConditionCode::C, ram.read(pc + 1) as i8),
+                0xCD => CallU16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
 
-                0xC4 => CALL_CC_U16(
+                0xC4 => CallCcU16(
                     ConditionCode::NZ,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
 
-                0xCC => CALL_CC_U16(
+                0xCC => CallCcU16(
                     ConditionCode::Z,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
 
-                0xD4 => CALL_CC_U16(
+                0xD4 => CallCcU16(
                     ConditionCode::NC,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
 
-                0xDC => CALL_CC_U16(
+                0xDC => CallCcU16(
                     ConditionCode::C,
                     u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
                 ),
 
-                0xC7 => RST(RstVec::X00),
+                0xC7 => Rst(RstVec::X00),
 
-                0xCF => RST(RstVec::X08),
+                0xCF => Rst(RstVec::X08),
 
-                0xD7 => RST(RstVec::X10),
+                0xD7 => Rst(RstVec::X10),
 
-                0xDF => RST(RstVec::X18),
+                0xDF => Rst(RstVec::X18),
 
-                0xE7 => RST(RstVec::X20),
+                0xE7 => Rst(RstVec::X20),
 
-                0xEF => RST(RstVec::X28),
+                0xEF => Rst(RstVec::X28),
 
-                0xF7 => RST(RstVec::X30),
+                0xF7 => Rst(RstVec::X30),
 
-                0xFF => RST(RstVec::X38),
+                0xFF => Rst(RstVec::X38),
 
-                0xC9 => RET,
+                0xC9 => Ret,
 
-                0xC0 => RET_CC(ConditionCode::NZ),
+                0xC0 => RetCc(ConditionCode::NZ),
 
-                0xC8 => RET_CC(ConditionCode::Z),
+                0xC8 => RetCc(ConditionCode::Z),
 
-                0xD0 => RET_CC(ConditionCode::NC),
+                0xD0 => RetCc(ConditionCode::NC),
 
-                0xD8 => RET_CC(ConditionCode::C),
+                0xD8 => RetCc(ConditionCode::C),
 
-                0xD9 => RETI,
+                0xD9 => Reti,
 
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                     panic!(

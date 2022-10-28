@@ -42,7 +42,7 @@ impl Timer {
         self.ticks = self.ticks.wrapping_add(4);
         self.tima_increase(old_ticks);
 
-        return interrupt;
+        interrupt
     }
 
     fn tima_increase(&mut self, old_ticks: u16) {

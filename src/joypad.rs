@@ -3,7 +3,7 @@ use minifb::{Key, Window};
 use std::ops::BitXor;
 use Key::*;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SelectedButtons {
     Action = 0x10,
     Direction = 0x20,

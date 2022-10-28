@@ -1,17 +1,17 @@
 use crate::interrupt::InterruptHandler;
-use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
+use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
 use crate::ppu::PpuState::ModeChange;
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
-use crate::ppu::{DmaState, PpuMode, PPU};
+use crate::ppu::{DmaState, PpuMode, PixelProcessingUnit};
 use crate::timer::Timer;
 use std::any::{Any, TypeId};
 use DmaState::{Inactive, Starting};
 use OamCorruptionCause::IncDec;
-use PpuMode::VBlank;
+use PpuMode::VerticalBlank;
 
-use crate::register::WordRegister;
-use crate::serial::Serial;
+
+use crate::serial::LinkCable;
 
 #[derive(Debug)]
 pub enum OamCorruptionCause {
@@ -24,8 +24,8 @@ pub enum OamCorruptionCause {
 pub struct MemoryMap {
     pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
-    pub ppu: PPU,
-    serial: Serial,
+    pub ppu: PixelProcessingUnit,
+    serial: LinkCable,
     timer: Timer,
     joypad: Joypad,
     rom_size: usize,
@@ -36,7 +36,7 @@ pub struct MemoryMap {
 
 impl MemoryMap {
     pub fn new(rom: &Vec<u8>, rom_name: &String) -> MemoryMap {
-        let ppu = PPU::new(rom_name);
+        let ppu = PixelProcessingUnit::new(rom_name);
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new();
@@ -45,7 +45,7 @@ impl MemoryMap {
         let micro_ops = 0;
         let dma_progress = 0;
         let oam_corruption = None;
-        let serial = Serial::new();
+        let serial = LinkCable::new();
         let mem = MemoryMap {
             joypad,
             ppu,
@@ -67,11 +67,8 @@ impl MemoryMap {
         } else {
             address.into()
         };
-        if address.type_id() == TypeId::of::<WordRegister>() {
-            return (0xFE00_usize..=0xFEFF_usize).contains(&translated_address);
-        } else {
-            return (0xFE00_usize..=0xFEFF_usize).contains(&translated_address);
-        }
+        // TODO: Figure out if the OAM check should always be in this range
+        (0xFE00_usize..=0xFEFF_usize).contains(&translated_address)
     }
 
     pub fn trigger_oam_inc_dec_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
@@ -87,7 +84,7 @@ impl MemoryMap {
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         let value = self.read_without_cycle(address);
         self.cycle();
-        return value;
+        value
     }
 
     pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(
@@ -106,15 +103,15 @@ impl MemoryMap {
         } else {
             address.into()
         };
-        let read = self
+        
+        self
             .ppu
             .read(translated_address)
-            .or(self.interrupt_handler.read(translated_address))
-            .or(self.timer.read(translated_address))
-            .or(self.joypad.read(translated_address))
-            .or(self.serial.read(translated_address))
-            .unwrap_or(self.memory[translated_address]);
-        read
+            .or_else(|| self.interrupt_handler.read(translated_address))
+            .or_else(|| self.timer.read(translated_address))
+            .or_else(|| self.joypad.read(translated_address))
+            .or_else(|| self.serial.read(translated_address))
+            .unwrap_or(self.memory[translated_address])
     }
 
     fn write_without_cycle<T: 'static + Into<usize> + Copy>(&mut self, address: T, value: u8) {
@@ -158,19 +155,19 @@ impl MemoryMap {
     fn machine_cycle(&mut self) {
         let mut interrupts = vec![];
         interrupts.append(&mut match self.ppu.machine_cycle() {
-            StatTrigger(ModeChange(_, VBlank)) => vec![VBlankInt, StatInt],
-            Normal(ModeChange(_, VBlank)) => vec![VBlankInt],
-            StatTrigger(_) => vec![StatInt],
+            StatTrigger(ModeChange(_, VerticalBlank)) => vec![VBlank, Stat],
+            Normal(ModeChange(_, VerticalBlank)) => vec![VBlank],
+            StatTrigger(_) => vec![Stat],
             _ => vec![],
         });
 
         interrupts.append(&mut match self.timer.machine_cycle() {
-            Some(_) => vec![TimerInt],
+            Some(_) => vec![Timing],
             None => vec![],
         });
 
         interrupts.append(&mut match self.serial.serial_cycle() {
-            Some(_) => vec![SerialInt],
+            Some(_) => vec![Serial],
             None => vec![],
         });
 
@@ -179,7 +176,7 @@ impl MemoryMap {
                 .joypad
                 .machine_cycle(&self.ppu.window)
                 .iter()
-                .map(|_| JoypadInt)
+                .map(|_| Input)
                 .collect(),
         );
 
@@ -187,7 +184,7 @@ impl MemoryMap {
         self.interrupt_handler.set(interrupts, true);
     }
 
-    fn init_memory(mut mem: MemoryMap, rom: &Vec<u8>) -> MemoryMap {
+    fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
         for (index, value) in rom.iter().enumerate() {
             mem.memory[index] = *value
         }

@@ -2,7 +2,7 @@ use crate::memory_map::OamCorruptionCause;
 use crate::ppu::AddressingMode::{H8000, H8800};
 use crate::ppu::DmaState::Inactive;
 use crate::ppu::ObjSize::{SingleTile, StackedTile};
-use crate::ppu::PpuMode::{HBlank, OamSearch, PixelTransfer, VBlank};
+use crate::ppu::PpuMode::{HorizontalBlank, OamSearch, PixelTransfer, VerticalBlank};
 use crate::ppu::PpuState::{LcdOff, ModeChange, ProcessingMode};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use crate::ppu::StatInterrupt::{Low, LycInt, ModeInt};
@@ -13,7 +13,7 @@ use std::convert::TryInto;
 use DmaState::{Executing, Finished, Starting};
 use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum DmaState {
     Inactive,
     Starting,
@@ -25,11 +25,11 @@ pub enum DmaState {
 pub enum PpuMode {
     OamSearch,
     PixelTransfer,
-    HBlank,
-    VBlank,
+    HorizontalBlank,
+    VerticalBlank,
 }
 
-pub struct PPU {
+pub struct PixelProcessingUnit {
     pub mode: PpuMode,
     pub dma: DmaState,
     pub dma_progress: usize,
@@ -54,7 +54,7 @@ pub struct PPU {
     pub oam_corruption: Option<OamCorruptionCause>,
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum PpuState {
     ModeChange(PpuMode, PpuMode),
     ProcessingMode(PpuMode),
@@ -74,7 +74,7 @@ enum StatInterrupt {
 }
 
 #[deny(unreachable_patterns)]
-impl PPU {
+impl PixelProcessingUnit {
     pub fn new(rom_name: &String) -> Self {
         let lcdc = LcdControl::new(0);
         let fb = [0_u32; 160 * 144];
@@ -94,8 +94,8 @@ impl PPU {
             },
         )
         .unwrap();
-        PPU {
-            mode: HBlank,
+        PixelProcessingUnit {
+            mode: HorizontalBlank,
             tile_block_a: [0; 2048],
             tile_block_b: [0; 2048],
             tile_block_c: [0; 2048],
@@ -113,7 +113,7 @@ impl PPU {
             dma_progress: 0,
             dma_offset: 0,
             pixels: Box::new(fb),
-            old_mode: HBlank,
+            old_mode: HorizontalBlank,
             dma: Inactive,
             last_lyc_check: false,
             window,
@@ -141,14 +141,14 @@ impl PPU {
         self.handle_oam_corruption();
         self.handle_lcd_startup();
 
-        let ret = self.cycle_result(self.old_mode);
+        
         //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
-        ret
+        self.cycle_result(self.old_mode)
     }
 
     fn reset_state(&mut self) {
-        self.mode = HBlank;
-        self.old_mode = HBlank;
+        self.mode = HorizontalBlank;
+        self.old_mode = HorizontalBlank;
         self.last_lyc_check = self.lyc_check();
         *self.ly_mut() = 0;
         self.state = LcdOff;
@@ -186,19 +186,19 @@ impl PPU {
                 if self.ticks < 172 {
                     0
                 } else {
-                    self.mode = HBlank;
+                    self.mode = HorizontalBlank;
                     172
                 }
             }
 
-            HBlank => {
+            HorizontalBlank => {
                 if self.ticks < 204 {
                     0
                 } else {
                     *self.ly_mut() += 1;
                     self.last_lyc_check = self.lyc_check();
                     self.mode = if self.ly() == 144 {
-                        VBlank
+                        VerticalBlank
                     } else {
                         self.draw_scanline();
                         OamSearch
@@ -207,7 +207,7 @@ impl PPU {
                 }
             }
 
-            VBlank => {
+            VerticalBlank => {
                 if self.ticks < 456 {
                     0
                 } else {
@@ -220,7 +220,7 @@ impl PPU {
                             .unwrap();
                         OamSearch
                     } else {
-                        VBlank
+                        VerticalBlank
                     };
                     456
                 }
@@ -253,12 +253,12 @@ impl PPU {
                 Low
             },
             if stat & 0x10 != 0 || self.force_irq {
-                ModeInt(VBlank)
+                ModeInt(VerticalBlank)
             } else {
                 Low
             },
             if stat & 0x20 != 0 || self.force_irq {
-                ModeInt(HBlank)
+                ModeInt(HorizontalBlank)
             } else {
                 Low
             },
@@ -280,7 +280,7 @@ impl PPU {
             (0x9800..=0x9BFF, ..) => Some(self.tile_map_a[address - 0x9800]),
             (0x9C00..=0x9FFF, ..) => Some(self.tile_map_b[address - 0x9C00]),
 
-            (0xFE00..=0xFE9F, VBlank | HBlank, Inactive | Starting) => {
+            (0xFE00..=0xFE9F, VerticalBlank | HorizontalBlank, Inactive | Starting) => {
                 Some(self.oam[address - 0xFE00])
             }
 
@@ -315,7 +315,7 @@ impl PPU {
                 self.oam_corruption = Some(Write);
             }
 
-            (0xFE00..=0xFE9F, HBlank | VBlank, Inactive | Starting) => {
+            (0xFE00..=0xFE9F, HorizontalBlank | VerticalBlank, Inactive | Starting) => {
                 self.oam[address - 0xFE00] = value
             }
 
@@ -364,19 +364,19 @@ impl PPU {
     }
 
     fn stat(&self) -> u8 {
-        let stat = self.registers[0] & 0xF8
+        
+        //println!("LY: {} | LYC: {}, State: {:?} | STAT: {}", self.ly(), self.lyc(), self.state, stat);
+        self.registers[0] & 0xF8
             | match (self.mode, self.ticks) {
                 (OamSearch, 0..=6) => 0,
-                (VBlank, 0..=4) if self.ly() == 144 => 0,
-                (HBlank, _) => 0,
-                (VBlank, _) => 1,
+                (VerticalBlank, 0..=4) if self.ly() == 144 => 0,
+                (HorizontalBlank, _) => 0,
+                (VerticalBlank, _) => 1,
                 (OamSearch, _) => 2,
                 (PixelTransfer, _) => 3,
             }
             | if self.lyc_check() { 0x04 } else { 0x0 }
-            | 0x80;
-        //println!("LY: {} | LYC: {}, State: {:?} | STAT: {}", self.ly(), self.lyc(), self.state, stat);
-        stat
+            | 0x80
     }
 
     fn stat_mut(&mut self) -> &mut u8 {
@@ -393,9 +393,7 @@ impl PPU {
 
     pub fn ly(&self) -> u8 {
         let ly = self.registers[3];
-        if ly != 153 {
-            ly
-        } else if self.ticks <= 4 {
+        if ly != 153 || self.ticks <= 4 {
             ly
         } else {
             0
@@ -416,8 +414,8 @@ impl PPU {
         }
         self.ticks > 4
             && (match (self.mode, self.ticks) {
-                (VBlank, 5..=8) => 153,
-                (VBlank, 9..=12) => !self.lyc(),
+                (VerticalBlank, 5..=8) => 153,
+                (VerticalBlank, 9..=12) => !self.lyc(),
                 (..) => self.ly(),
             }) == *self.lyc()
     }
@@ -492,7 +490,7 @@ impl PPU {
             let data1 = self.read((tile_location + line) as usize).unwrap();
             let data2 = self.read((tile_location + line + 1) as usize).unwrap();
 
-            let color_bit = ((horizontal_position as i32 % 8) - 7) * -1;
+            let color_bit = -((horizontal_position as i32 % 8) - 7);
 
             let color_num = ((data2 >> color_bit) & 0b1) << 1;
             let color_num = color_num | ((data1 >> color_bit) & 0b1);
@@ -527,7 +525,7 @@ impl PPU {
             {
                 let line: i32 = ly as i32 - sprite.vertical_position as i32;
                 let line = (if sprite.attributes.flipped_vertically {
-                    (line - tile_length as i32) * -1
+                    -(line - tile_length as i32)
                 } else {
                     line
                 }) as u16
@@ -541,7 +539,7 @@ impl PPU {
                 for tile_pixel in (0..8).rev() {
                     let color_bit = tile_pixel as i32;
                     let color_bit = if sprite.attributes.flipped_horizontally {
-                        (color_bit - 7) * -1
+                        -(color_bit - 7)
                     } else {
                         color_bit
                     };
@@ -629,7 +627,7 @@ impl PPU {
     }
 
     fn handle_oam_read_write_corruption(&mut self) {
-        return; // TODO: ReadWrite behavior seems different than Read/Write/IncDec
+         // TODO: ReadWrite behavior seems different than Read/Write/IncDec
     }
 
     fn handle_oam_read_corruption(&mut self) {
@@ -647,7 +645,7 @@ impl PPU {
         }
         let mut rows = self.oam.chunks_mut(8);
 
-        let (previous_row, current_row) = (rows.nth(oam_row - 1).unwrap(), rows.nth(0).unwrap());
+        let (previous_row, current_row) = (rows.nth(oam_row - 1).unwrap(), rows.next().unwrap());
 
         let a = u16::from_le_bytes(current_row[0..2].as_ref().try_into().unwrap());
         let b = u16::from_le_bytes(previous_row[0..2].as_ref().try_into().unwrap());
@@ -775,7 +773,7 @@ struct Sprite {
 }
 
 impl Sprite {
-    fn new(ppu: &PPU, index: usize) -> Self {
+    fn new(ppu: &PixelProcessingUnit, index: usize) -> Self {
         Self {
             vertical_position: ppu.oam[index].wrapping_sub(16),
             horizontal_position: ppu.oam[index + 1].wrapping_sub(8),
@@ -793,7 +791,7 @@ struct SpriteAttributes {
 }
 
 impl SpriteAttributes {
-    fn new(ppu: &PPU, attrs: u8) -> Self {
+    fn new(ppu: &PixelProcessingUnit, attrs: u8) -> Self {
         Self {
             flipped_vertically: attrs & 0x40 != 0,
             flipped_horizontally: attrs & 0x20 != 0,

@@ -5,7 +5,7 @@ use crate::register::{Bit, ConditionCode, RegisterId, WordRegister};
 
 pub struct Instruction(pub u8, pub Command);
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum InstructionOperand {
     OpRegister(RegisterId),
     OpByte(u8),
@@ -13,107 +13,107 @@ pub enum InstructionOperand {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    ADC_A(InstructionOperand),
-    ADD_A(InstructionOperand),
-    ADD_HL_R16(WordRegister),
-    ADD_SP_I8(i8),
-    AND_A(InstructionOperand),
-    BIT_U3(Bit, InstructionOperand),
-    CALL_CC_U16(ConditionCode, u16),
-    CALL_U16(u16),
-    CCF,
-    CPL,
-    CP_A(InstructionOperand),
-    DAA,
-    DECH_HL,
-    DEC_R16(WordRegister),
-    DEC_R8(RegisterId),
-    DI,
-    EI,
-    HALT,
-    INCH_HL,
-    INC_R16(WordRegister),
-    INC_R8(RegisterId),
-    JP_CC_U16(ConditionCode, u16),
-    JP_HL,
-    JP_U16(u16),
-    JR_CC_I8(ConditionCode, i8),
-    JR_I8(i8),
-    LDH_A_C,
-    LDH_A_U16(u16),
-    LDH_A_U8(u8),
-    LDH_C_A,
-    LDH_HL_U8(u8),
-    LDH_U16_A(u16),
-    LDH_U8_A(u8),
-    LD_A_HLD,
-    LD_A_HLI,
-    LD_A_R16(WordRegister),
-    LD_A_U8(u8),
-    LD_HLD_A,
-    LD_HLI_A,
-    LD_HL_R8(RegisterId),
-    LD_HL_SP_I8(i8),
-    LD_R16_A(WordRegister),
-    LD_R16_U16(WordRegister, u16),
-    LD_R8_HL(RegisterId),
-    LD_R8_R8(RegisterId, RegisterId),
-    LD_R8_U8(RegisterId, u8),
-    LD_SP_HL,
-    LD_U16_SP(u16),
-    NOP,
-    OR_A(InstructionOperand),
-    POP_R16(WordRegister),
-    PUSH_AF,
-    PUSH_R16(WordRegister),
-    RES_U3_HL(Bit),
-    RES_U3_R8(Bit, RegisterId),
-    RET,
-    RETI,
-    RET_CC(ConditionCode),
-    RL(InstructionOperand, bool),
-    RLC(InstructionOperand, bool),
-    RR(InstructionOperand, bool),
-    RRC(InstructionOperand, bool),
-    RST(RstVec),
-    SBC_A(InstructionOperand),
-    SCF,
-    SET_U3_HL(Bit),
-    SET_U3_R8(Bit, RegisterId),
-    SLA(InstructionOperand),
-    SRA(InstructionOperand),
-    SRL(InstructionOperand),
-    STOP,
-    SUB_A(InstructionOperand),
-    SWAP_HL,
-    SWAP_R8(RegisterId),
-    XOR_A(InstructionOperand),
+    AdcA(InstructionOperand),
+    AddA(InstructionOperand),
+    AddHlR16(WordRegister),
+    AddSpI8(i8),
+    AndA(InstructionOperand),
+    BitU3(Bit, InstructionOperand),
+    CallCcU16(ConditionCode, u16),
+    CallU16(u16),
+    Ccf,
+    Cpl,
+    CpA(InstructionOperand),
+    Daa,
+    DechHl,
+    DecR16(WordRegister),
+    DecR8(RegisterId),
+    DisableInterrupt,
+    EnableInterrupt,
+    Halt,
+    InchHl,
+    IncR16(WordRegister),
+    IncR8(RegisterId),
+    JpCcU16(ConditionCode, u16),
+    JpHl,
+    JpU16(u16),
+    JrCcI8(ConditionCode, i8),
+    JrI8(i8),
+    LdhAC,
+    LdhAU16(u16),
+    LdhAU8(u8),
+    LdhCA,
+    LdhHlU8(u8),
+    LdhU16A(u16),
+    LdhU8A(u8),
+    LdAHld,
+    LdAHli,
+    LdAR16(WordRegister),
+    LdAU8(u8),
+    LdHldA,
+    LdHliA,
+    LdHlR8(RegisterId),
+    LdHlSpI8(i8),
+    LdR16A(WordRegister),
+    LdR16U16(WordRegister, u16),
+    LdR8Hl(RegisterId),
+    LdR8R8(RegisterId, RegisterId),
+    LdR8U8(RegisterId, u8),
+    LdSpHl,
+    LdU16Sp(u16),
+    Nop,
+    OrA(InstructionOperand),
+    PopR16(WordRegister),
+    PushAf,
+    PushR16(WordRegister),
+    ResU3Hl(Bit),
+    ResU3R8(Bit, RegisterId),
+    Ret,
+    Reti,
+    RetCc(ConditionCode),
+    Rl(InstructionOperand, bool),
+    Rlc(InstructionOperand, bool),
+    Rr(InstructionOperand, bool),
+    Rrc(InstructionOperand, bool),
+    Rst(RstVec),
+    SbcA(InstructionOperand),
+    Scf,
+    SetU3Hl(Bit),
+    SetU3R8(Bit, RegisterId),
+    Sla(InstructionOperand),
+    Sra(InstructionOperand),
+    Srl(InstructionOperand),
+    Stop,
+    SubA(InstructionOperand),
+    SwapHl,
+    SwapR8(RegisterId),
+    XorA(InstructionOperand),
 }
 
 #[deny(unreachable_patterns)]
 impl Command {
     pub fn size(&self) -> u8 {
         match self {
-            ADC_A(n) | ADD_A(n) | AND_A(n) | CP_A(n) | OR_A(n) | SBC_A(n) | SUB_A(n) | XOR_A(n) => {
+            AdcA(n) | AddA(n) | AndA(n) | CpA(n) | OrA(n) | SbcA(n) | SubA(n) | XorA(n) => {
                 match n {
                     OpRegister(_) | OpHL => 1,
                     OpByte(_) => 2,
                 }
             }
-            RL(op, small) | RLC(op, small) | RR(op, small) | RRC(op, small) => match (op, small) {
+            Rl(op, small) | Rlc(op, small) | Rr(op, small) | Rrc(op, small) => match (op, small) {
                 (OpRegister(RegisterId::A), true) => 1,
                 (_, false) => 2,
                 (_, true) => panic!("Invalid operand/size combination for operation"),
             },
-            LD_A_U8(..) | BIT_U3(..) | RES_U3_R8(..) | RES_U3_HL(..) | SET_U3_R8(..)
-            | SET_U3_HL(..) | SWAP_R8(..) | SWAP_HL | SLA(..) | SRA(..) | SRL(..)
-            | LD_R8_U8(..) | JR_I8(..) | JR_CC_I8(..) | LDH_A_U8(..) | LDH_U8_A(..)
-            | ADD_SP_I8(..) | LD_HL_SP_I8(..) | LDH_HL_U8(..) => 2,
+            LdAU8(..) | BitU3(..) | ResU3R8(..) | ResU3Hl(..) | SetU3R8(..)
+            | SetU3Hl(..) | SwapR8(..) | SwapHl | Sla(..) | Sra(..) | Srl(..)
+            | LdR8U8(..) | JrI8(..) | JrCcI8(..) | LdhAU8(..) | LdhU8A(..)
+            | AddSpI8(..) | LdHlSpI8(..) | LdhHlU8(..) => 2,
 
-            LDH_U16_A(..) | LDH_A_U16(..) | LD_R16_U16(..) | CALL_U16(..) | CALL_CC_U16(..)
-            | JP_U16(..) | JP_CC_U16(..) | LD_U16_SP(..) => 3,
+            LdhU16A(..) | LdhAU16(..) | LdR16U16(..) | CallU16(..) | CallCcU16(..)
+            | JpU16(..) | JpCcU16(..) | LdU16Sp(..) => 3,
             _ => 1,
         }
     }
@@ -121,72 +121,72 @@ impl Command {
     #[deny(unreachable_patterns)]
     pub fn cycles(&self, branch: bool) -> u8 {
         match self {
-            ADD_A(n) | SUB_A(n) | SBC_A(n) | AND_A(n) | XOR_A(n) | OR_A(n) | CP_A(n) | ADC_A(n) => {
+            AddA(n) | SubA(n) | SbcA(n) | AndA(n) | XorA(n) | OrA(n) | CpA(n) | AdcA(n) => {
                 match n {
                     OpRegister(_) => 1,
                     OpByte(_) | OpHL => 2,
                 }
             }
 
-            BIT_U3(_, op) => match op {
+            BitU3(_, op) => match op {
                 OpRegister(_) => 2,
                 OpHL => 3,
                 OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n),
             },
 
-            DAA | CPL | SCF | CCF | HALT | DI | EI | JP_HL | INC_R8(..) | DEC_R8(..)
-            | LD_R8_R8(..) | NOP | STOP => 1,
+            Daa | Cpl | Scf | Ccf | Halt | DisableInterrupt | EnableInterrupt | JpHl | IncR8(..) | DecR8(..)
+            | LdR8R8(..) | Nop | Stop => 1,
 
-            SLA(op) | SRA(op) | SRL(op) => match op {
+            Sla(op) | Sra(op) | Srl(op) => match op {
                 OpRegister(_) => 2,
                 OpHL => 4,
                 OpByte(n) => panic!("Invalid operand for BIT_U3 instruction: {}", n),
             },
 
-            RL(op, small) | RLC(op, small) | RR(op, small) | RRC(op, small) => match (op, small) {
+            Rl(op, small) | Rlc(op, small) | Rr(op, small) | Rrc(op, small) => match (op, small) {
                 (OpRegister(RegisterId::A), true) => 1,
                 (OpRegister(_), false) => 2,
                 (OpHL, false) => 4,
                 _ => panic!("Invalid operand/size combination for operation"),
             },
 
-            INC_R16(..) | LD_SP_HL | LD_R8_U8(..) | LD_HL_R8(..) | LD_A_U8(..) | ADD_HL_R16(..)
-            | LD_A_R16(..) | DEC_R16(..) | LDH_C_A | LDH_A_C | LD_R8_HL(..) | LD_R16_A(..)
-            | LD_A_HLD | LD_A_HLI | LD_HLD_A | LD_HLI_A | SWAP_R8(..) | SET_U3_R8(..)
-            | RES_U3_R8(..) => 2,
+            IncR16(..) | LdSpHl | LdR8U8(..) | LdHlR8(..) | LdAU8(..) | AddHlR16(..)
+            | LdAR16(..) | DecR16(..) | LdhCA | LdhAC | LdR8Hl(..) | LdR16A(..)
+            | LdAHld | LdAHli | LdHldA | LdHliA | SwapR8(..) | SetU3R8(..)
+            | ResU3R8(..) => 2,
 
-            POP_R16(..) | JR_I8(..) | LDH_U8_A(..) | DECH_HL | INCH_HL | LDH_HL_U8(..)
-            | LD_HL_SP_I8(..) | LDH_A_U8(..) | LD_R16_U16(..) => 3,
+            PopR16(..) | JrI8(..) | LdhU8A(..) | DechHl | InchHl | LdhHlU8(..)
+            | LdHlSpI8(..) | LdhAU8(..) | LdR16U16(..) => 3,
 
-            LDH_U16_A(..) | PUSH_AF | RETI | RET | JP_U16(..) | PUSH_R16(..) | ADD_SP_I8(..)
-            | RST(..) | LDH_A_U16(..) | SWAP_HL | RES_U3_HL(..) | SET_U3_HL(..) => 4,
+            LdhU16A(..) | PushAf | Reti | Ret | JpU16(..) | PushR16(..) | AddSpI8(..)
+            | Rst(..) | LdhAU16(..) | SwapHl | ResU3Hl(..) | SetU3Hl(..) => 4,
 
-            LD_U16_SP(..) => 5,
+            LdU16Sp(..) => 5,
 
-            CALL_U16(..) => 6,
+            CallU16(..) => 6,
 
-            JR_CC_I8(..) => {
+            JrCcI8(..) => {
                 if branch {
                     3
                 } else {
                     2
                 }
             }
-            JP_CC_U16(..) => {
+            JpCcU16(..) => {
                 if branch {
                     4
                 } else {
                     3
                 }
             }
-            RET_CC(..) => {
+            RetCc(..) => {
                 if branch {
                     5
                 } else {
                     2
                 }
             }
-            CALL_CC_U16(..) => {
+            CallCcU16(..) => {
                 if branch {
                     6
                 } else {
@@ -197,7 +197,7 @@ impl Command {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RstVec {
     X00 = 0x00,
     X08 = 0x08,

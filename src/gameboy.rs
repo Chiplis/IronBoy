@@ -14,7 +14,7 @@ use std::cmp::max;
 use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, InstructionOperand};
 use crate::interrupt::InterruptId;
-use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
+use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 
 pub struct Gameboy {
     pub reg: Register,
@@ -45,14 +45,10 @@ impl Gameboy {
 
         if self.halted {
             self.halted = interrupt_cycles == 0;
-            if self.halted && !self.ime {
-                if self.mem.read_without_cycle(IE_ADDRESS as u16)
+            if self.halted && !self.ime && self.mem.read_without_cycle(IE_ADDRESS as u16)
                     & self.mem.read_without_cycle(IF_ADDRESS as u16)
-                    & 0x1F
-                    != 0
-                {
-                    self.halted = false;
-                }
+                    & 0x1F != 0 {
+                self.halted = false;
             }
             return 1 + interrupt_cycles;
         }
@@ -118,7 +114,7 @@ impl Gameboy {
             let x = self.mem.read(self.reg.pc);
             self.mem.memory.insert(self.reg.pc.value() as usize, x);
         }
-        if command != HALT {
+        if command != Halt {
             command_cycles
         } else {
             self.mem.cycles as u8
@@ -151,7 +147,7 @@ impl Gameboy {
     }
 
     fn get_interrupts(&self) -> [InterruptId; 5] {
-        [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt]
+        [VBlank, Stat, Timing, Serial, Input]
     }
 
     fn trigger_interrupt(&mut self, interrupt_id: &InterruptId) -> bool {
@@ -179,7 +175,7 @@ impl Gameboy {
         let mut branch_taken = true;
 
         match command {
-            JR_CC_I8(cc, _) | JP_CC_U16(cc, _) | RET_CC(cc) | CALL_CC_U16(cc, _) => {
+            JrCcI8(cc, _) | JpCcU16(cc, _) | RetCc(cc) | CallCcU16(cc, _) => {
                 if self.reg.cc_flag(cc) {
                     self.micro_cycle();
                 }
@@ -187,9 +183,9 @@ impl Gameboy {
             _ => {}
         }
         match command {
-            NOP => {}
+            Nop => {}
 
-            ADD_A(op) => {
+            AddA(op) => {
                 let n = self.get_op(op);
                 let (add, carry) =
                     calc_with_carry(vec![self[A].value, n, 0], |a, b| a.overflowing_add(b));
@@ -202,7 +198,7 @@ impl Gameboy {
                 self[A].value = add;
             }
 
-            ADC_A(op) => {
+            AdcA(op) => {
                 let carry = if self.reg.flags.c { 1 } else { 0 };
                 let n = self.get_op(op);
                 let (add, new_carry) =
@@ -216,12 +212,12 @@ impl Gameboy {
                 self[A].value = add;
             }
 
-            AND_A(op) => {
+            AndA(op) => {
                 self[A].value &= self.get_op(op);
                 self.reg.set_flags(self[A].value == 0, false, true, false);
             }
 
-            CP_A(op) => {
+            CpA(op) => {
                 let n = self.get_op(op);
                 self.reg.set_flags(
                     self[A].value == n,
@@ -231,7 +227,7 @@ impl Gameboy {
                 )
             }
 
-            DEC_R8(id) => {
+            DecR8(id) => {
                 let reg = self[id].value;
                 self[id].value = reg.wrapping_sub(1);
                 let z = self[id].value == 0;
@@ -239,19 +235,19 @@ impl Gameboy {
                     .set_flags(z, true, half_carry_8_sub(reg, 1, 0), self.reg.flags.c);
             }
 
-            INC_R8(id) => {
+            IncR8(id) => {
                 let reg = self[id].value;
                 self[id].value = reg.wrapping_add(1);
                 let z = self[id].value == 0;
                 let hc = half_carry_8_add(reg, 1, 0);
                 self.reg.set_flags(z, false, hc, self.reg.flags.c);
             }
-            OR_A(op) => {
+            OrA(op) => {
                 self[A].value |= self.get_op(op);
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
 
-            SUB_A(op) => {
+            SubA(op) => {
                 let n = self.get_op(op);
                 let (sub, c) =
                     calc_with_carry(vec![self[A].value, n, 0], |a, b| a.overflowing_sub(b));
@@ -259,7 +255,7 @@ impl Gameboy {
                     .set_flags(sub == 0, true, half_carry_8_sub(self[A].value, n, 0), c);
                 self[A].value = sub;
             }
-            SBC_A(op) => {
+            SbcA(op) => {
                 let n = self.get_op(op);
                 let carry = if self.reg.flags.c { 1 } else { 0 };
                 let (sub, new_carry) =
@@ -273,19 +269,19 @@ impl Gameboy {
                 self[A].value = sub;
             }
 
-            XOR_A(op) => {
+            XorA(op) => {
                 self[A].value ^= self.get_op(op);
                 self.reg.set_flags(self[A].value == 0, false, false, false);
             }
 
-            ADD_HL_R16(reg) => {
+            AddHlR16(reg) => {
                 let hc = half_carry_16_add(hl.value(), reg.value(), 0);
                 let (hl, carry) = hl.value().overflowing_add(reg.value());
                 self.set_word_register_with_micro_cycle(hl, self.reg.hl());
                 self.reg.set_flags(self.reg.flags.z, false, hc, carry);
             }
 
-            DECH_HL => {
+            DechHl => {
                 let old = self.mem.read(hl);
                 self.mem.write(hl, old.wrapping_sub(1));
                 let hc = half_carry_8_sub(old, 1, 0);
@@ -293,7 +289,7 @@ impl Gameboy {
                     .set_flags(old.wrapping_sub(1) == 0, true, hc, self.reg.flags.c);
             }
 
-            INCH_HL => {
+            InchHl => {
                 let old = self.mem.read(hl);
                 self.mem.write(hl, old.wrapping_add(1));
                 let hc = half_carry_8_add(old, 1, 0);
@@ -301,30 +297,30 @@ impl Gameboy {
                     .set_flags(old.wrapping_add(1) == 0, false, hc, self.reg.flags.c);
             }
 
-            DEC_R16(reg) => {
+            DecR16(reg) => {
                 self.mem.trigger_oam_inc_dec_corruption(reg);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_sub(1), reg)
             }
 
-            INC_R16(reg) => {
+            IncR16(reg) => {
                 self.mem.trigger_oam_inc_dec_corruption(reg);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_add(1), reg)
             }
 
-            RR(op, small) | RL(op, small) | RRC(op, small) | RLC(op, small) => {
+            Rr(op, small) | Rl(op, small) | Rrc(op, small) | Rlc(op, small) => {
                 let mut value = self.get_op(op);
-                let carry = if let RLC(..) | RL(..) = command {
+                let carry = if let Rlc(..) | Rl(..) = command {
                     value & 128 != 0
                 } else {
                     value & 1 != 0
                 };
-                let mask_condition = if let RRC(..) | RLC(..) = command {
+                let mask_condition = if let Rrc(..) | Rlc(..) = command {
                     carry
                 } else {
                     self.reg.flags.c
                 };
                 let mask = if mask_condition {
-                    if let RR(..) | RRC(..) = command {
+                    if let Rr(..) | Rrc(..) = command {
                         128
                     } else {
                         1
@@ -333,7 +329,7 @@ impl Gameboy {
                     0
                 };
 
-                value = (if let RR(..) | RRC(..) = command {
+                value = (if let Rr(..) | Rrc(..) = command {
                     value >> 1
                 } else {
                     value << 1
@@ -349,13 +345,13 @@ impl Gameboy {
                 self.reg.set_flags(z, false, false, carry);
             }
 
-            SRA(op) | SLA(op) | SRL(op) => {
+            Sra(op) | Sla(op) | Srl(op) => {
                 let mut value = self.get_op(op);
-                let carry = value & if let SLA(_) = command { 128 } else { 1 } != 0;
+                let carry = value & if let Sla(_) = command { 128 } else { 1 } != 0;
 
-                value = if let SRA(_) = command {
+                value = if let Sra(_) = command {
                     (value as i8 >> 1) as u8
-                } else if let SRL(_) = command {
+                } else if let Srl(_) = command {
                     value >> 1
                 } else {
                     ((value as i8) << 1) as u8
@@ -370,75 +366,75 @@ impl Gameboy {
                 self.reg.set_flags(value == 0, false, false, carry);
             }
 
-            BIT_U3(bit, op) => {
+            BitU3(bit, op) => {
                 self.reg.flags.z = (self.get_op(op) & bit.0) ^ bit.0 == bit.0;
                 self.reg.flags.n = false;
                 self.reg.flags.h = true;
             }
 
-            RES_U3_R8(bit, id) => self[id].value &= !bit.0,
+            ResU3R8(bit, id) => self[id].value &= !bit.0,
 
-            RES_U3_HL(bit) => {
+            ResU3Hl(bit) => {
                 let x = self.mem.read(hl);
                 self.mem.write(hl, x & !bit.0)
             }
 
-            SET_U3_R8(bit, id) => self[id].value |= bit.0,
+            SetU3R8(bit, id) => self[id].value |= bit.0,
 
-            SET_U3_HL(bit) => {
+            SetU3Hl(bit) => {
                 let x = self.mem.read(hl);
                 self.mem.write(hl, x | bit.0)
             }
 
-            SWAP_R8(id) => {
+            SwapR8(id) => {
                 self.reg.set_flags(self[id].value == 0, false, false, false);
                 self[id].value = self[id].value.rotate_left(4);
             }
 
-            SWAP_HL => {
+            SwapHl => {
                 let x = self.mem.read(hl);
                 self.mem.write(hl, x.rotate_left(4));
                 self.reg.set_flags(x == 0, false, false, false);
             }
 
-            LD_R8_R8(a, b) => self[a].value = self[b].value,
+            LdR8R8(a, b) => self[a].value = self[b].value,
 
-            LD_R8_U8(a, b) => self[a].value = b,
-            LD_R16_U16(a, b) => self.set_word_register(b, a),
-            LD_HL_R8(id) => {
+            LdR8U8(a, b) => self[a].value = b,
+            LdR16U16(a, b) => self.set_word_register(b, a),
+            LdHlR8(id) => {
                 self.mem.write(hl, self[id].value);
             }
-            LD_R8_HL(id) => self[id].value = self.mem.read(hl),
-            LD_R16_A(n) => self.mem.write(n, self[A]),
-            LDH_U16_A(n) => self.mem.write(n, self[A]),
-            LDH_C_A => self.mem.write(self[C], self[A]),
-            LD_A_U8(n) => self[A].value = n,
-            LD_A_R16(n) => self[A].value = self.mem.read(n),
-            LDH_A_U16(n) => self[A].value = self.mem.read(n),
-            LDH_A_U8(n) => {
+            LdR8Hl(id) => self[id].value = self.mem.read(hl),
+            LdR16A(n) => self.mem.write(n, self[A]),
+            LdhU16A(n) => self.mem.write(n, self[A]),
+            LdhCA => self.mem.write(self[C], self[A]),
+            LdAU8(n) => self[A].value = n,
+            LdAR16(n) => self[A].value = self.mem.read(n),
+            LdhAU16(n) => self[A].value = self.mem.read(n),
+            LdhAU8(n) => {
                 let x = self.mem.read(n);
                 self[A].value = x;
             }
-            LDH_U8_A(n) => self.mem.write(n, self[A].value),
-            LDH_HL_U8(n) => self.mem.write(hl, n),
-            LDH_A_C => self[A].value = self.mem.read(self[C]),
-            LD_A_HLD => {
+            LdhU8A(n) => self.mem.write(n, self[A].value),
+            LdhHlU8(n) => self.mem.write(hl, n),
+            LdhAC => self[A].value = self.mem.read(self[C]),
+            LdAHld => {
                 self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
                 self[A].value = self.mem.read(hl);
             }
-            LD_HLD_A => {
+            LdHldA => {
                 self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
                 self.mem.write(hl, self[A]);
             }
-            LD_A_HLI => {
+            LdAHli => {
                 self[A].value = self.mem.read(hl);
                 self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
             }
-            LD_HLI_A => {
+            LdHliA => {
                 self.mem.write(hl, self[A]);
                 self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
             }
-            CALL_U16(n) => {
+            CallU16(n) => {
                 self.micro_cycle();
                 let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
@@ -448,21 +444,21 @@ impl Gameboy {
                 self.set_pc(n, false);
             }
 
-            JP_HL => self.set_pc(self.reg.hl().value(), false),
-            JP_U16(n) => self.set_pc(n, true),
-            JR_I8(n) => self.set_pc((self.reg.pc.value() as i16 + n as i16) as u16, true),
-            CPL => {
+            JpHl => self.set_pc(self.reg.hl().value(), false),
+            JpU16(n) => self.set_pc(n, true),
+            JrI8(n) => self.set_pc((self.reg.pc.value() as i16 + n as i16) as u16, true),
+            Cpl => {
                 self[A].value = !self[A].value;
                 self.reg
                     .set_flags(self.reg.flags.z, true, true, self.reg.flags.c);
             }
-            RET => {
+            Ret => {
                 let lo = self.mem.read(self.reg.sp);
                 let hi = self.mem.read(self.reg.sp.value().wrapping_add(1));
                 self.set_pc(u16::from_le_bytes([lo, hi]), true);
                 self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
             }
-            RETI => {
+            Reti => {
                 let lo = self.mem.read(self.reg.sp);
                 let hi = self.mem.read(self.reg.sp.value().wrapping_add(1));
                 self.set_pc(u16::from_le_bytes([lo, hi]), true);
@@ -470,7 +466,7 @@ impl Gameboy {
                 self.ei_counter = 1;
                 self.ime = true;
             }
-            RST(rst_vec) => {
+            Rst(rst_vec) => {
                 let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.set_pc(rst_vec as u16, true);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
@@ -478,32 +474,32 @@ impl Gameboy {
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, lo);
             }
-            ADD_SP_I8(n) | LD_HL_SP_I8(n) => {
+            AddSpI8(n) | LdHlSpI8(n) => {
                 let a = self.reg.sp.value();
                 let b = n as i8 as i16 as u16;
                 let h = (a & 0x000F) + (b & 0x000F) > 0x000F;
                 let c = (a & 0x00FF) + (b & 0x00FF) > 0x00FF;
                 self.reg.set_flags(false, false, h, c);
-                if let ADD_SP_I8(_) = command {
+                if let AddSpI8(_) = command {
                     self.micro_cycle()
                 }
                 self.set_word_register_with_micro_cycle(
                     a.wrapping_add(b),
-                    if let ADD_SP_I8(_) = command {
+                    if let AddSpI8(_) = command {
                         self.reg.sp
                     } else {
                         self.reg.hl()
                     },
                 )
             }
-            LD_U16_SP(n) => {
+            LdU16Sp(n) => {
                 let [lo, hi] = self.reg.sp.value().to_le_bytes();
                 self.mem.write(n, lo);
                 self.mem.write(n + 1, hi);
             }
-            LD_SP_HL => self.set_word_register_with_micro_cycle(self.reg.hl().value(), self.reg.sp),
+            LdSpHl => self.set_word_register_with_micro_cycle(self.reg.hl().value(), self.reg.sp),
 
-            POP_R16(reg) => match reg {
+            PopR16(reg) => match reg {
                 WordRegister::Double(
                     ByteRegister { value: _, id: high },
                     ByteRegister { value: _, id: low },
@@ -521,14 +517,14 @@ impl Gameboy {
 
                 _ => panic!(),
             },
-            PUSH_AF => {
+            PushAf => {
                 self.micro_cycle();
                 self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                 self.mem.write(self.reg.sp, self[A]);
                 self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                 self.mem.write(self.reg.sp, self.reg.flags.value());
             }
-            PUSH_R16(reg) => {
+            PushR16(reg) => {
                 self.micro_cycle();
                 match reg {
                     WordRegister::Double(
@@ -547,12 +543,12 @@ impl Gameboy {
                     _ => panic!(),
                 }
             }
-            CCF => {
+            Ccf => {
                 self.reg.flags.n = false;
                 self.reg.flags.h = false;
                 self.reg.flags.c = !self.reg.flags.c;
             }
-            DAA => {
+            Daa => {
                 // note: assumes a is a uint8_t and wraps from 0xff to 0
                 if !self.reg.flags.n {
                     // after an addition, adjust if (half-)carry occurred or if result is out of bounds
@@ -574,16 +570,16 @@ impl Gameboy {
                 self.reg.flags.z = self[A].value == 0;
                 self.reg.flags.h = false;
             }
-            DI => self.ime = false,
-            EI => self.ei_counter = 2,
-            HALT => self.halted = true,
-            SCF => {
+            DisableInterrupt => self.ime = false,
+            EnableInterrupt => self.ei_counter = 2,
+            Halt => self.halted = true,
+            Scf => {
                 self.reg.flags.n = false;
                 self.reg.flags.h = false;
                 self.reg.flags.c = true;
             }
 
-            RET_CC(cc) => {
+            RetCc(cc) => {
                 if self.reg.cc_flag(cc) {
                     let lo = self.mem.read(self.reg.sp);
                     let hi = self.mem.read(self.reg.sp.value().wrapping_add(1));
@@ -595,7 +591,7 @@ impl Gameboy {
                 self.micro_cycle();
             }
 
-            JP_CC_U16(cc, n) => {
+            JpCcU16(cc, n) => {
                 if self.reg.cc_flag(cc) {
                     self.set_pc(n, false)
                 } else {
@@ -603,7 +599,7 @@ impl Gameboy {
                 }
             }
 
-            JR_CC_I8(cc, n) => {
+            JrCcI8(cc, n) => {
                 if self.reg.cc_flag(cc) {
                     self.set_pc((self.reg.pc.value() as i16 + n as i16) as u16, false)
                 } else {
@@ -611,7 +607,7 @@ impl Gameboy {
                 }
             }
 
-            CALL_CC_U16(cc, n) => {
+            CallCcU16(cc, n) => {
                 if self.reg.cc_flag(cc) {
                     let [lo, hi] = self.reg.pc.value().to_le_bytes();
                     self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
@@ -624,7 +620,7 @@ impl Gameboy {
                 }
             }
 
-            STOP => {}
+            Stop => {}
         };
         command.cycles(branch_taken)
     }

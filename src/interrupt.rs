@@ -1,14 +1,14 @@
-use crate::interrupt::InterruptId::{JoypadInt, SerialInt, StatInt, TimerInt, VBlankInt};
+use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Requested};
 use std::ops::Index;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum InterruptId {
-    VBlankInt = 0x40,
-    StatInt = 0x48,
-    TimerInt = 0x50,
-    SerialInt = 0x58,
-    JoypadInt = 0x60,
+    VBlank = 0x40,
+    Stat = 0x48,
+    Timing = 0x50,
+    Serial = 0x58,
+    Input = 0x60,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -66,17 +66,15 @@ impl InterruptHandler {
 
     #[inline(always)]
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
-        let priority = [VBlankInt, StatInt, TimerInt, SerialInt, JoypadInt]
+        let priority = [VBlank, Stat, Timing, Serial, Input]
             .iter()
-            .take_while(|&&i| i != interrupt)
-            .filter(|&&i| self.calc_state(i) == Active)
-            .next();
+            .take_while(|&&i| i != interrupt).find(|&&i| self.calc_state(i) == Active);
 
-        return if let Some(&priority) = priority {
+        if priority.is_some() {
             Active
         } else {
             self.calc_state(interrupt)
-        };
+        }
     }
 
     pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
@@ -117,11 +115,11 @@ impl Index<InterruptId> for InterruptHandler {
 
     fn index(&self, id: InterruptId) -> &Self::Output {
         match id {
-            VBlankInt => &self.vblank,
-            StatInt => &self.stat,
-            TimerInt => &self.timer,
-            SerialInt => &self.serial,
-            JoypadInt => &self.joypad,
+            VBlank => &self.vblank,
+            Stat => &self.stat,
+            Timing => &self.timer,
+            Serial => &self.serial,
+            Input => &self.joypad,
         }
     }
 }

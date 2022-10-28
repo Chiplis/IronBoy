@@ -1,12 +1,12 @@
 use crate::serial::State::{Off, Transfer};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum State {
     Off,
     Transfer(u8),
 }
 
-pub struct Serial {
+pub struct LinkCable {
     pub(crate) data: u8,
     pub(crate) control: u8,
     pub(crate) transfer: State,
@@ -14,9 +14,9 @@ pub struct Serial {
 
 pub struct SerialInterrupt;
 
-impl Serial {
+impl LinkCable {
     pub(crate) fn new() -> Self {
-        Serial {
+        LinkCable {
             data: 0,
             control: 0,
             transfer: Off,
@@ -42,12 +42,12 @@ impl Serial {
             Off => Off,
         };
 
-        return if self.transfer == Transfer(8) {
+        if self.transfer == Transfer(8) {
             self.transfer = Off;
             Some(SerialInterrupt)
         } else {
             None
-        };
+        }
     }
 
     pub(crate) fn read(&self, address: usize) -> Option<u8> {

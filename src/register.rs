@@ -4,7 +4,7 @@ use crate::register::WordRegister::StackPointer;
 use std::ops::{Index, IndexMut};
 use WordRegister::{AccFlag, Double, ProgramCounter};
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RegisterId {
     A,
     B,
@@ -117,38 +117,13 @@ impl Register {
     }
 }
 
-impl Index<RegisterId> for Register {
-    type Output = ByteRegister;
-    fn index(&self, index: RegisterId) -> &Self::Output {
-        &self.registers[index as usize]
-    }
-}
-
-impl IndexMut<RegisterId> for Register {
-    fn index_mut(&mut self, index: RegisterId) -> &mut Self::Output {
-        &mut self.registers[index as usize]
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ByteRegister {
     pub value: u8,
     pub id: RegisterId,
 }
 
-impl Into<u8> for ByteRegister {
-    fn into(self) -> u8 {
-        self.value
-    }
-}
-
-impl Into<usize> for ByteRegister {
-    fn into(self) -> usize {
-        self.value as usize + 0xFF00
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FlagRegister {
     pub z: bool,
     pub n: bool,
@@ -174,18 +149,12 @@ impl FlagRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum WordRegister {
     Double(ByteRegister, ByteRegister),
     AccFlag(ByteRegister, FlagRegister),
     StackPointer(u16),
     ProgramCounter(u16),
-}
-
-impl Into<usize> for WordRegister {
-    fn into(self) -> usize {
-        self.value() as usize
-    }
 }
 
 impl WordRegister {
@@ -204,13 +173,44 @@ impl WordRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Bit(pub u8);
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ConditionCode {
     Z,
     NZ,
     C,
     NC,
+}
+
+impl Index<RegisterId> for Register {
+    type Output = ByteRegister;
+    fn index(&self, index: RegisterId) -> &Self::Output {
+        &self.registers[index as usize]
+    }
+}
+
+impl IndexMut<RegisterId> for Register {
+    fn index_mut(&mut self, index: RegisterId) -> &mut Self::Output {
+        &mut self.registers[index as usize]
+    }
+}
+
+impl From<ByteRegister> for u8 {
+    fn from(r: ByteRegister) -> Self {
+        r.value
+    }
+}
+
+impl From<ByteRegister> for usize {
+    fn from(r: ByteRegister) -> Self {
+        r.value as Self + 0xFF00
+    }
+}
+
+impl From<WordRegister> for usize {
+    fn from(r: WordRegister) -> Self {
+        r.value() as Self
+    }
 }
