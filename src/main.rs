@@ -1,4 +1,4 @@
-use std::{env, thread};
+use std::thread;
 
 use gameboy::Gameboy;
 
@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use minifb::Key::Escape;
 use std::fs::read;
+use std::path::Path;
 
 use clap::{Command, arg};
 
@@ -29,9 +30,11 @@ fn main() {
         .arg(arg!(<ROM_FILE> "GameBoy ROM file to input"))
         .get_matches();
 
-    let rom_name = matches.get_one("ROM_FILE").unwrap();
-    let rom = read(rom_name).unwrap();
-    let mem = MemoryMap::new(&rom, rom_name);
+    let rom_path = Path::new(matches.get_one::<String>("ROM_FILE").unwrap());
+    if !rom_path.exists() { panic!("The input ROM path doesn't exist") }
+    if !rom_path.is_file() { panic!("The input ROM isn't a file") }
+    let rom = read(rom_path).expect("Unable to read ROM file");
+    let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap());
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames = 0.0;

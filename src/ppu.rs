@@ -75,7 +75,7 @@ enum StatInterrupt {
 
 #[deny(unreachable_patterns)]
 impl PixelProcessingUnit {
-    pub fn new(rom_name: &String) -> Self {
+    pub fn new(rom_name: &str) -> Self {
         let lcdc = LcdControl::new(0);
         let fb = [0_u32; 160 * 144];
         let window = Window::new(
