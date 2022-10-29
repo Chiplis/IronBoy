@@ -32,7 +32,7 @@ fn main() {
     let start = Instant::now();
     loop {
         frames += 1.0;
-        run_frame(&mut gameboy);
+        run_frame(&mut gameboy, true);
         if gameboy.mem.ppu.window.is_key_down(Escape) {
             break;
         }
@@ -43,7 +43,7 @@ fn main() {
     );
 }
 
-fn run_frame(gameboy: &mut Gameboy) {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool) {
     let mut elapsed_cycles = 0;
     const CYCLE_DURATION: f64 = 1.0_f64 / FREQUENCY as f64;
     let start = Instant::now();
@@ -61,11 +61,14 @@ fn run_frame(gameboy: &mut Gameboy) {
         }
         gameboy.mem.cycles = 0;
     }
-    let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
-    let sleep_time = cycles_time - start.elapsed().as_secs_f64();
-    if sleep_time > 0.0 {
-        thread::sleep(Duration::from_secs_f64(sleep_time));
+    if sleep {
+        let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
+        let sleep_time = cycles_time - start.elapsed().as_secs_f64();
+        if sleep_time > 0.0 {
+            thread::sleep(Duration::from_secs_f64(sleep_time));
+        }
     }
+
 }
 
 #[cfg(test)]
@@ -122,7 +125,7 @@ mod tests {
         for (idx, entry) in all_tests.into_iter().enumerate() {
             let tx_finish = test_status_tx.clone();
             thread::spawn(move || {
-                const TEST_DURATION: u8 = 30;
+                const TEST_DURATION: u8 = 60;
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
 
                 println!("Sleeping for {}", 50 * idx);
@@ -213,7 +216,7 @@ mod tests {
                         }
                     }
 
-                    run_frame(&mut gameboy);
+                    run_frame(&mut gameboy, false);
                 }
                 tx_finish.send(idx).unwrap();
             });
