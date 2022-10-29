@@ -74,7 +74,6 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool) {
             thread::sleep(Duration::from_secs_f64(sleep_time));
         }
     }
-
 }
 
 #[cfg(test)]
