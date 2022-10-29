@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 minifb = "0.23.0"
+clap = "4.0.18"
 
 [dev-dependencies]
 image = "0.24.4"

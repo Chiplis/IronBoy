@@ -34,7 +34,7 @@ pub struct MemoryMap {
 }
 
 impl MemoryMap {
-    pub fn new(rom: &Vec<u8>, rom_name: &String) -> MemoryMap {
+    pub fn new(rom: &Vec<u8>, rom_name: &str) -> MemoryMap {
         let ppu = PixelProcessingUnit::new(rom_name);
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
