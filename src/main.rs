@@ -6,6 +6,7 @@ use crate::memory_map::MemoryMap;
 use std::time::{Duration, Instant};
 
 use std::fs::read;
+use minifb::Key::Escape;
 
 mod gameboy;
 mod instruction;
@@ -27,10 +28,16 @@ fn main() {
     let mem = MemoryMap::new(&rom, rom_name);
 
     let mut gameboy = Gameboy::new(mem);
-
+    let mut frames = 0.0;
+    let start = Instant::now();
     loop {
+        frames += 1.0;
         run_frame(&mut gameboy);
+        if gameboy.mem.ppu.window.is_key_down(Escape) {
+            break;
+        }
     }
+    println!("Finished running at {} FPS average", frames / start.elapsed().as_secs_f64());
 }
 
 fn run_frame(gameboy: &mut Gameboy) {
@@ -44,10 +51,8 @@ fn run_frame(gameboy: &mut Gameboy) {
         let mem_cycles = cycles - gameboy.mem.cycles;
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
             panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.cycles)
-        } else if mem_cycles != 0 {
-            for _ in 0..mem_cycles {
-                gameboy.mem.cycle();
-            }
+        } else {
+            (0..mem_cycles).for_each(|_| gameboy.mem.cycle());
         }
         gameboy.mem.cycles = 0;
     }

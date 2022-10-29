@@ -28,10 +28,6 @@ impl Joypad {
     }
 
     pub fn machine_cycle(&mut self, window: &Window) -> Vec<InputInterrupt> {
-        if window.is_key_down(Escape) {
-            std::process::exit(0)
-        }
-
         let previous_buttons = *self.buttons();
 
         let map_buttons = |keys: [Key; 4]| {
