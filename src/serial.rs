@@ -32,7 +32,7 @@ impl LinkCable {
         }
     }
 
-    pub(crate) fn serial_cycle(&mut self) -> Option<SerialInterrupt> {
+    pub(crate) fn machine_cycle(&mut self) -> Option<SerialInterrupt> {
         if self.control & 1 != 1 {
             return None;
         }

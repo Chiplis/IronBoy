@@ -5,8 +5,8 @@ use gameboy::Gameboy;
 use crate::memory_map::MemoryMap;
 use std::time::{Duration, Instant};
 
-use std::fs::read;
 use minifb::Key::Escape;
+use std::fs::read;
 
 mod gameboy;
 mod instruction;
@@ -37,7 +37,10 @@ fn main() {
             break;
         }
     }
-    println!("Finished running at {} FPS average", frames / start.elapsed().as_secs_f64());
+    println!(
+        "Finished running at {} FPS average",
+        frames / start.elapsed().as_secs_f64()
+    );
 }
 
 fn run_frame(gameboy: &mut Gameboy) {
@@ -52,7 +55,9 @@ fn run_frame(gameboy: &mut Gameboy) {
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
             panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.cycles)
         } else {
-            (0..mem_cycles).for_each(|_| gameboy.mem.cycle());
+            for _ in 0..mem_cycles {
+                gameboy.mem.cycle()
+            }
         }
         gameboy.mem.cycles = 0;
     }

@@ -151,35 +151,29 @@ impl MemoryMap {
     }
 
     fn machine_cycle(&mut self) {
-        let mut interrupts = vec![];
-        interrupts.append(&mut match self.ppu.machine_cycle() {
-            StatTrigger(ModeChange(_, VerticalBlank)) => vec![VBlank, Stat],
-            Normal(ModeChange(_, VerticalBlank)) => vec![VBlank],
-            StatTrigger(_) => vec![Stat],
-            _ => vec![],
-        });
+        match self.ppu.machine_cycle() {
+            StatTrigger(ModeChange(_, VerticalBlank)) => {
+                self.interrupt_handler.set(VBlank);
+                self.interrupt_handler.set(Stat);
+            }
+            Normal(ModeChange(_, VerticalBlank)) => self.interrupt_handler.set(VBlank),
+            StatTrigger(_) => self.interrupt_handler.set(Stat),
+            _ => (),
+        };
 
-        interrupts.append(&mut match self.timer.machine_cycle() {
-            Some(_) => vec![Timing],
-            None => vec![],
-        });
+        if self.timer.machine_cycle().is_some() {
+            self.interrupt_handler.set(Timing)
+        };
 
-        interrupts.append(&mut match self.serial.serial_cycle() {
-            Some(_) => vec![Serial],
-            None => vec![],
-        });
+        if self.serial.machine_cycle().is_some() {
+            self.interrupt_handler.set(Serial)
+        };
 
-        interrupts.append(
-            &mut self
-                .joypad
-                .machine_cycle(&self.ppu.window)
-                .iter()
-                .map(|_| Input)
-                .collect(),
-        );
+        if self.joypad.machine_cycle(&self.ppu.window).is_some() {
+            self.interrupt_handler.set(Input)
+        }
 
         self.oam_corruption = None;
-        self.interrupt_handler.set(interrupts, true);
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {

@@ -234,7 +234,10 @@ impl PixelProcessingUnit {
             (Low, [.., LycInt]) => true,
             _ => false,
         };
-        self.stat_line = *new_interrupts.iter().find(|&i| i != &Low).unwrap_or(&Low);
+        self.stat_line = match new_interrupts {
+            [.., interrupt] if interrupt != Low => interrupt,
+            _ => Low
+        };
         self.force_irq = false;
         if trigger_stat_interrupt {
             StatTrigger(self.state)

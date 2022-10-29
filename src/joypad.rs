@@ -1,6 +1,5 @@
 use crate::joypad::SelectedButtons::{Action, Direction};
 use minifb::{Key, Window};
-use std::ops::BitXor;
 use Key::*;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -27,36 +26,41 @@ impl Joypad {
         }
     }
 
-    pub fn machine_cycle(&mut self, window: &Window) -> Vec<InputInterrupt> {
-        let previous_buttons = *self.buttons();
+    pub fn machine_cycle(&mut self, window: &Window) -> Option<InputInterrupt> {
+        let previous_buttons = self.buttons();
 
-        let map_buttons = |keys: [Key; 4]| {
-            !(keys
-                .iter()
-                .enumerate()
-                .map(|(i, k)| {
-                    if window.is_key_down(*k) {
-                        2_u8.pow(i as u32)
-                    } else {
-                        0x00
-                    }
-                })
-                .sum::<u8>())
-                & 0x0F
-        };
+        self.action_buttons = Self::map_buttons([Z, C, Backspace, Enter], window);
+        self.direction_buttons = Self::map_buttons([Right, Left, Up, Down], window);
 
-        self.action_buttons = map_buttons([Z, C, Backspace, Enter]);
-        self.direction_buttons = map_buttons([Right, Left, Up, Down]);
-
-        let size = self.buttons().bitxor(previous_buttons);
-        vec![InputInterrupt; size as usize]
+        if self.buttons() != previous_buttons {
+            Some(InputInterrupt)
+        } else {
+            None
+        }
     }
 
-    fn buttons(&self) -> &u8 {
+    fn map_buttons(buttons: [Key; 4], window: &Window) -> u8 {
+        let mut sum = 0;
+        if window.is_key_down(buttons[0]) {
+            sum += 1
+        }
+        if window.is_key_down(buttons[1]) {
+            sum += 2
+        }
+        if window.is_key_down(buttons[2]) {
+            sum += 4
+        }
+        if window.is_key_down(buttons[3]) {
+            sum += 8
+        }
+        !sum & 0x0F
+    }
+
+    fn buttons(&self) -> u8 {
         if self.selected_buttons == Action {
-            &self.action_buttons
+            self.action_buttons
         } else {
-            &self.direction_buttons
+            self.direction_buttons
         }
     }
 

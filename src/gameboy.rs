@@ -142,32 +142,27 @@ impl Gameboy {
         if !self.ime {
             return false;
         }
-        for interrupt_id in self.get_interrupts() {
-            if self.trigger_interrupt(&interrupt_id) {
-                return true;
-            }
-        }
-        false
+        self.trigger_interrupt(VBlank)
+            || self.trigger_interrupt(Stat)
+            || self.trigger_interrupt(Timing)
+            || self.trigger_interrupt(Serial)
+            || self.trigger_interrupt(Input)
     }
 
-    fn get_interrupts(&self) -> [InterruptId; 5] {
-        [VBlank, Stat, Timing, Serial, Input]
-    }
-
-    fn trigger_interrupt(&mut self, interrupt_id: &InterruptId) -> bool {
-        let state = self.mem.interrupt_handler.get_state(*interrupt_id);
+    fn trigger_interrupt(&mut self, interrupt_id: InterruptId) -> bool {
+        let state = self.mem.interrupt_handler.get_state(interrupt_id);
         match state {
             Active => {
                 self.micro_cycle();
                 self.micro_cycle();
                 self.ime = false;
-                self.mem.interrupt_handler.set(vec![*interrupt_id], false);
+                self.mem.interrupt_handler.unset(interrupt_id);
                 let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, hi);
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mem.write(self.reg.sp, lo);
-                self.set_pc(*interrupt_id as u16, true);
+                self.set_pc(interrupt_id as u16, true);
                 true
             }
             Inactive | Enabled | Requested => false,

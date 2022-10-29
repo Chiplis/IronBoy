@@ -30,10 +30,7 @@ impl InterruptHandler {
     pub fn new() -> Self {
         let flag = 0x00;
         let enable = 0x00;
-        InterruptHandler {
-            flag,
-            enable,
-        }
+        InterruptHandler { flag, enable }
     }
 
     fn mask(interrupt: InterruptId) -> u8 {
@@ -42,7 +39,7 @@ impl InterruptHandler {
             Stat => 0x02,
             Timing => 0x04,
             Serial => 0x08,
-            Input => 0x10
+            Input => 0x10,
         }
     }
 
@@ -60,22 +57,23 @@ impl InterruptHandler {
 
     pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
         let inter = Self::mask(interrupt);
-        return if inter > VBlank as u8 && self.calc_state(VBlank) == Active
+        if inter > VBlank as u8 && self.calc_state(VBlank) == Active
             || inter > Stat as u8 && self.calc_state(Stat) == Active
             || inter > Timing as u8 && self.calc_state(Timing) == Active
-            || inter > Serial as u8 && self.calc_state(Serial) == Active {
+            || inter > Serial as u8 && self.calc_state(Serial) == Active
+        {
             Active
         } else {
             self.calc_state(interrupt)
-        };
+        }
     }
 
-    pub fn set(&mut self, interrupts: Vec<InterruptId>, set: bool) {
-        if set {
-            interrupts.iter().for_each(|i| self.flag |= Self::mask(*i))
-        } else {
-            interrupts.iter().for_each(|i| self.flag &= !Self::mask(*i))
-        }
+    pub fn set(&mut self, interrupt: InterruptId) {
+        self.flag |= Self::mask(interrupt)
+    }
+
+    pub fn unset(&mut self, interrupt: InterruptId) {
+        self.flag &= !Self::mask(interrupt)
     }
 
     pub fn read(&self, address: usize) -> Option<u8> {
