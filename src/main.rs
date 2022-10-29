@@ -9,7 +9,7 @@ use minifb::Key::Escape;
 use std::fs::read;
 use std::path::Path;
 
-use clap::{Command, arg};
+use clap::Parser;
 
 mod gameboy;
 mod instruction;
@@ -24,13 +24,26 @@ mod timer;
 
 const FREQUENCY: u32 = 4194304;
 
-fn main() {
-    let matches = Command::new("feboy")
-        .arg_required_else_help(true)
-        .arg(arg!(<ROM_FILE> "GameBoy ROM file to input"))
-        .get_matches();
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// GameBoy ROM file to input
+    #[clap(short, long)]
+    rom_file: String,
 
-    let rom_path = Path::new(matches.get_one::<String>("ROM_FILE").unwrap());
+    /// Toggle sleeping between frames
+    #[clap(short, long, default_value = "true")]
+    sleep: bool,
+
+    /// Sleep threshold between frames
+    #[clap(short, long, default_value_t = 0.0)]
+    threshold: f64,
+}
+
+fn main() {
+    let args = Args::parse();
+    let (sleep, threshold) = (args.sleep, args.threshold);
+    let rom_path = Path::new(&args.rom_file);
     if !rom_path.exists() { panic!("The input ROM path doesn't exist") }
     if !rom_path.is_file() { panic!("The input ROM isn't a file") }
     let rom = read(rom_path).expect("Unable to read ROM file");
@@ -41,7 +54,7 @@ fn main() {
     let start = Instant::now();
     loop {
         frames += 1.0;
-        run_frame(&mut gameboy, true);
+        run_frame(&mut gameboy, sleep, threshold);
         if gameboy.mem.ppu.window.is_key_down(Escape) {
             break;
         }
@@ -52,7 +65,7 @@ fn main() {
     );
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool) {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) {
     let mut elapsed_cycles = 0;
     const CYCLE_DURATION: f64 = 1.0_f64 / FREQUENCY as f64;
     let start = Instant::now();
@@ -73,7 +86,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool) {
     if sleep {
         let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
         let sleep_time = cycles_time - start.elapsed().as_secs_f64();
-        if sleep_time > 0.016 {
+        if sleep_time > threshold {
             thread::sleep(Duration::from_secs_f64(sleep_time));
         }
     }
@@ -224,7 +237,7 @@ mod tests {
                         }
                     }
 
-                    run_frame(&mut gameboy, false);
+                    run_frame(&mut gameboy, false, 0.0);
                 }
                 tx_finish.send(idx).unwrap();
             });
