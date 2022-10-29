@@ -114,13 +114,16 @@ impl PixelProcessingUnit {
             self.reset_state();
             return Normal(self.state);
         } else if self.state == LcdOff {
-            self.mode = OamSearch;
-            self.old_mode = OamSearch;
+            self.handle_lcd_startup();
+        } else {
+            self.handle_mode_transition();
+            self.handle_oam_corruption();
+            self.state = if self.old_mode == self.mode {
+                ProcessingMode(self.mode)
+            } else {
+                ModeChange(self.old_mode, self.mode)
+            };
         }
-
-        self.handle_mode_transition();
-        self.handle_oam_corruption();
-        self.handle_lcd_startup();
 
         //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
         self.cycle_result()
@@ -138,17 +141,11 @@ impl PixelProcessingUnit {
     }
 
     fn handle_lcd_startup(&mut self) {
-        if self.state == LcdOff {
-            self.state = ProcessingMode(self.mode);
-            self.last_lyc_check = self.lyc_check();
-            self.ticks += 2;
-        } else {
-            self.state = if self.old_mode == self.mode {
-                ProcessingMode(self.mode)
-            } else {
-                ModeChange(self.old_mode, self.mode)
-            };
-        }
+        self.mode = OamSearch;
+        self.old_mode = OamSearch;
+        self.state = ProcessingMode(self.mode);
+        self.last_lyc_check = self.lyc_check();
+        self.ticks += 2;
     }
 
     fn handle_mode_transition(&mut self) {
@@ -210,10 +207,10 @@ impl PixelProcessingUnit {
 
         let trigger_stat_interrupt = self.stat_line == Low
             && (LycInt == lyc
-                || (self.mode != self.old_mode
-                    && (ModeInt(OamSearch) == oam
-                        || ModeInt(VerticalBlank) == vblank
-                        || ModeInt(HorizontalBlank) == hblank)));
+            || (self.mode != self.old_mode
+            && (ModeInt(OamSearch) == oam
+            || ModeInt(VerticalBlank) == vblank
+            || ModeInt(HorizontalBlank) == hblank)));
 
         self.stat_line = match [oam, vblank, hblank, lyc] {
             [s @ ModeInt(_), ..] => s,
@@ -363,13 +360,13 @@ impl PixelProcessingUnit {
         //println!("LY: {} | LYC: {}, State: {:?} | STAT: {}", self.ly(), self.lyc(), self.state, stat);
         self.registers[0] & 0xF8
             | match (self.mode, self.ticks) {
-                (OamSearch, 0..=6) => 0,
-                (VerticalBlank, 0..=4) if self.ly() == 144 => 0,
-                (HorizontalBlank, _) => 0,
-                (VerticalBlank, _) => 1,
-                (OamSearch, _) => 2,
-                (PixelTransfer, _) => 3,
-            }
+            (OamSearch, 0..=6) => 0,
+            (VerticalBlank, 0..=4) if self.ly() == 144 => 0,
+            (HorizontalBlank, _) => 0,
+            (VerticalBlank, _) => 1,
+            (OamSearch, _) => 2,
+            (PixelTransfer, _) => 3,
+        }
             | if self.lyc_check() { 0x04 } else { 0x0 }
             | 0x80
     }
@@ -409,10 +406,10 @@ impl PixelProcessingUnit {
         }
         self.ticks > 4
             && (match (self.mode, self.ticks) {
-                (VerticalBlank, 5..=8) => 153,
-                (VerticalBlank, 9..=12) => !self.lyc(),
-                (..) => self.ly(),
-            }) == *self.lyc()
+            (VerticalBlank, 5..=8) => 153,
+            (VerticalBlank, 9..=12) => !self.lyc(),
+            (..) => self.ly(),
+        }) == *self.lyc()
     }
 
     fn bgp(&self) -> &u8 {
@@ -593,8 +590,7 @@ impl PixelProcessingUnit {
         let [a, r, g, b] = self.pixels[offset].to_be_bytes();
         let pixel = Color { a, r, g, b };
 
-        if pixel != WHITE && pri {
-        } else {
+        if pixel != WHITE && pri {} else {
             self.set_pixel(x, y, color)
         }
     }
