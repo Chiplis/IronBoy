@@ -12,8 +12,6 @@ pub struct LinkCable {
     pub(crate) transfer: State,
 }
 
-pub struct SerialInterrupt;
-
 impl LinkCable {
     pub(crate) fn new() -> Self {
         LinkCable {
@@ -32,9 +30,9 @@ impl LinkCable {
         }
     }
 
-    pub(crate) fn machine_cycle(&mut self) -> Option<SerialInterrupt> {
+    pub(crate) fn machine_cycle(&mut self) -> bool {
         if self.control & 1 != 1 {
-            return None;
+            return false;
         }
 
         self.transfer = match self.transfer {
@@ -42,11 +40,11 @@ impl LinkCable {
             Off => Off,
         };
 
-        if self.transfer == Transfer(8) {
-            self.transfer = Off;
-            Some(SerialInterrupt)
+        if self.transfer != Transfer(8) {
+            false
         } else {
-            None
+            self.transfer = Off;
+            true
         }
     }
 

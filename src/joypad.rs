@@ -14,9 +14,6 @@ pub struct Joypad {
     direction_buttons: u8,
 }
 
-#[derive(Copy, Clone)]
-pub struct InputInterrupt;
-
 impl Joypad {
     pub fn new() -> Self {
         Self {
@@ -26,17 +23,13 @@ impl Joypad {
         }
     }
 
-    pub fn machine_cycle(&mut self, window: &Window) -> Option<InputInterrupt> {
+    pub fn machine_cycle(&mut self, window: &Window) -> bool {
         let previous_buttons = self.buttons();
 
         self.action_buttons = Self::map_buttons([Z, C, Backspace, Enter], window);
         self.direction_buttons = Self::map_buttons([Right, Left, Up, Down], window);
 
-        if self.buttons() != previous_buttons {
-            Some(InputInterrupt)
-        } else {
-            None
-        }
+        self.buttons() != previous_buttons
     }
 
     fn map_buttons(buttons: [Key; 4], window: &Window) -> u8 {

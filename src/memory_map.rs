@@ -161,15 +161,15 @@ impl MemoryMap {
             _ => (),
         };
 
-        if self.timer.machine_cycle().is_some() {
+        if self.timer.machine_cycle() {
             self.interrupt_handler.set(Timing)
         };
 
-        if self.serial.machine_cycle().is_some() {
+        if self.serial.machine_cycle() {
             self.interrupt_handler.set(Serial)
         };
 
-        if self.joypad.machine_cycle(&self.ppu.window).is_some() {
+        if self.joypad.machine_cycle(&self.ppu.window) {
             self.interrupt_handler.set(Input)
         }
 

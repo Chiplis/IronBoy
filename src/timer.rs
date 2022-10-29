@@ -1,5 +1,3 @@
-pub struct TimerInterrupt;
-
 pub struct Timer {
     tima: u8,
     tma: u8,
@@ -26,15 +24,15 @@ impl Timer {
         }
     }
 
-    pub fn machine_cycle(&mut self) -> Option<TimerInterrupt> {
+    pub fn machine_cycle(&mut self) -> bool {
         self.interrupt_served = false;
-        let interrupt = if self.interrupt {
+
+        let interrupt = self.interrupt;
+
+        if interrupt {
             self.tima = self.tma;
             self.interrupt_served = true;
-            Some(TimerInterrupt)
-        } else {
-            None
-        };
+        }
 
         self.interrupt = false;
 
