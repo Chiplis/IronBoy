@@ -142,7 +142,7 @@ impl PixelProcessingUnit {
         self.handle_lcd_startup();
 
         //println!("STAT: {} | LYC: {} | LY: {}", self.stat(), self.lyc(), self.ly());
-        self.cycle_result(self.old_mode)
+        self.cycle_result()
     }
 
     fn reset_state(&mut self) {
@@ -227,20 +227,25 @@ impl PixelProcessingUnit {
         };
     }
 
-    fn cycle_result(&mut self, old_mode: PpuMode) -> RenderCycle {
-        let new_interrupts = self.stat_interrupts();
+    fn cycle_result(&mut self) -> RenderCycle {
+        let [oam, vblank, hblank, lyc] = self.stat_interrupts();
+
         let trigger_stat_interrupt = self.stat_line == Low
-            && new_interrupts
-                .iter()
-                .any(|&interrupt| {
-                    if let ModeInt(m) = interrupt {
-                        m == self.mode && old_mode != m
-                    } else {
-                        interrupt == LycInt
-                    }
-                });
-        self.stat_line = *new_interrupts.iter().find(|&i| i != &Low).unwrap_or(&Low);
+            && (LycInt == lyc
+                || (self.mode != self.old_mode
+                    && (ModeInt(OamSearch) == oam
+                        || ModeInt(VerticalBlank) == vblank
+                        || ModeInt(HorizontalBlank) == hblank)));
+
+        self.stat_line = match [oam, vblank, hblank, lyc] {
+            [s @ ModeInt(_), ..] => s,
+            [_, s @ ModeInt(_), ..] => s,
+            [.., s @ ModeInt(_), _] => s,
+            [.., s] => s,
+        };
+
         self.force_irq = false;
+
         if trigger_stat_interrupt {
             StatTrigger(self.state)
         } else {
@@ -250,28 +255,37 @@ impl PixelProcessingUnit {
 
     fn stat_interrupts(&mut self) -> [StatInterrupt; 4] {
         let stat = self.stat();
-        [
-            if stat & 0x08 != 0 || self.force_irq {
-                ModeInt(OamSearch)
-            } else {
-                Low
-            },
-            if stat & 0x10 != 0 || self.force_irq {
-                ModeInt(VerticalBlank)
-            } else {
-                Low
-            },
-            if stat & 0x20 != 0 || self.force_irq {
-                ModeInt(HorizontalBlank)
-            } else {
-                Low
-            },
-            if self.lyc_check() && (stat & 0x40 != 0 || self.force_irq) {
-                LycInt
-            } else {
-                Low
-            },
-        ]
+        if !self.force_irq {
+            [
+                if stat & 0x08 != 0 {
+                    ModeInt(OamSearch)
+                } else {
+                    Low
+                },
+                if stat & 0x10 != 0 {
+                    ModeInt(VerticalBlank)
+                } else {
+                    Low
+                },
+                if stat & 0x20 != 0 {
+                    ModeInt(HorizontalBlank)
+                } else {
+                    Low
+                },
+                if self.lyc_check() && stat & 0x40 != 0 {
+                    LycInt
+                } else {
+                    Low
+                },
+            ]
+        } else {
+            [
+                ModeInt(OamSearch),
+                ModeInt(VerticalBlank),
+                ModeInt(HorizontalBlank),
+                if self.lyc_check() { LycInt } else { Low },
+            ]
+        }
     }
 
     pub fn read(&mut self, address: usize) -> Option<u8> {
