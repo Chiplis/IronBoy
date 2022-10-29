@@ -7,7 +7,6 @@ use crate::ppu::PpuState::{LcdOff, ModeChange, ProcessingMode};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use crate::ppu::StatInterrupt::{Low, LycInt, ModeInt};
 use crate::ppu::TileMapArea::{H9800, H9C00};
-use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::cmp::min;
 use std::convert::TryInto;
 use DmaState::{Executing, Finished, Starting};
@@ -47,7 +46,6 @@ pub struct PixelProcessingUnit {
     force_irq: bool,
     lcdc: LcdControl,
     pub(crate) pixels: Box<[u32]>,
-    pub window: Window,
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
@@ -75,25 +73,9 @@ enum StatInterrupt {
 
 #[deny(unreachable_patterns)]
 impl PixelProcessingUnit {
-    pub fn new(rom_name: &str) -> Self {
+    pub fn new() -> Self {
         let lcdc = LcdControl::new(0);
         let fb = [0_u32; 160 * 144];
-        let window = Window::new(
-            format!("{} - ESC to exit", rom_name).as_str(),
-            160,
-            144,
-            WindowOptions {
-                borderless: false,
-                transparency: false,
-                title: true,
-                resize: true,
-                scale: Scale::X1,
-                scale_mode: ScaleMode::Stretch,
-                topmost: false,
-                none: false,
-            },
-        )
-        .unwrap();
         PixelProcessingUnit {
             mode: HorizontalBlank,
             tile_block_a: [0; 2048],
@@ -116,7 +98,6 @@ impl PixelProcessingUnit {
             old_mode: HorizontalBlank,
             dma: Inactive,
             last_lyc_check: false,
-            window,
         }
     }
 
@@ -214,9 +195,6 @@ impl PixelProcessingUnit {
                     self.last_lyc_check = self.lyc_check();
                     *self.ly_mut() %= 154;
                     self.mode = if *self.ly_mut() == 0 {
-                        self.window
-                            .update_with_buffer(&self.pixels, 160, 144)
-                            .unwrap();
                         OamSearch
                     } else {
                         VerticalBlank

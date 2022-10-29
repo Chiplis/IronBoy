@@ -5,10 +5,11 @@ use crate::ppu::PpuState::ModeChange;
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use crate::ppu::{DmaState, PixelProcessingUnit, PpuMode};
 use crate::timer::Timer;
+use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use DmaState::{Inactive, Starting};
 use OamCorruptionCause::IncDec;
-use PpuMode::VerticalBlank;
+use PpuMode::{OamSearch, VerticalBlank};
 
 use crate::serial::LinkCable;
 
@@ -31,11 +32,12 @@ pub struct MemoryMap {
     pub cycles: u16,
     dma_progress: usize,
     oam_corruption: Option<OamCorruptionCause>,
+    pub window: Window,
 }
 
 impl MemoryMap {
     pub fn new(rom: &Vec<u8>, rom_name: &str) -> MemoryMap {
-        let ppu = PixelProcessingUnit::new(rom_name);
+        let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new();
@@ -45,6 +47,22 @@ impl MemoryMap {
         let dma_progress = 0;
         let oam_corruption = None;
         let serial = LinkCable::new();
+        let window = Window::new(
+            format!("{} - ESC to exit", rom_name).as_str(),
+            160,
+            144,
+            WindowOptions {
+                borderless: false,
+                transparency: false,
+                title: true,
+                resize: true,
+                scale: Scale::X1,
+                scale_mode: ScaleMode::Stretch,
+                topmost: false,
+                none: false,
+            },
+        )
+        .unwrap();
         let mem = MemoryMap {
             joypad,
             ppu,
@@ -56,6 +74,7 @@ impl MemoryMap {
             dma_progress,
             oam_corruption,
             serial,
+            window,
         };
         MemoryMap::init_memory(mem, rom)
     }
@@ -157,6 +176,10 @@ impl MemoryMap {
                 self.interrupt_handler.set(Stat);
             }
             Normal(ModeChange(_, VerticalBlank)) => self.interrupt_handler.set(VBlank),
+            Normal(ModeChange(VerticalBlank, OamSearch)) => self
+                .window
+                .update_with_buffer(&self.ppu.pixels, 160, 144)
+                .unwrap(),
             StatTrigger(_) => self.interrupt_handler.set(Stat),
             _ => (),
         };
@@ -169,7 +192,7 @@ impl MemoryMap {
             self.interrupt_handler.set(Serial)
         };
 
-        if self.joypad.machine_cycle(&self.ppu.window) {
+        if self.joypad.machine_cycle(&self.window) {
             self.interrupt_handler.set(Input)
         }
 

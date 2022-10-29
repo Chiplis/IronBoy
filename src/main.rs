@@ -44,28 +44,37 @@ fn main() {
     let args = Args::parse();
     let (sleep, threshold) = (args.sleep, args.threshold);
     let rom_path = Path::new(&args.rom_file);
-    if !rom_path.exists() { panic!("The input ROM path doesn't exist") }
-    if !rom_path.is_file() { panic!("The input ROM isn't a file") }
+    if !rom_path.exists() {
+        panic!("The input ROM path doesn't exist")
+    }
+    if !rom_path.is_file() {
+        panic!("The input ROM isn't a file")
+    }
     let rom = read(rom_path).expect("Unable to read ROM file");
     let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap());
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames = 0.0;
     let start = Instant::now();
+    let mut slowest_frame = 0.0;
     loop {
         frames += 1.0;
-        run_frame(&mut gameboy, sleep, threshold);
-        if gameboy.mem.ppu.window.is_key_down(Escape) {
+        let current_frame = run_frame(&mut gameboy, sleep, threshold);
+        if slowest_frame < current_frame {
+            slowest_frame = current_frame
+        }
+        if gameboy.mem.window.is_key_down(Escape) {
             break;
         }
     }
     println!(
-        "Finished running at {} FPS average",
-        frames / start.elapsed().as_secs_f64()
+        "Finished running at {} FPS average, slowest frame took {} seconds to render",
+        frames / start.elapsed().as_secs_f64(),
+        slowest_frame
     );
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
     let mut elapsed_cycles = 0;
     const CYCLE_DURATION: f64 = 1.0_f64 / FREQUENCY as f64;
     let start = Instant::now();
@@ -90,6 +99,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) {
             thread::sleep(Duration::from_secs_f64(sleep_time));
         }
     }
+    start.elapsed().as_secs_f64()
 }
 
 #[cfg(test)]
