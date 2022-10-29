@@ -229,15 +229,17 @@ impl PixelProcessingUnit {
 
     fn cycle_result(&mut self, old_mode: PpuMode) -> RenderCycle {
         let new_interrupts = self.stat_interrupts();
-        let trigger_stat_interrupt = match (self.stat_line, new_interrupts) {
-            (Low, [.., ModeInt(m), _]) if m == self.mode && old_mode != m => true,
-            (Low, [.., LycInt]) => true,
-            _ => false,
-        };
-        self.stat_line = match new_interrupts {
-            [.., interrupt] if interrupt != Low => interrupt,
-            _ => Low
-        };
+        let trigger_stat_interrupt = self.stat_line == Low
+            && new_interrupts
+                .iter()
+                .any(|&interrupt| {
+                    if let ModeInt(m) = interrupt {
+                        m == self.mode && old_mode != m
+                    } else {
+                        interrupt == LycInt
+                    }
+                });
+        self.stat_line = *new_interrupts.iter().find(|&i| i != &Low).unwrap_or(&Low);
         self.force_irq = false;
         if trigger_stat_interrupt {
             StatTrigger(self.state)
