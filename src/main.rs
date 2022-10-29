@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 use minifb::Key::Escape;
 use std::fs::read;
 
+use clap::{Command, arg};
+
 mod gameboy;
 mod instruction;
 mod instruction_fetcher;
@@ -22,8 +24,12 @@ mod timer;
 const FREQUENCY: u32 = 4194304;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let rom_name = args.get(1).unwrap();
+    let matches = Command::new("feboy")
+        .arg_required_else_help(true)
+        .arg(arg!(<ROM_FILE> "GameBoy ROM file to input"))
+        .get_matches();
+
+    let rom_name = matches.get_one("ROM_FILE").unwrap();
     let rom = read(rom_name).unwrap();
     let mem = MemoryMap::new(&rom, rom_name);
 
