@@ -64,7 +64,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool) {
     if sleep {
         let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
         let sleep_time = cycles_time - start.elapsed().as_secs_f64();
-        if sleep_time > 0.0 {
+        if sleep_time > 0.016 {
             thread::sleep(Duration::from_secs_f64(sleep_time));
         }
     }
