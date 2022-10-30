@@ -33,13 +33,12 @@ impl Joypad {
     }
 
     fn map_buttons(buttons: [Key; 4], window: &Window) -> u8 {
-        let mut sum: u8 = 0;
-        for (i, &button) in buttons.iter().enumerate() {
-            if window.is_key_down(button) {
-                sum += 2u8.pow(i as u32);
-            }
-        }
-        !sum & 0x0F
+        !buttons
+            .iter()
+            .map(|&button| window.is_key_down(button))
+            .enumerate()
+            .map(|(i, n)| (n as u8) << i)
+            .sum::<u8>() & 0x0F
     }
 
     fn buttons(&self) -> u8 {
