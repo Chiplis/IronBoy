@@ -13,6 +13,14 @@ use PpuMode::{OamSearch, VerticalBlank};
 
 use crate::serial::LinkCable;
 
+macro_rules! set_memory {
+    {$mm:ident, $($addr:literal: $val:literal,)*} => {
+        $(
+            $mm.write_without_cycle($addr as u16, $val);
+        )*
+    }
+}
+
 #[derive(Debug)]
 pub enum OamCorruptionCause {
     IncDec,
@@ -203,38 +211,43 @@ impl MemoryMap {
         for (index, value) in rom.iter().enumerate() {
             mem.memory[index] = *value
         }
-        mem.write_without_cycle(0xFF05_u16, 0);
-        mem.write_without_cycle(0xFF06_u16, 0);
-        mem.write_without_cycle(0xFF07_u16, 0);
-        mem.write_without_cycle(0xFF10_u16, 0x80);
-        mem.write_without_cycle(0xFF11_u16, 0xBF);
-        mem.write_without_cycle(0xFF12_u16, 0xF3);
-        mem.write_without_cycle(0xFF14_u16, 0xBF);
-        mem.write_without_cycle(0xFF16_u16, 0x3F);
-        mem.write_without_cycle(0xFF16_u16, 0x3F);
-        mem.write_without_cycle(0xFF17_u16, 0);
-        mem.write_without_cycle(0xFF19_u16, 0xBF);
-        mem.write_without_cycle(0xFF1A_u16, 0x7F);
-        mem.write_without_cycle(0xFF1B_u16, 0xFF);
-        mem.write_without_cycle(0xFF1C_u16, 0x9F);
-        mem.write_without_cycle(0xFF1E_u16, 0xFF);
-        mem.write_without_cycle(0xFF20_u16, 0xFF);
-        mem.write_without_cycle(0xFF21_u16, 0);
-        mem.write_without_cycle(0xFF22_u16, 0);
-        mem.write_without_cycle(0xFF23_u16, 0xBF);
-        mem.write_without_cycle(0xFF24_u16, 0x77);
-        mem.write_without_cycle(0xFF25_u16, 0xF3);
-        mem.write_without_cycle(0xFF26_u16, 0xF1);
-        mem.write_without_cycle(0xFF40_u16, 0x91);
-        mem.write_without_cycle(0xFF42_u16, 0);
-        mem.write_without_cycle(0xFF43_u16, 0);
-        mem.write_without_cycle(0xFF45_u16, 0);
-        mem.write_without_cycle(0xFF47_u16, 0xFC);
-        mem.write_without_cycle(0xFF48_u16, 0xFF);
-        mem.write_without_cycle(0xFF49_u16, 0xFF);
-        mem.write_without_cycle(0xFF4A_u16, 0);
-        mem.write_without_cycle(0xFF4B_u16, 0);
-        mem.write_without_cycle(0xFF00_u16, 0xFF);
+
+        set_memory! {
+            mem,
+            0xFF05: 0x0,
+            0xFF06: 0x0,
+            0xFF07: 0x0,
+            0xFF10: 0x80,
+            0xFF11: 0xBF,
+            0xFF12: 0xF3,
+            0xFF14: 0xBF,
+            0xFF16: 0x3F,
+            0xFF16: 0x3F,
+            0xFF17: 0x0,
+            0xFF19: 0xBF,
+            0xFF1A: 0x7F,
+            0xFF1B: 0xFF,
+            0xFF1C: 0x9F,
+            0xFF1E: 0xFF,
+            0xFF20: 0xFF,
+            0xFF21: 0x0,
+            0xFF22: 0x0,
+            0xFF23: 0xBF,
+            0xFF24: 0x77,
+            0xFF25: 0xF3,
+            0xFF26: 0xF1,
+            0xFF40: 0x91,
+            0xFF42: 0x0,
+            0xFF43: 0x0,
+            0xFF45: 0x0,
+            0xFF47: 0xFC,
+            0xFF48: 0xFF,
+            0xFF49: 0xFF,
+            0xFF4A: 0x0,
+            0xFF4B: 0x0,
+            0xFF00: 0xFF,
+        }
+
         mem
     }
 }
