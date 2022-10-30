@@ -198,7 +198,7 @@ impl Gameboy {
             }
 
             AdcA(op) => {
-                let carry = if self.reg.flags.c { 1 } else { 0 };
+                let carry = u8::from(self.reg.flags.c);
                 let n = self.get_op(op);
                 let (add, new_carry) =
                     calc_with_carry(vec![self[A].value, n, carry], |a, b| a.overflowing_add(b));
@@ -256,7 +256,7 @@ impl Gameboy {
             }
             SbcA(op) => {
                 let n = self.get_op(op);
-                let carry = if self.reg.flags.c { 1 } else { 0 };
+                let carry = u8::from(self.reg.flags.c);
                 let (sub, new_carry) =
                     calc_with_carry(vec![self[A].value, n, carry], |a, b| a.overflowing_sub(b));
                 self.reg.set_flags(
