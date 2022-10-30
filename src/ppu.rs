@@ -16,7 +16,7 @@ use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 pub enum DmaState {
     Inactive,
     Starting,
-    Executing,
+    Executing(u8),
     Finished,
 }
 
@@ -31,7 +31,6 @@ pub enum PpuMode {
 pub struct PixelProcessingUnit {
     pub mode: PpuMode,
     pub dma: DmaState,
-    pub dma_progress: usize,
     pub dma_offset: usize,
     tile_block_a: [u8; 0x8800 - 0x8000],
     tile_block_b: [u8; 0x9000 - 0x8800],
@@ -92,7 +91,6 @@ impl PixelProcessingUnit {
             state: LcdOff,
             force_irq: true,
             last_ticks: 0,
-            dma_progress: 0,
             dma_offset: 0,
             pixels: Box::new(fb),
             old_mode: HorizontalBlank,
@@ -340,18 +338,16 @@ impl PixelProcessingUnit {
     fn dma_cycle(&mut self) {
         self.dma = match self.dma {
             Inactive => {
-                self.dma_progress = 0;
                 Starting
             }
-            Executing => {
-                self.dma_progress += 1;
-                if self.dma_progress == self.oam.len() {
+            Executing(n) => {
+                if n as usize == self.oam.len() {
                     Finished
                 } else {
-                    Executing
+                    Executing(n + 1)
                 }
             }
-            Starting => Executing,
+            Starting => Executing(1),
             Finished => Inactive,
         };
     }
