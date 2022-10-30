@@ -28,7 +28,6 @@ const FREQUENCY: u32 = 4194304;
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// GameBoy ROM file to input
-    #[clap(short, long)]
     rom_file: String,
 
     /// Toggle sleeping between frames
