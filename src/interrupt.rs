@@ -1,5 +1,4 @@
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
-use crate::interrupt::InterruptState::{Active, Enabled, Inactive, Requested};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum InterruptId {
@@ -8,14 +7,6 @@ pub enum InterruptId {
     Timing = 0x50,
     Serial = 0x58,
     Input = 0x60,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum InterruptState {
-    Active,
-    Inactive,
-    Enabled,
-    Requested,
 }
 
 pub struct InterruptHandler {
@@ -33,6 +24,22 @@ impl InterruptHandler {
         InterruptHandler { flag, enable }
     }
 
+    fn is_active(&self, mask: u8) -> bool {
+        (self.enable & self.flag & mask) != 0
+    }
+
+    pub fn triggered(&self, interrupt: InterruptId) -> bool {
+        // Lower priority interrupts are ORed with higher priority ones
+        let mask = match interrupt {
+            InterruptId::VBlank => 0x01,
+            InterruptId::Stat => 0x03,
+            InterruptId::Timing => 0x07,
+            InterruptId::Serial => 0x0F,
+            InterruptId::Input => 0x1F,
+        };
+        self.is_active(mask)
+    }
+
     fn mask(interrupt: InterruptId) -> u8 {
         match interrupt {
             VBlank => 0x01,
@@ -40,31 +47,6 @@ impl InterruptHandler {
             Timing => 0x04,
             Serial => 0x08,
             Input => 0x10,
-        }
-    }
-
-    fn calc_state(&self, interrupt: InterruptId) -> InterruptState {
-        let mask = Self::mask(interrupt);
-        let enabled = self.enable & mask != 0;
-        let requested = self.flag & mask != 0;
-        match (requested, enabled) {
-            (true, true) => Active,
-            (true, false) => Requested,
-            (false, true) => Enabled,
-            (false, false) => Inactive,
-        }
-    }
-
-    pub fn get_state(&self, interrupt: InterruptId) -> InterruptState {
-        let inter = Self::mask(interrupt);
-        if inter > VBlank as u8 && self.calc_state(VBlank) == Active
-            || inter > Stat as u8 && self.calc_state(Stat) == Active
-            || inter > Timing as u8 && self.calc_state(Timing) == Active
-            || inter > Serial as u8 && self.calc_state(Serial) == Active
-        {
-            Active
-        } else {
-            self.calc_state(interrupt)
         }
     }
 

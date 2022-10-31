@@ -2,7 +2,6 @@ use std::ops::{Index, IndexMut};
 
 use crate::instruction::Command::*;
 use crate::instruction_fetcher::InstructionFetcher;
-use crate::interrupt::InterruptState::*;
 use crate::interrupt::IE_ADDRESS;
 use crate::interrupt::IF_ADDRESS;
 use crate::memory_map::MemoryMap;
@@ -150,9 +149,7 @@ impl Gameboy {
     }
 
     fn trigger_interrupt(&mut self, interrupt_id: InterruptId) -> bool {
-        let state = self.mem.interrupt_handler.get_state(interrupt_id);
-        match state {
-            Active => {
+        if self.mem.interrupt_handler.triggered(interrupt_id) {
                 self.micro_cycle();
                 self.micro_cycle();
                 self.ime = false;
@@ -164,8 +161,8 @@ impl Gameboy {
                 self.mem.write(self.reg.sp, lo);
                 self.set_pc(interrupt_id as u16, true);
                 true
-            }
-            Inactive | Enabled | Requested => false,
+        } else {
+            false
         }
     }
 
