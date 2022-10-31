@@ -40,11 +40,11 @@ pub struct MemoryMap {
     pub cycles: u16,
     dma_progress: u8,
     oam_corruption: Option<OamCorruptionCause>,
-    pub window: Window,
+    pub window: Option<Window>,
 }
 
 impl MemoryMap {
-    pub fn new(rom: &Vec<u8>, rom_name: &str) -> MemoryMap {
+    pub fn new(rom: &Vec<u8>, rom_name: &str, headless: bool) -> MemoryMap {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
@@ -55,22 +55,25 @@ impl MemoryMap {
         let dma_progress = 0;
         let oam_corruption = None;
         let serial = LinkCable::new();
-        let window = Window::new(
-            format!("{} - ESC to exit", rom_name).as_str(),
-            160,
-            144,
-            WindowOptions {
-                borderless: false,
-                transparency: false,
-                title: true,
-                resize: true,
-                scale: Scale::X1,
-                scale_mode: ScaleMode::Stretch,
-                topmost: false,
-                none: false,
-            },
-        )
-        .unwrap();
+        let window = if headless {
+            None
+        } else {
+            Some(Window::new(
+                format!("{} - ESC to exit", rom_name).as_str(),
+                160,
+                144,
+                WindowOptions {
+                    borderless: false,
+                    transparency: false,
+                    title: true,
+                    resize: true,
+                    scale: Scale::X1,
+                    scale_mode: ScaleMode::Stretch,
+                    topmost: false,
+                    none: false,
+                },
+            ).unwrap())
+        };
         let mem = MemoryMap {
             joypad,
             ppu,
@@ -201,7 +204,7 @@ impl MemoryMap {
             self.interrupt_handler.set(Serial)
         };
 
-        if self.joypad.machine_cycle(&self.window) {
+        if self.window.as_ref().map(|window| self.joypad.machine_cycle(window)).unwrap_or(false) {
             self.interrupt_handler.set(Input)
         }
 
@@ -209,9 +212,7 @@ impl MemoryMap {
     }
 
     fn update_screen(&mut self) {
-        self.window
-            .update_with_buffer(&self.ppu.pixels, 160, 144)
-            .unwrap()
+        self.window.as_mut().map(|window| window.update_with_buffer(&self.ppu.pixels, 160, 144).unwrap());
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {

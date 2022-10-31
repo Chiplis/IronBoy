@@ -30,12 +30,16 @@ struct Args {
     /// GameBoy ROM file to input
     rom_file: String,
 
+    /// Toggle headless mode
+    #[clap(long, default_value = "false")]
+    headless: bool,
+
     /// Toggle sleeping between frames
-    #[clap(short, long, default_value = "true")]
+    #[clap(long, default_value = "true")]
     sleep: bool,
 
     /// Sleep threshold between frames
-    #[clap(short, long, default_value_t = 0.0)]
+    #[clap(long, default_value_t = 0.0)]
     threshold: f64,
 }
 
@@ -50,7 +54,7 @@ fn main() {
         panic!("The input ROM isn't a file")
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap());
+    let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap(), args.headless);
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames: usize = 0;
@@ -62,7 +66,7 @@ fn main() {
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
-        if gameboy.mem.window.is_key_down(Escape) {
+        if gameboy.mem.window.as_ref().map(|window| window.is_key_down(Escape)).unwrap_or(false) {
             break;
         }
     }
@@ -116,7 +120,6 @@ mod tests {
     use std::path::Path;
     use std::sync::mpsc::channel;
     use std::thread;
-    use std::thread::sleep;
     use std::time::Duration;
 
     #[test]
@@ -160,10 +163,8 @@ mod tests {
                 const TEST_DURATION: u8 = 60;
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
 
-                println!("Sleeping for {}", 50 * idx);
-                sleep(Duration::from_millis(100 * idx as u64));
                 let rom_vec = read(&rom).unwrap();
-                let mem = MemoryMap::new(&rom_vec, &rom);
+                let mem = MemoryMap::new(&rom_vec, &rom, true);
                 let mut gameboy = Gameboy::new(mem);
                 println!("Beginning test loop");
                 let mut tests_counter = 0;
@@ -171,14 +172,12 @@ mod tests {
                 let (tx, rx) = std::sync::mpsc::channel();
 
                 thread::spawn(move || {
-                    let mut i = 0;
-                    while i != TEST_DURATION {
+                    for i in 0..TEST_DURATION {
                         thread::sleep(Duration::from_secs(1));
-                        print!("Sending tx {i} times for {r}");
+                        print!("Saving screenshot #{i} for {r}");
                         if let Err(e) = tx.send(r.clone()) {
-                            println!("Panicked with {e} while sending.")
+                            println!("Panicked with {e} while saving screenshot #{i} for {r}")
                         };
-                        i += 1;
                     }
                 });
                 'inner: loop {
