@@ -84,6 +84,8 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
         let mem_cycles = cycles - gameboy.mem.cycles;
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
             panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.cycles)
+        } else if mem_cycles == 1 {
+            gameboy.mem.cycle()
         } else {
             for _ in 0..mem_cycles {
                 gameboy.mem.cycle()

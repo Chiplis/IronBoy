@@ -559,23 +559,15 @@ impl PixelProcessingUnit {
     }
 
     fn get_color(&self, color_id: u8, palette_num: u8) -> Color {
-        let (hi, lo) = match color_id {
-            0 => (1, 0),
-            1 => (3, 2),
-            2 => (5, 4),
-            3 => (7, 6),
-            _ => panic!("Invalid color id: 0x{:x}", color_id),
-        };
-
-        let color = ((palette_num >> hi) & 0b1) << 1;
-        let color = color | ((palette_num >> lo) & 0b1);
+        let (hi, lo) = (color_id * 2 + 1, color_id * 2);
+        let color = (((palette_num >> hi) & 0b1) << 1) | ((palette_num >> lo) & 0b1);
 
         match color {
             0 => WHITE,
             1 => LIGHT_GRAY,
             2 => DARK_GRAY,
             3 => BLACK,
-            _ => panic!("Invalid color: 0x{:x}", color),
+            _ => unreachable!(),
         }
     }
 
