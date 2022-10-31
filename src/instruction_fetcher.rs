@@ -41,7 +41,7 @@ impl InstructionFetcher {
                     let cb_opcode = ram.read(pc + 1) as u8;
 
                     let bit: usize = ((cb_opcode as usize % 0x40) >> 4) * 2
-                        + if cb_opcode & 0x0F > 7 { 1 } else { 0 };
+                        + usize::from(cb_opcode & 0x0F > 7);
                     if bit > 7 {
                         panic!("Bit parsing is failing: {}.", bit)
                     };

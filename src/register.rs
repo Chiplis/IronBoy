@@ -135,7 +135,7 @@ impl FlagRegister {
     pub fn value(&self) -> u8 {
         [self.c, self.h, self.n, self.z]
             .iter()
-            .map(|f| if *f { 1 } else { 0 })
+            .map(|&f| i32::from(f))
             .enumerate()
             .map(|(i, n)| (n << (i + 4)) as u8)
             .sum()
@@ -162,7 +162,7 @@ impl WordRegister {
         match self {
             Double(h, l) => u16::from_le_bytes([l.value, h.value]),
             AccFlag(a, FlagRegister { z, n, h, c }) => {
-                let bit_flag = |b: bool, v: u32| 2u8.pow(v) as u8 * if b { 1 } else { 0 };
+                let bit_flag = |b: bool, v: u32| 2u8.pow(v) * u8::from(b);
                 u16::from_le_bytes([
                     bit_flag(z, 3) + bit_flag(n, 2) + bit_flag(h, 1) + bit_flag(c, 0),
                     a.value,

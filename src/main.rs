@@ -53,11 +53,11 @@ fn main() {
     let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap());
 
     let mut gameboy = Gameboy::new(mem);
-    let mut frames = 0.0;
+    let mut frames: usize = 0;
     let start = Instant::now();
     let mut slowest_frame = 0.0;
     loop {
-        frames += 1.0;
+        frames += 1;
         let current_frame = run_frame(&mut gameboy, sleep, threshold);
         if slowest_frame < current_frame {
             slowest_frame = current_frame
@@ -68,7 +68,7 @@ fn main() {
     }
     println!(
         "Finished running at {} FPS average, slowest frame took {} seconds to render",
-        frames / start.elapsed().as_secs_f64(),
+        frames as f64 / start.elapsed().as_secs_f64(),
         slowest_frame
     );
 }
