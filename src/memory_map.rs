@@ -58,21 +58,24 @@ impl MemoryMap {
         let window = if headless {
             None
         } else {
-            Some(Window::new(
-                format!("{} - ESC to exit", rom_name).as_str(),
-                160,
-                144,
-                WindowOptions {
-                    borderless: false,
-                    transparency: false,
-                    title: true,
-                    resize: true,
-                    scale: Scale::X1,
-                    scale_mode: ScaleMode::Stretch,
-                    topmost: false,
-                    none: false,
-                },
-            ).unwrap())
+            Some(
+                Window::new(
+                    format!("{} - ESC to exit", rom_name).as_str(),
+                    160,
+                    144,
+                    WindowOptions {
+                        borderless: false,
+                        transparency: false,
+                        title: true,
+                        resize: true,
+                        scale: Scale::X1,
+                        scale_mode: ScaleMode::Stretch,
+                        topmost: false,
+                        none: false,
+                    },
+                )
+                .unwrap(),
+            )
         };
         let mem = MemoryMap {
             joypad,
@@ -204,7 +207,12 @@ impl MemoryMap {
             self.interrupt_handler.set(Serial)
         };
 
-        if self.window.as_ref().map(|window| self.joypad.machine_cycle(window)).unwrap_or(false) {
+        if self
+            .window
+            .as_ref()
+            .map(|window| self.joypad.machine_cycle(window))
+            .unwrap_or(false)
+        {
             self.interrupt_handler.set(Input)
         }
 
@@ -212,7 +220,9 @@ impl MemoryMap {
     }
 
     fn update_screen(&mut self) {
-        self.window.as_mut().map(|window| window.update_with_buffer(&self.ppu.pixels, 160, 144).unwrap());
+        if let Some(window) = self.window.as_mut() { window
+                .update_with_buffer(&self.ppu.pixels, 160, 144)
+                .unwrap() }
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {

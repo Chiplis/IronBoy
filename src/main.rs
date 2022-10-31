@@ -66,7 +66,13 @@ fn main() {
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
-        if gameboy.mem.window.as_ref().map(|window| window.is_key_down(Escape)).unwrap_or(false) {
+        if gameboy
+            .mem
+            .window
+            .as_ref()
+            .map(|window| window.is_key_down(Escape))
+            .unwrap_or(false)
+        {
             break;
         }
     }
