@@ -13,14 +13,6 @@ use PpuMode::{OamSearch, VerticalBlank};
 
 use crate::serial::LinkCable;
 
-macro_rules! set_memory {
-    {$mm:ident, $($addr:literal: $val:literal,)*} => {
-        $(
-            $mm.write_without_cycle($addr as u16, $val);
-        )*
-    }
-}
-
 #[derive(Debug)]
 pub enum OamCorruptionCause {
     IncDec,
@@ -220,14 +212,21 @@ impl MemoryMap {
     }
 
     fn update_screen(&mut self) {
-        if let Some(window) = self.window.as_mut() { window
+        if let Some(window) = self.window.as_mut() {
+            window
                 .update_with_buffer(&self.ppu.pixels, 160, 144)
-                .unwrap() }
+                .unwrap()
+        }
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
         for (index, value) in rom.iter().enumerate() {
             mem.memory[index] = *value
+        }
+
+        macro_rules! set_memory {
+            { $mm:ident, $($addr:literal: $val:literal,)* } =>
+            { $($mm.write_without_cycle($addr as u16, $val);)* }
         }
 
         set_memory! {
