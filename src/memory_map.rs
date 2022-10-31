@@ -1,6 +1,7 @@
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
+use crate::ppu::DmaState::Executing;
 use crate::ppu::PpuState::ModeChange;
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use crate::ppu::{PixelProcessingUnit, PpuMode};
@@ -9,7 +10,6 @@ use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use OamCorruptionCause::IncDec;
 use PpuMode::{OamSearch, VerticalBlank};
-use crate::ppu::DmaState::Executing;
 
 use crate::serial::LinkCable;
 
@@ -166,8 +166,8 @@ impl MemoryMap {
     fn dma_transfer(&mut self) {
         if let Executing(n) = self.ppu.dma {
             while self.dma_progress < n {
-                self.ppu.oam[self.dma_progress as usize] =
-                    self.read_without_cycle(self.ppu.dma_offset * 0x100 + self.dma_progress as usize);
+                self.ppu.oam[self.dma_progress as usize] = self
+                    .read_without_cycle(self.ppu.dma_offset * 0x100 + self.dma_progress as usize);
                 self.dma_progress += 1;
             }
             if self.dma_progress as usize == self.ppu.oam.len() {
@@ -183,11 +183,13 @@ impl MemoryMap {
                 self.interrupt_handler.set(Stat);
             }
             Normal(ModeChange(_, VerticalBlank)) => self.interrupt_handler.set(VBlank),
-            Normal(ModeChange(VerticalBlank, OamSearch)) => self
-                .window
-                .update_with_buffer(&self.ppu.pixels, 160, 144)
-                .unwrap(),
-            StatTrigger(_) => self.interrupt_handler.set(Stat),
+            Normal(ModeChange(VerticalBlank, OamSearch)) => self.update_screen(),
+            StatTrigger(state) => {
+                if let ModeChange(_, VerticalBlank) = state {
+                    self.update_screen()
+                }
+                self.interrupt_handler.set(Stat)
+            }
             _ => (),
         };
 
@@ -204,6 +206,12 @@ impl MemoryMap {
         }
 
         self.oam_corruption = None;
+    }
+
+    fn update_screen(&mut self) {
+        self.window
+            .update_with_buffer(&self.ppu.pixels, 160, 144)
+            .unwrap()
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {

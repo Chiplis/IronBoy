@@ -150,17 +150,17 @@ impl Gameboy {
 
     fn trigger_interrupt(&mut self, interrupt_id: InterruptId) -> bool {
         if self.mem.interrupt_handler.triggered(interrupt_id) {
-                self.micro_cycle();
-                self.micro_cycle();
-                self.ime = false;
-                self.mem.interrupt_handler.unset(interrupt_id);
-                let [lo, hi] = self.reg.pc.value().to_le_bytes();
-                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem.write(self.reg.sp, hi);
-                self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
-                self.mem.write(self.reg.sp, lo);
-                self.set_pc(interrupt_id as u16, true);
-                true
+            self.micro_cycle();
+            self.micro_cycle();
+            self.ime = false;
+            self.mem.interrupt_handler.unset(interrupt_id);
+            let [lo, hi] = self.reg.pc.value().to_le_bytes();
+            self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
+            self.mem.write(self.reg.sp, hi);
+            self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
+            self.mem.write(self.reg.sp, lo);
+            self.set_pc(interrupt_id as u16, true);
+            true
         } else {
             false
         }

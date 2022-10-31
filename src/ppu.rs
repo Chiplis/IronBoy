@@ -205,10 +205,10 @@ impl PixelProcessingUnit {
 
         let trigger_stat_interrupt = self.stat_line == Low
             && (LycInt == lyc
-            || (self.mode != self.old_mode
-            && (ModeInt(OamSearch) == oam
-            || ModeInt(VerticalBlank) == vblank
-            || ModeInt(HorizontalBlank) == hblank)));
+                || (self.mode != self.old_mode
+                    && (ModeInt(OamSearch) == oam
+                        || ModeInt(VerticalBlank) == vblank
+                        || ModeInt(HorizontalBlank) == hblank)));
 
         self.stat_line = match [oam, vblank, hblank, lyc] {
             [s @ ModeInt(_), ..] => s,
@@ -337,9 +337,7 @@ impl PixelProcessingUnit {
 
     fn dma_cycle(&mut self) {
         self.dma = match self.dma {
-            Inactive => {
-                Starting
-            }
+            Inactive => Starting,
             Executing(n) => {
                 if n as usize == self.oam.len() {
                     Finished
@@ -356,13 +354,13 @@ impl PixelProcessingUnit {
         //println!("LY: {} | LYC: {}, State: {:?} | STAT: {}", self.ly(), self.lyc(), self.state, stat);
         self.registers[0] & 0xF8
             | match (self.mode, self.ticks) {
-            (OamSearch, 0..=6) => 0,
-            (VerticalBlank, 0..=4) if self.ly() == 144 => 0,
-            (HorizontalBlank, _) => 0,
-            (VerticalBlank, _) => 1,
-            (OamSearch, _) => 2,
-            (PixelTransfer, _) => 3,
-        }
+                (OamSearch, 0..=6) => 0,
+                (VerticalBlank, 0..=4) if self.ly() == 144 => 0,
+                (HorizontalBlank, _) => 0,
+                (VerticalBlank, _) => 1,
+                (OamSearch, _) => 2,
+                (PixelTransfer, _) => 3,
+            }
             | if self.lyc_check() { 0x04 } else { 0x0 }
             | 0x80
     }
@@ -402,10 +400,10 @@ impl PixelProcessingUnit {
         }
         self.ticks > 4
             && (match (self.mode, self.ticks) {
-            (VerticalBlank, 5..=8) => 153,
-            (VerticalBlank, 9..=12) => !self.lyc(),
-            (..) => self.ly(),
-        }) == *self.lyc()
+                (VerticalBlank, 5..=8) => 153,
+                (VerticalBlank, 9..=12) => !self.lyc(),
+                (..) => self.ly(),
+            }) == *self.lyc()
     }
 
     fn bgp(&self) -> &u8 {
@@ -586,7 +584,8 @@ impl PixelProcessingUnit {
         let [a, r, g, b] = self.pixels[offset].to_be_bytes();
         let pixel = Color { a, r, g, b };
 
-        if pixel != WHITE && pri {} else {
+        if pixel != WHITE && pri {
+        } else {
             self.set_pixel(x, y, color)
         }
     }
