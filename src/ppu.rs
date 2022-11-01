@@ -148,55 +148,40 @@ impl PixelProcessingUnit {
     }
 
     fn handle_mode_transition(&mut self) {
-        self.ticks -= match self.mode {
-            OamSearch(_) => {
-                if self.ticks < 80 {
-                    0
-                } else {
-                    self.mode = PixelTransfer;
-                    80
-                }
+        match self.mode {
+
+            OamSearch(_) => if self.ticks >= 80 {
+                self.ticks -= 80;
+                self.mode = PixelTransfer;
             }
 
-            PixelTransfer => {
-                if self.ticks < 172 {
-                    0
-                } else {
-                    self.mode = HorizontalBlank;
-                    172
-                }
+            PixelTransfer => if self.ticks >= 172 {
+                self.ticks -= 172;
+                self.mode = HorizontalBlank;
             }
 
-            HorizontalBlank => {
-                if self.ticks < 204 {
-                    0
+            HorizontalBlank => if self.ticks >= 204 {
+                self.ticks -= 204;
+                *self.ly_mut() += 1;
+                self.last_lyc_check = self.lyc_check();
+                self.mode = if self.ly() == 144 {
+                    VerticalBlank
                 } else {
-                    *self.ly_mut() += 1;
-                    self.last_lyc_check = self.lyc_check();
-                    self.mode = if self.ly() == 144 {
-                        VerticalBlank
-                    } else {
-                        self.draw_scanline();
-                        OamSearch(false)
-                    };
-                    204
-                }
+                    self.draw_scanline();
+                    OamSearch(false)
+                };
             }
 
-            VerticalBlank => {
-                if self.ticks < 456 {
-                    0
+            VerticalBlank => if self.ticks >= 456 {
+                self.ticks -= 456;
+                *self.ly_mut() += 1;
+                *self.ly_mut() %= 154;
+                self.last_lyc_check = self.lyc_check();
+                self.mode = if *self.ly_mut() == 0 {
+                    OamSearch(false)
                 } else {
-                    *self.ly_mut() += 1;
-                    self.last_lyc_check = self.lyc_check();
-                    *self.ly_mut() %= 154;
-                    self.mode = if *self.ly_mut() == 0 {
-                        OamSearch(false)
-                    } else {
-                        VerticalBlank
-                    };
-                    456
-                }
+                    VerticalBlank
+                };
             }
         };
     }
@@ -381,12 +366,7 @@ impl PixelProcessingUnit {
     }
 
     pub fn ly(&self) -> u8 {
-        let ly = self.registers[3];
-        if ly != 153 || self.ticks <= 4 {
-            ly
-        } else {
-            0
-        }
+        self.registers[3]
     }
 
     pub fn ly_mut(&mut self) -> &mut u8 {

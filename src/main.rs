@@ -166,7 +166,7 @@ mod tests {
         for (idx, entry) in all_tests.into_iter().enumerate() {
             let tx_finish = test_status_tx.clone();
             thread::spawn(move || {
-                const TEST_DURATION: u8 = 60;
+                const TEST_DURATION: u8 = 30;
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
 
                 let rom_vec = read(&rom).unwrap();
