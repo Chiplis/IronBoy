@@ -181,7 +181,7 @@ impl MemoryMap {
                 self.interrupt_handler.set(Stat);
             }
             Normal(ModeChange(_, VerticalBlank)) => self.interrupt_handler.set(VBlank),
-            Normal(ModeChange(VerticalBlank, OamSearch)) => self.update_screen(),
+            Normal(ModeChange(VerticalBlank, OamSearch(_))) => self.update_screen(),
             StatTrigger(state) => {
                 if let ModeChange(_, VerticalBlank) = state {
                     self.update_screen()
