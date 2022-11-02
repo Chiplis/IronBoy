@@ -161,6 +161,8 @@ impl PixelProcessingUnit {
             }
 
             HorizontalBlank => if self.ticks >= 202 {
+                // When the LCD is enabled the LY register appears to increment
+                // 2 T-cycles before the mode transition
                 if self.ticks == 202 || self.ticks == 204 {
                     *self.ly_mut() += 1;
                     self.last_lyc_check = self.lyc_check();
@@ -195,7 +197,7 @@ impl PixelProcessingUnit {
 
         let trigger_stat_interrupt = match (lyc, oam, vblank, hblank) {
             (LycInt, ..) => true,
-            (_, ModeInt(OamSearch(_)), ..) if self.mode != self.old_mode => true,
+            (_, ModeInt(OamSearch(_)), ..) if self.mode != self.old_mode && self.ly() == 0 => true,
             (.., ModeInt(VerticalBlank), _) if self.mode != self.old_mode => true,
             (.., ModeInt(HorizontalBlank)) if self.mode != self.old_mode => true,
             (..) => false
@@ -226,7 +228,9 @@ impl PixelProcessingUnit {
                 } else {
                     Low
                 },
-                if stat & 0x10 != 0 {
+                // According to AntonioND's document VBlank interrupt
+                // is also triggered if OAM interrupt is enabled
+                if (stat & 0x10 != 0) || (stat & 0x08 != 0) {
                     ModeInt(VerticalBlank)
                 } else {
                     Low
