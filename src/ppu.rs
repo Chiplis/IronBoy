@@ -176,12 +176,12 @@ impl PixelProcessingUnit {
                 }
             }
 
-            VerticalBlank => if self.ticks >= 456 {
-                self.ticks -= 456;
+            VerticalBlank => if self.ticks == 456 {
+                self.ticks = 0;
                 *self.ly_mut() += 1;
                 *self.ly_mut() %= 154;
                 self.last_lyc_check = self.lyc_check();
-                self.mode = if *self.ly_mut() == 0 {
+                self.mode = if self.ly() == 0 {
                     OamSearch(false)
                 } else {
                     VerticalBlank
