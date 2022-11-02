@@ -217,9 +217,9 @@ impl Gameboy {
 
             CpA(op) => {
                 let n = self.get_op(op);
-                // stat_lyc_onoff if n == 1 {
-                //    println!("CpA");
-                //}
+                if n == 0 {
+                    println!("CpA");
+                }
                 self.reg.set_flags(
                     self[A].value == n,
                     true,
@@ -413,10 +413,10 @@ impl Gameboy {
             LdAR16(n) => self[A].value = self.mem.read(n),
             LdhAU16(n) => self[A].value = self.mem.read(n),
             LdhAU8(n) => {
-                // self.counter += 1;
-                // stat_lyc_onoff if self.counter == 6519 {
-                //     println!("LdhAU8 {}", self.counter)
-                // }
+                self.counter += 1;
+                if self.counter == 4488 || self.counter == 4479 {
+                     println!("LdhAU8 {}", self.counter)
+                }
                 let x = self.mem.read(n);
                 self[A].value = x;
             }

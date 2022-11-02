@@ -160,16 +160,20 @@ impl PixelProcessingUnit {
                 self.mode = HorizontalBlank;
             }
 
-            HorizontalBlank => if self.ticks >= 204 {
-                self.ticks -= 204;
-                *self.ly_mut() += 1;
-                self.last_lyc_check = self.lyc_check();
-                self.mode = if self.ly() == 144 {
-                    VerticalBlank
-                } else {
-                    self.draw_scanline();
-                    OamSearch(false)
-                };
+            HorizontalBlank => if self.ticks >= 202 {
+                if self.ticks == 202 || self.ticks == 204 {
+                    *self.ly_mut() += 1;
+                    self.last_lyc_check = self.lyc_check();
+                }
+                if self.ticks >= 204 {
+                    self.ticks = 0;
+                    self.mode = if self.ly() == 144 {
+                        VerticalBlank
+                    } else {
+                        self.draw_scanline();
+                        OamSearch(false)
+                    };
+                }
             }
 
             VerticalBlank => if self.ticks >= 456 {
