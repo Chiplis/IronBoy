@@ -14,6 +14,7 @@ use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, InstructionOperand};
 use crate::interrupt::InterruptId;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
+use crate::memory_map::OamCorruptionCause::IncDec;
 
 pub struct Gameboy {
     pub reg: Register,
@@ -296,12 +297,12 @@ impl Gameboy {
             }
 
             DecR16(reg) => {
-                self.mem.trigger_oam_inc_dec_corruption(reg);
+                self.mem.corrupt_oam(reg, IncDec);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_sub(1), reg)
             }
 
             IncR16(reg) => {
-                self.mem.trigger_oam_inc_dec_corruption(reg);
+                self.mem.corrupt_oam(reg, IncDec);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_add(1), reg)
             }
 
@@ -632,7 +633,7 @@ impl Gameboy {
     fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
         self.reg.pc = ProgramCounter(value);
         if trigger_cycle {
-            self.mem.trigger_oam_inc_dec_corruption(self.reg.pc.value());
+            // self.mem.corrupt_oam(self.reg.pc.value());
             self.micro_cycle()
         }
     }

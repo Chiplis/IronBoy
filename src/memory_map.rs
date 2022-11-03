@@ -8,12 +8,12 @@ use crate::ppu::{PixelProcessingUnit, PpuMode};
 use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
-use OamCorruptionCause::IncDec;
 use PpuMode::{OamSearch, VerticalBlank};
+use crate::memory_map::OamCorruptionCause::Write;
 
 use crate::serial::LinkCable;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum OamCorruptionCause {
     IncDec,
     Read,
@@ -31,7 +31,6 @@ pub struct MemoryMap {
     rom_size: usize,
     pub cycles: u16,
     dma_progress: u8,
-    oam_corruption: Option<OamCorruptionCause>,
     pub window: Option<Window>,
 }
 
@@ -45,7 +44,6 @@ impl MemoryMap {
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
         let dma_progress = 0;
-        let oam_corruption = None;
         let serial = LinkCable::new();
         let window = if headless {
             None
@@ -78,7 +76,6 @@ impl MemoryMap {
             rom_size,
             cycles: micro_ops,
             dma_progress,
-            oam_corruption,
             serial,
             window,
         };
@@ -95,14 +92,11 @@ impl MemoryMap {
         (0xFE00_usize..=0xFEFF_usize).contains(&translated_address)
     }
 
-    pub fn trigger_oam_inc_dec_corruption<T: 'static + Into<usize> + Copy>(&mut self, address: T) {
-        if !self.in_oam(address) {
+    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T, corruption: OamCorruptionCause) {
+        if !self.in_oam(address) || (corruption == Write && self.ppu.oam_corruptions.contains(&Write)) {
             return;
         }
-        self.ppu.oam_corruption = match self.ppu.oam_corruption {
-            None => Some(IncDec),
-            _ => panic!(),
-        }
+        self.ppu.oam_corruptions.push(corruption);
     }
 
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
@@ -207,8 +201,6 @@ impl MemoryMap {
         {
             self.interrupt_handler.set(Input)
         }
-
-        self.oam_corruption = None;
     }
 
     fn update_screen(&mut self) {

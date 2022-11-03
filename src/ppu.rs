@@ -49,7 +49,7 @@ pub struct PixelProcessingUnit {
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
-    pub oam_corruption: Option<OamCorruptionCause>,
+    pub oam_corruptions: Vec<OamCorruptionCause>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -86,7 +86,7 @@ impl PixelProcessingUnit {
             oam: [0; 160],
             registers: [0; 11],
             lcdc,
-            oam_corruption: None,
+            oam_corruptions: vec![],
             ticks: 0,
             stat_line: Low,
             state: LcdOff,
@@ -134,7 +134,7 @@ impl PixelProcessingUnit {
         self.last_lyc_check = self.lyc_check();
         *self.ly_mut() = 0;
         self.state = LcdOff;
-        self.oam_corruption = None;
+        self.oam_corruptions = vec![];
         self.force_irq = false;
         self.ticks = 0;
     }
@@ -271,9 +271,9 @@ impl PixelProcessingUnit {
             }
 
             (0xFE00..=0xFE9F, ..) => {
-                self.oam_corruption = match self.oam_corruption {
-                    None => Some(Read),
-                    Some(IncDec) => Some(ReadWrite),
+                match self.oam_corruptions.as_slice() {
+                    [] => self.oam_corruptions = vec![Read],
+                    [IncDec] => self.oam_corruptions = vec![ReadWrite],
                     _ => panic!(),
                 };
                 Some(0xFF)
@@ -298,7 +298,7 @@ impl PixelProcessingUnit {
             (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
 
             (0xFE00..=0xFEFF, OamSearch(_), ..) => {
-                self.oam_corruption = Some(Write);
+                self.oam_corruptions = vec![Write];
             }
 
             (0xFE00..=0xFE9F, HorizontalBlank | VerticalBlank, Inactive | Starting) => {
@@ -581,17 +581,19 @@ impl PixelProcessingUnit {
     fn handle_oam_corruption(&mut self) {
         match self.mode {
             OamSearch(_) => (),
-            _ => return self.oam_corruption = None
+            _ => return self.oam_corruptions = vec![]
         }
 
-        // println!("{:?}", self.oam_corruption);
-        match self.oam_corruption {
-            Some(Write | IncDec) => self.handle_oam_write_corruption(),
-            Some(Read) => self.handle_oam_read_corruption(),
-            Some(ReadWrite) => self.handle_oam_read_write_corruption(),
-            _ => (),
-        };
-        self.oam_corruption = None;
+        let corruptions = &mut vec![];
+        self.oam_corruptions.clone_into(corruptions);
+        for corruption in corruptions {
+            match corruption {
+                Write | IncDec => self.handle_oam_write_corruption(),
+                Read => self.handle_oam_read_corruption(),
+                ReadWrite => self.handle_oam_read_write_corruption(),
+            }
+        }
+        self.oam_corruptions = vec![];
     }
 
     fn handle_oam_read_write_corruption(&mut self) {
