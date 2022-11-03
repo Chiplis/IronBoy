@@ -14,7 +14,7 @@ use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, InstructionOperand};
 use crate::interrupt::InterruptId;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
-use crate::memory_map::OamCorruptionCause::IncDec;
+use crate::memory_map::OamCorruptionCause::{IncDec, Write};
 
 pub struct Gameboy {
     pub reg: Register,
@@ -505,10 +505,11 @@ impl Gameboy {
                     ByteRegister { value: _, id: high },
                     ByteRegister { value: _, id: low },
                 ) => {
-                    for id in &[low, high] {
-                        self[*id].value = self.mem.read(self.reg.sp);
-                        self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
-                    }
+                    self.mem.corrupt_oam(self.reg.sp, IncDec);
+                    self[low].value = self.mem.read(self.reg.sp);
+                    self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
+                    self[high].value = self.mem.read(self.reg.sp);
+                    self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
                 }
                 WordRegister::AccFlag(..) => {
                     self.reg.flags.set(self.mem.read(self.reg.sp));

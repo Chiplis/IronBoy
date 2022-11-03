@@ -270,16 +270,14 @@ impl PixelProcessingUnit {
                 Some(self.oam[address - 0xFE00])
             }
 
-            (0xFE00..=0xFE9F, ..) => {
+            (0xFE00..=0xFEFF, ..) => {
                 match self.oam_corruptions.as_slice() {
                     [] => self.oam_corruptions = vec![Read],
-                    [IncDec] => self.oam_corruptions = vec![ReadWrite],
-                    _ => panic!(),
+                    [a@.., IncDec] => self.oam_corruptions = [a, &[ReadWrite][..]].concat(),
+                    a => self.oam_corruptions = [a, &[Read][..]].concat(),
                 };
                 Some(0xFF)
             }
-
-            (0xFE00..=0xFEFF, ..) => Some(0xFF),
 
             (0xFF40, ..) => Some(self.lcdc.get()),
             (0xFF41, ..) => Some(self.stat()),
@@ -586,7 +584,8 @@ impl PixelProcessingUnit {
 
         let corruptions = &mut vec![];
         self.oam_corruptions.clone_into(corruptions);
-        for corruption in corruptions {
+        corruptions.reverse();
+        for corruption in corruptions.iter() {
             match corruption {
                 Write | IncDec => self.handle_oam_write_corruption(),
                 Read => self.handle_oam_read_corruption(),
@@ -597,7 +596,25 @@ impl PixelProcessingUnit {
     }
 
     fn handle_oam_read_write_corruption(&mut self) {
-        // TODO: ReadWrite behavior seems different than Read/Write/IncDec
+        let oam_row = min(19, self.ticks / 4);
+        if oam_row != 0 && oam_row != 1 && oam_row != 19 {
+            let _rows = self.oam.chunks(8);
+
+            let mut rows = self.oam.chunks_mut(8);
+
+            let (second_row, first_row, current_row) = (rows.nth(oam_row - 2).unwrap(), rows.next().unwrap(), rows.next().unwrap());
+
+            let a = u16::from_le_bytes(second_row[0..2].as_ref().try_into().unwrap());
+            let b = u16::from_le_bytes(first_row[0..2].as_ref().try_into().unwrap());
+            let c = u16::from_le_bytes(current_row[0..2].as_ref().try_into().unwrap());
+            let d = u16::from_le_bytes(first_row[4..6].as_ref().try_into().unwrap());
+
+            let pattern = ((b & (a | c | d)) | (a & c & d)).to_le_bytes();
+            first_row[0..2].clone_from_slice(pattern.as_slice());
+            second_row.clone_from_slice(first_row);
+            current_row.clone_from_slice(first_row);
+        }
+        self.handle_oam_read_corruption();
     }
 
     fn handle_oam_read_corruption(&mut self) {

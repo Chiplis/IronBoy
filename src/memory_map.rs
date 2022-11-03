@@ -9,7 +9,7 @@ use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use PpuMode::{OamSearch, VerticalBlank};
-use crate::memory_map::OamCorruptionCause::Write;
+use crate::memory_map::OamCorruptionCause::{IncDec, Write};
 
 use crate::serial::LinkCable;
 
@@ -92,11 +92,15 @@ impl MemoryMap {
         (0xFE00_usize..=0xFEFF_usize).contains(&translated_address)
     }
 
-    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T, corruption: OamCorruptionCause) {
-        if !self.in_oam(address) || (corruption == Write && self.ppu.oam_corruptions.contains(&Write)) {
-            return;
+    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T, corruption: OamCorruptionCause) -> bool {
+        if !self.in_oam(address)
+            || ([Write, IncDec].contains(&corruption) && [Write, IncDec].iter().any(|c|self.ppu.oam_corruptions.contains(c))) {
+            false
+        } else {
+            self.ppu.oam_corruptions.push(corruption);
+            true
         }
-        self.ppu.oam_corruptions.push(corruption);
+
     }
 
     pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
