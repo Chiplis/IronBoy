@@ -14,7 +14,7 @@ use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, InstructionOperand};
 use crate::interrupt::InterruptId;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
-use crate::memory_map::OamCorruptionCause::{IncDec, Write};
+use crate::memory_map::OamCorruptionCause::{IncDec};
 
 pub struct Gameboy {
     pub reg: Register,
@@ -297,12 +297,12 @@ impl Gameboy {
             }
 
             DecR16(reg) => {
-                self.mem.corrupt_oam(reg, IncDec);
+                self.mem.corrupt_oam(reg);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_sub(1), reg)
             }
 
             IncR16(reg) => {
-                self.mem.corrupt_oam(reg, IncDec);
+                self.mem.corrupt_oam(reg);
                 self.set_word_register_with_micro_cycle(reg.value().wrapping_add(1), reg)
             }
 
@@ -419,21 +419,33 @@ impl Gameboy {
             },
             LdhHlU8(n) => self.mem.write(hl, n),
             LdhAC => self[A].value = self.mem.read(self[C]),
-            LdAHld => {
-                self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
-                self[A].value = self.mem.read(hl);
-            }
             LdHldA => {
+                /*
+                TODO
+                 Figure out if OAM corruption bug happens,
+                 or if it gets ignored due to the Write + IncDec
+                 */
                 self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
                 self.mem.write(hl, self[A]);
-            }
-            LdAHli => {
-                self[A].value = self.mem.read(hl);
-                self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
             }
             LdHliA => {
+                /*
+                TODO
+                 Figure out if OAM corruption bug happens,
+                 or if it gets ignored due to the Write + IncDec
+                 */
                 self.mem.write(hl, self[A]);
                 self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
+            }
+            LdAHli => {
+                self.mem.corrupt_oam(hl);
+                self[A].value = self.mem.read(hl);
+                self.set_word_register(hl.value().wrapping_add(1), self.reg.hl());
+            }
+            LdAHld => {
+                self.mem.corrupt_oam(hl);
+                self.set_word_register(hl.value().wrapping_sub(1), self.reg.hl());
+                self[A].value = self.mem.read(hl);
             }
             CallU16(n) => {
                 self.micro_cycle();
@@ -505,13 +517,14 @@ impl Gameboy {
                     ByteRegister { value: _, id: high },
                     ByteRegister { value: _, id: low },
                 ) => {
-                    self.mem.corrupt_oam(self.reg.sp, IncDec);
+                    self.mem.corrupt_oam(self.reg.sp);
                     self[low].value = self.mem.read(self.reg.sp);
                     self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
                     self[high].value = self.mem.read(self.reg.sp);
                     self.set_word_register(self.reg.sp.value().wrapping_add(1), self.reg.sp);
                 }
                 WordRegister::AccFlag(..) => {
+                    self.mem.corrupt_oam(self.reg.sp);
                     self.reg.flags.set(self.mem.read(self.reg.sp));
                     self[A].value = self.mem.read(self.reg.sp.value().wrapping_add(1));
                     self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
@@ -527,20 +540,25 @@ impl Gameboy {
                 self.mem.write(self.reg.sp, self.reg.flags.value());
             }
             PushR16(reg) => {
+                self.mem.corrupt_oam(self.reg.sp);
                 self.micro_cycle();
                 match reg {
                     WordRegister::Double(
                         ByteRegister { value: _, id: high },
                         ByteRegister { value: _, id: low },
                     ) => {
-                        for id in &[high, low] {
-                            self.set_word_register(
-                                self.reg.sp.value().wrapping_sub(1),
-                                self.reg.sp,
-                            );
-                            let value = self[*id].value;
-                            self.mem.write(self.reg.sp, value);
-                        }
+                        self.set_word_register(
+                            self.reg.sp.value().wrapping_sub(1),
+                            self.reg.sp,
+                        );
+                        let value = self[high].value;
+                        self.mem.write(self.reg.sp, value);
+                        self.set_word_register(
+                            self.reg.sp.value().wrapping_sub(1),
+                            self.reg.sp,
+                        );
+                        let value = self[low].value;
+                        self.mem.write(self.reg.sp, value);
                     }
                     _ => panic!(),
                 }
@@ -632,9 +650,11 @@ impl Gameboy {
     }
 
     fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
+        if trigger_cycle {
+            self.mem.corrupt_oam(self.reg.pc.value());
+        }
         self.reg.pc = ProgramCounter(value);
         if trigger_cycle {
-            // self.mem.corrupt_oam(self.reg.pc.value());
             self.micro_cycle()
         }
     }

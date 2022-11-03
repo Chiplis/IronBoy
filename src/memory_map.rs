@@ -92,12 +92,11 @@ impl MemoryMap {
         (0xFE00_usize..=0xFEFF_usize).contains(&translated_address)
     }
 
-    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T, corruption: OamCorruptionCause) -> bool {
-        if !self.in_oam(address)
-            || ([Write, IncDec].contains(&corruption) && [Write, IncDec].iter().any(|c|self.ppu.oam_corruptions.contains(c))) {
+    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> bool {
+        if !self.in_oam(address) {
             false
         } else {
-            self.ppu.oam_corruptions.push(corruption);
+            self.ppu.oam_corruptions.push(IncDec);
             true
         }
 
