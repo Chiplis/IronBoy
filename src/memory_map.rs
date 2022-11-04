@@ -100,7 +100,7 @@ impl MemoryMap {
         if !self.in_oam(address) {
             false
         } else {
-            self.ppu.oam_corruptions.push(IncDec);
+            self.ppu.oam_corruption = Some(IncDec);
             true
         }
 

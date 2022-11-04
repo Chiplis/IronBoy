@@ -49,7 +49,7 @@ pub struct PixelProcessingUnit {
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
-    pub oam_corruptions: Vec<OamCorruptionCause>,
+    pub oam_corruption: Option<OamCorruptionCause>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -86,7 +86,7 @@ impl PixelProcessingUnit {
             oam: [0; 160],
             registers: [0; 11],
             lcdc,
-            oam_corruptions: vec![],
+            oam_corruption: None,
             ticks: 0,
             stat_line: Low,
             state: LcdOff,
@@ -134,7 +134,7 @@ impl PixelProcessingUnit {
         self.last_lyc_check = self.lyc_check();
         *self.ly_mut() = 0;
         self.state = LcdOff;
-        self.oam_corruptions = vec![];
+        self.oam_corruption = None;
         self.force_irq = false;
         self.ticks = 0;
     }
@@ -149,7 +149,6 @@ impl PixelProcessingUnit {
 
     fn handle_mode_transition(&mut self) {
         match self.mode {
-
             OamSearch(_) => if self.ticks >= 80 {
                 self.ticks -= 80;
                 self.mode = PixelTransfer;
@@ -271,10 +270,10 @@ impl PixelProcessingUnit {
             }
 
             (0xFE00..=0xFEFF, ..) => {
-                match self.oam_corruptions.as_slice() {
-                    [] => self.oam_corruptions = vec![Read],
-                    [a@.., IncDec] => self.oam_corruptions = [a, &[ReadWrite][..]].concat(),
-                    a => self.oam_corruptions = [a, &[Read][..]].concat(),
+                self.oam_corruption = match self.oam_corruption {
+                    None => Some(Read),
+                    Some(IncDec) => Some(ReadWrite),
+                    _ => unreachable!(),
                 };
                 Some(0xFF)
             }
@@ -296,7 +295,7 @@ impl PixelProcessingUnit {
             (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
 
             (0xFE00..=0xFEFF, OamSearch(_), ..) => {
-                self.oam_corruptions = vec![Write];
+                self.oam_corruption = Some(Write);
             }
 
             (0xFE00..=0xFE9F, HorizontalBlank | VerticalBlank, Inactive | Starting) => {
@@ -579,20 +578,18 @@ impl PixelProcessingUnit {
     fn handle_oam_corruption(&mut self) {
         match self.mode {
             OamSearch(_) => (),
-            _ => return self.oam_corruptions = vec![]
+            _ => return self.oam_corruption = None
         }
 
-        let corruptions = &mut vec![];
-        self.oam_corruptions.clone_into(corruptions);
-        corruptions.reverse();
-        for corruption in corruptions.iter() {
-            match corruption {
+
+        if let Some(cause) = self.oam_corruption {
+            match cause {
                 Write | IncDec => self.handle_oam_write_corruption(),
                 Read => self.handle_oam_read_corruption(),
                 ReadWrite => self.handle_oam_read_write_corruption(),
-            }
+            };
+            self.oam_corruption = None;
         }
-        self.oam_corruptions = vec![];
     }
 
     fn handle_oam_read_write_corruption(&mut self) {
