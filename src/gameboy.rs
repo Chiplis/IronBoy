@@ -14,7 +14,6 @@ use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, InstructionOperand};
 use crate::interrupt::InterruptId;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
-use crate::memory_map::OamCorruptionCause::{IncDec};
 
 pub struct Gameboy {
     pub reg: Register,
@@ -29,7 +28,7 @@ pub struct Gameboy {
 impl Gameboy {
     pub fn new(mem: MemoryMap) -> Self {
         Self {
-            reg: Register::new(),
+            reg: Register::new(mem.boot.is_some()),
             mem,
             ei_counter: -1,
             ime: false,

@@ -13,12 +13,12 @@ impl Timer {
     const TMA: usize = 0xFF06;
     const TAC: usize = 0xFF07;
 
-    pub fn new() -> Self {
+    pub fn new(boot_rom: bool) -> Self {
         Self {
             tima: 0,
             tma: 0,
             tac: 0,
-            ticks: 0xABCC,
+            ticks: if boot_rom { 0x00 } else { 0xABCC },
             interrupt: false,
             interrupt_served: false,
         }

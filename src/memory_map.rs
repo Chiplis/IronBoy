@@ -8,6 +8,7 @@ use crate::ppu::{PixelProcessingUnit, PpuMode};
 use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
+use std::fs::read;
 use PpuMode::{OamSearch, VerticalBlank};
 use crate::memory_map::OamCorruptionCause::{IncDec, Write};
 
@@ -22,6 +23,7 @@ pub enum OamCorruptionCause {
 }
 
 pub struct MemoryMap {
+    pub boot: Option<Vec<u8>>,
     pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PixelProcessingUnit,
@@ -31,20 +33,21 @@ pub struct MemoryMap {
     rom_size: usize,
     pub cycles: u16,
     dma_progress: u8,
-    pub window: Option<Window>,
+    pub window: Option<Window>
 }
 
 impl MemoryMap {
-    pub fn new(rom: &Vec<u8>, rom_name: &str, headless: bool) -> MemoryMap {
+    pub fn new(rom: &Vec<u8>, rom_name: &str, headless: bool, boot_rom: Option<String>) -> MemoryMap {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
-        let timer = Timer::new();
+        let timer = Timer::new(boot_rom.is_some());
         let rom_size = rom.len() as usize;
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
         let dma_progress = 0;
         let serial = LinkCable::new();
+        let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
         let window = if headless {
             None
         } else {
@@ -78,6 +81,7 @@ impl MemoryMap {
             dma_progress,
             serial,
             window,
+            boot
         };
         MemoryMap::init_memory(mem, rom)
     }
@@ -125,6 +129,10 @@ impl MemoryMap {
             address.into()
         };
 
+        if self.boot != None && translated_address < 0x100 {
+            return self.boot.as_ref().unwrap()[translated_address]
+        }
+
         self.ppu
             .read(translated_address)
             .or_else(|| self.interrupt_handler.read(translated_address))
@@ -141,6 +149,11 @@ impl MemoryMap {
         } else {
             address.into()
         };
+
+        if translated_address == 0xFF50 && self.boot != None && value == 1 {
+            return self.boot = None
+        }
+
         if !(self.ppu.write(translated_address, value)
             || self.timer.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
@@ -215,8 +228,10 @@ impl MemoryMap {
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
-        for (index, value) in rom.iter().enumerate() {
-            mem.memory[index] = *value
+        rom.iter().enumerate().for_each(|(i, &v)| mem.memory[i] = v);
+
+        if mem.boot.is_some() {
+           return mem;
         }
 
         macro_rules! set_memory {

@@ -34,18 +34,22 @@ struct Args {
     #[clap(long, default_value = "false")]
     headless: bool,
 
-    /// Toggle sleeping between frames
-    #[clap(long, default_value = "true")]
-    sleep: bool,
+    /// Toggle waiting between frames
+    #[clap(long, default_value = "false")]
+    fast: bool,
 
     /// Sleep threshold between frames
     #[clap(long, default_value_t = 0.0)]
     threshold: f64,
+
+    /// Use specified boot ROM
+    #[clap(long)]
+    boot_rom: Option<String>,
 }
 
 fn main() {
     let args = Args::parse();
-    let (sleep, threshold) = (args.sleep, args.threshold);
+    let (sleep, threshold) = (!args.fast, args.threshold);
     let rom_path = Path::new(&args.rom_file);
     if !rom_path.exists() {
         panic!("The input ROM path doesn't exist")
@@ -54,7 +58,7 @@ fn main() {
         panic!("The input ROM isn't a file")
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap(), args.headless);
+    let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap(), args.headless, args.boot_rom);
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames: usize = 0;
@@ -170,7 +174,7 @@ mod tests {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
 
                 let rom_vec = read(&rom).unwrap();
-                let mem = MemoryMap::new(&rom_vec, &rom, true);
+                let mem = MemoryMap::new(&rom_vec, &rom, true, None);
                 let mut gameboy = Gameboy::new(mem);
                 println!("Beginning test loop");
                 let mut tests_counter = 0;

@@ -23,25 +23,47 @@ pub struct Register {
 }
 
 impl Register {
-    pub fn new() -> Self {
-        Self {
-            registers: [
-                ByteRegister { value: 0x01, id: A },
-                ByteRegister { value: 0x00, id: B },
-                ByteRegister { value: 0x13, id: C },
-                ByteRegister { value: 0x00, id: D },
-                ByteRegister { value: 0xD8, id: E },
-                ByteRegister { value: 0x01, id: H },
-                ByteRegister { value: 0x4D, id: L },
-            ],
-            pc: ProgramCounter(0x0100),
-            sp: StackPointer(0xFFFE),
-            flags: FlagRegister {
-                z: true,
-                n: false,
-                h: true,
-                c: true,
-            },
+    pub fn new(boot_rom: bool) -> Self {
+        if !boot_rom {
+            Self {
+                registers: [
+                    ByteRegister { value: 0x01, id: A },
+                    ByteRegister { value: 0x00, id: B },
+                    ByteRegister { value: 0x13, id: C },
+                    ByteRegister { value: 0x00, id: D },
+                    ByteRegister { value: 0xD8, id: E },
+                    ByteRegister { value: 0x01, id: H },
+                    ByteRegister { value: 0x4D, id: L },
+                ],
+                pc: ProgramCounter(0x0100),
+                sp: StackPointer(0xFFFE),
+                flags: FlagRegister {
+                    z: true,
+                    n: false,
+                    h: true,
+                    c: true,
+                },
+            }
+        } else {
+            Self {
+                registers: [
+                    ByteRegister { value: 0x0, id: A },
+                    ByteRegister { value: 0x0, id: B },
+                    ByteRegister { value: 0x0, id: C },
+                    ByteRegister { value: 0x0, id: D },
+                    ByteRegister { value: 0x0, id: E },
+                    ByteRegister { value: 0x0, id: H },
+                    ByteRegister { value: 0x0, id: L },
+                ],
+                pc: ProgramCounter(0x0),
+                sp: StackPointer(0x0),
+                flags: FlagRegister {
+                    z: false,
+                    n: false,
+                    h: false,
+                    c: false,
+                },
+            }
         }
     }
 
