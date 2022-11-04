@@ -45,7 +45,7 @@ pub struct PixelProcessingUnit {
     stat_line: StatInterrupt,
     force_irq: bool,
     lcdc: LcdControl,
-    pub(crate) pixels: Box<[u32]>,
+    pub(crate) pixels: [u32; 160 * 144],
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
@@ -75,7 +75,6 @@ enum StatInterrupt {
 impl PixelProcessingUnit {
     pub fn new() -> Self {
         let lcdc = LcdControl::new(0);
-        let fb = [0_u32; 160 * 144];
         PixelProcessingUnit {
             mode: HorizontalBlank,
             tile_block_a: [0; 2048],
@@ -93,7 +92,7 @@ impl PixelProcessingUnit {
             force_irq: true,
             last_ticks: 0,
             dma_offset: 0,
-            pixels: Box::new(fb),
+            pixels: [0_u32; 160 * 144],
             old_mode: HorizontalBlank,
             dma: Inactive,
             last_lyc_check: false,

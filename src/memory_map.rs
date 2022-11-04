@@ -10,7 +10,7 @@ use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use std::fs::read;
 use PpuMode::{OamSearch, VerticalBlank};
-use crate::memory_map::OamCorruptionCause::{IncDec, Write};
+use crate::memory_map::OamCorruptionCause::IncDec;
 
 use crate::serial::LinkCable;
 
@@ -222,7 +222,7 @@ impl MemoryMap {
     fn update_screen(&mut self) {
         if let Some(window) = self.window.as_mut() {
             window
-                .update_with_buffer(&self.ppu.pixels, 160, 144)
+                .update_with_buffer(&self.ppu.pixels.as_slice(), 160, 144)
                 .unwrap()
         }
     }
