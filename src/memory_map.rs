@@ -228,19 +228,16 @@ impl MemoryMap {
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
-        rom.iter().enumerate().for_each(|(i, &v)| mem.memory[i] = v);
+        for i in 0..rom.len() { mem.memory[i] = rom[i] }
 
-        if mem.boot.is_some() {
-           return mem;
-        }
+        if mem.boot.is_some() { return mem }
 
         macro_rules! set_memory {
-            { $mm:ident, $($addr:literal: $val:literal,)* } =>
-            { $($mm.write_without_cycle($addr as u16, $val);)* }
+            { $($addr:literal: $val:literal,)* } =>
+            { $(mem.write_without_cycle($addr as u16, $val);)* }
         }
 
         set_memory! {
-            mem,
             0xFF05: 0x0,
             0xFF06: 0x0,
             0xFF07: 0x0,
