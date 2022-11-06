@@ -106,7 +106,7 @@ fn test_roms() -> Result<(), io::Error> {
                     let screenshot = image::load_from_memory(&pixels).unwrap();
                     let screenshot = screenshot.as_bytes();
 
-                    RgbaImage::from_raw(WIDTH, HEIGHT, pixels)
+                    RgbaImage::from_raw(WIDTH as u32, HEIGHT as u32, pixels)
                         .unwrap()
                         .save(Path::new(&screenshot_output_path))
                         .unwrap();

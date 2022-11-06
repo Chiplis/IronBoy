@@ -7,6 +7,7 @@ use crate::ppu::PpuState::{LcdOff, ModeChange, ProcessingMode};
 use crate::ppu::RenderCycle::{Normal, StatTrigger};
 use crate::ppu::StatInterrupt::{Low, LycInt, ModeInt};
 use crate::ppu::TileMapArea::{H9800, H9C00};
+use crate::{WIDTH, HEIGHT};
 use std::cmp::min;
 use std::convert::TryInto;
 use DmaState::{Executing, Finished, Starting};
@@ -45,7 +46,7 @@ pub struct PixelProcessingUnit {
     stat_line: StatInterrupt,
     force_irq: bool,
     lcdc: LcdControl,
-    pub(crate) pixels: [u32; 160 * 144],
+    pub(crate) pixels: [u32; WIDTH * HEIGHT],
     pub last_ticks: usize,
     pub old_mode: PpuMode,
     pub last_lyc_check: bool,
@@ -82,7 +83,7 @@ impl PixelProcessingUnit {
             tile_block_c: [0; 2048],
             tile_map_a: [0; 1024],
             tile_map_b: [0; 1024],
-            oam: [0; 160],
+            oam: [0; WIDTH], // the previous value was 160, so I assume it's the width
             registers: [0; 11],
             lcdc,
             oam_corruption: None,
@@ -92,7 +93,7 @@ impl PixelProcessingUnit {
             force_irq: true,
             last_ticks: 0,
             dma_offset: 0,
-            pixels: [0_u32; 160 * 144],
+            pixels: [0_u32; WIDTH * HEIGHT],
             old_mode: HorizontalBlank,
             dma: Inactive,
             last_lyc_check: false,
@@ -167,7 +168,7 @@ impl PixelProcessingUnit {
                 }
                 if self.ticks >= 204 {
                     self.ticks = 0;
-                    self.mode = if self.ly() == 144 {
+                    self.mode = if self.ly() == HEIGHT as u8 {
                         VerticalBlank
                     } else {
                         self.draw_scanline();
@@ -347,7 +348,7 @@ impl PixelProcessingUnit {
             | match (self.mode, self.ticks) {
             (OamSearch(true), _) => 0,
             (OamSearch(false), 0..=6) => 0,
-            (VerticalBlank, 0..=4) if self.ly() == 144 => 0,
+            (VerticalBlank, 0..=4) if self.ly() == HEIGHT as u8 => 0,
             (HorizontalBlank, _) => 0,
             (VerticalBlank, _) => 1,
             (OamSearch(_), _) => 2,
@@ -430,7 +431,7 @@ impl PixelProcessingUnit {
 
         let tile_row = (vertical_position / 8) as usize * 32;
 
-        for pixel in 0..160 {
+        for pixel in 0..WIDTH as u8 {
             let horizontal_position = if use_window && pixel >= wx {
                 pixel.wrapping_sub(wx)
             } else {
@@ -490,7 +491,7 @@ impl PixelProcessingUnit {
             return;
         }
 
-        for sprite_index in (0..160).step_by(4) {
+        for sprite_index in (0..WIDTH).step_by(4) {
             let sprite = Sprite::new(self, sprite_index);
 
             if ly >= sprite.vertical_position
@@ -559,7 +560,7 @@ impl PixelProcessingUnit {
     }
 
     fn set_sprite_pixel(&mut self, x: u32, y: u32, pri: bool, color: Color) {
-        let offset = ((y * 160) + x) as usize;
+        let offset = ((y * WIDTH as u32) + x) as usize;
         let [a, r, g, b] = self.pixels[offset].to_be_bytes();
         let pixel = Color { a, r, g, b };
 
@@ -569,7 +570,7 @@ impl PixelProcessingUnit {
     }
 
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
-        let offset = (y * 160 + x) as usize;
+        let offset = (y * WIDTH as u32 + x) as usize;
 
         self.pixels[offset] = u32::from_be_bytes([color.a, color.r, color.g, color.b]);
     }

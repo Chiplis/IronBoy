@@ -25,8 +25,8 @@ mod timer;
 mod test;
 
 const FREQUENCY: u32 = 4194304;
-const WIDTH: u32 = 160;
-const HEIGHT: u32 = 144;
+const WIDTH: usize = 160;
+const HEIGHT: usize = 144;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

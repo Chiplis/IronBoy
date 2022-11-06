@@ -11,10 +11,11 @@ use std::any::{Any, TypeId};
 use std::fs::read;
 use PpuMode::{OamSearch, VerticalBlank};
 use crate::memory_map::OamCorruptionCause::IncDec;
+use crate::{WIDTH, HEIGHT};
 
 use crate::serial::LinkCable;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum OamCorruptionCause {
     IncDec,
     Read,
@@ -54,8 +55,8 @@ impl MemoryMap {
             Some(
                 Window::new(
                     format!("{} - ESC to exit", rom_name).as_str(),
-                    160,
-                    144,
+                    WIDTH as usize,
+                    HEIGHT as usize,
                     WindowOptions {
                         borderless: false,
                         transparency: false,
@@ -129,7 +130,7 @@ impl MemoryMap {
             address.into()
         };
 
-        if self.boot != None && translated_address < 0x100 {
+        if self.boot.is_some() && translated_address < 0x100 {
             return self.boot.as_ref().unwrap()[translated_address]
         }
 
@@ -150,7 +151,7 @@ impl MemoryMap {
             address.into()
         };
 
-        if translated_address == 0xFF50 && self.boot != None && value == 1 {
+        if translated_address == 0xFF50 && self.boot.is_some() && value == 1 {
             return self.boot = None
         }
 
@@ -222,13 +223,13 @@ impl MemoryMap {
     fn update_screen(&mut self) {
         if let Some(window) = self.window.as_mut() {
             window
-                .update_with_buffer(&self.ppu.pixels.as_slice(), 160, 144)
+                .update_with_buffer(self.ppu.pixels.as_slice(), WIDTH as usize, HEIGHT as usize)
                 .unwrap()
         }
     }
 
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
-        for i in 0..rom.len() { mem.memory[i] = rom[i] }
+        mem.memory[..rom.len()].copy_from_slice(rom);
 
         if mem.boot.is_some() { return mem }
 
