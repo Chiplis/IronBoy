@@ -33,11 +33,7 @@ pub struct PixelProcessingUnit {
     pub mode: PpuMode,
     pub dma: DmaState,
     pub dma_offset: usize,
-    tile_block_a: [u8; 0x8800 - 0x8000],
-    tile_block_b: [u8; 0x9000 - 0x8800],
-    tile_block_c: [u8; 0x9800 - 0x9000],
-    tile_map_a: [u8; 0x9C00 - 0x9800],
-    tile_map_b: [u8; 0xA000 - 0x9C00],
+    vram: [u8; 0x2000],
     pub oam: [u8; 0xFEA0 - 0xFE00],
     registers: [u8; 0xFF4C - 0xFF41],
     ticks: usize,
@@ -77,11 +73,7 @@ impl PixelProcessingUnit {
         let lcdc = LcdControl::new(0);
         PixelProcessingUnit {
             mode: HorizontalBlank,
-            tile_block_a: [0; 2048],
-            tile_block_b: [0; 2048],
-            tile_block_c: [0; 2048],
-            tile_map_a: [0; 1024],
-            tile_map_b: [0; 1024],
+            vram: [0; 0x2000],
             oam: [0; 160],
             registers: [0; 11],
             lcdc,
@@ -258,11 +250,7 @@ impl PixelProcessingUnit {
         match (address, self.mode, self.dma) {
             (0x8000..=0x9FFF, PixelTransfer, _) => Some(0xFF),
 
-            (0x8000..=0x87FF, ..) => Some(self.tile_block_a[address - 0x8000]),
-            (0x8800..=0x8FFF, ..) => Some(self.tile_block_b[address - 0x8800]),
-            (0x9000..=0x97FF, ..) => Some(self.tile_block_c[address - 0x9000]),
-            (0x9800..=0x9BFF, ..) => Some(self.tile_map_a[address - 0x9800]),
-            (0x9C00..=0x9FFF, ..) => Some(self.tile_map_b[address - 0x9C00]),
+            (0x8000..=0x9FFF, ..) => Some(self.vram[address - 0x8000]),
 
             (0xFE00..=0xFE9F, VerticalBlank | HorizontalBlank, Inactive | Starting) => {
                 Some(self.oam[address - 0xFE00])
@@ -287,11 +275,7 @@ impl PixelProcessingUnit {
     pub fn write(&mut self, address: usize, value: u8) -> bool {
         match (address, self.mode, self.dma) {
             (0x8000..=0x9FFF, PixelTransfer, _) => (),
-            (0x8000..=0x87FF, ..) => self.tile_block_a[address - 0x8000] = value,
-            (0x8800..=0x8FFF, ..) => self.tile_block_b[address - 0x8800] = value,
-            (0x9000..=0x97FF, ..) => self.tile_block_c[address - 0x9000] = value,
-            (0x9800..=0x9BFF, ..) => self.tile_map_a[address - 0x9800] = value,
-            (0x9C00..=0x9FFF, ..) => self.tile_map_b[address - 0x9C00] = value,
+            (0x8000..=0x9FFF, ..) => self.vram[address - 0x8000] = value,
 
             (0xFE00..=0xFEFF, OamSearch(_), ..) => {
                 self.oam_corruption = Some(Write);
