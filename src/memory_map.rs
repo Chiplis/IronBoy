@@ -1,20 +1,17 @@
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
-use crate::ppu::DmaState::Executing;
-use crate::ppu::PpuState::ModeChange;
-use crate::ppu::RenderCycle::{Normal, StatTrigger};
-use crate::ppu::{PixelProcessingUnit, PpuMode};
+use crate::memory_map::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
+use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
+use std::borrow::BorrowMut;
 use std::fs::read;
-use PpuMode::{OamSearch, VerticalBlank};
-use crate::memory_map::OamCorruptionCause::IncDec;
 
 use crate::serial::LinkCable;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum OamCorruptionCause {
     IncDec,
     Read,
@@ -23,7 +20,7 @@ pub enum OamCorruptionCause {
 }
 
 pub struct MemoryMap {
-    pub boot: Option<Vec<u8>>,
+    pub boot_rom: Option<Vec<u8>>,
     pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PixelProcessingUnit,
@@ -32,12 +29,17 @@ pub struct MemoryMap {
     joypad: Joypad,
     rom_size: usize,
     pub cycles: u16,
-    dma_progress: u8,
-    pub window: Option<Window>
+    pub dma: u8,
+    pub window: Option<Window>,
 }
 
 impl MemoryMap {
-    pub fn new(rom: &Vec<u8>, rom_name: &str, headless: bool, boot_rom: Option<String>) -> MemoryMap {
+    pub fn new(
+        rom: &Vec<u8>,
+        rom_name: &str,
+        headless: bool,
+        boot_rom: Option<String>,
+    ) -> MemoryMap {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
@@ -45,7 +47,7 @@ impl MemoryMap {
         let rom_size = rom.len() as usize;
         let memory = vec![0; 0x10000];
         let micro_ops = 0;
-        let dma_progress = 0;
+
         let serial = LinkCable::new();
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
         let window = if headless {
@@ -71,6 +73,7 @@ impl MemoryMap {
             )
         };
         let mem = MemoryMap {
+            dma: 0xFF,
             joypad,
             ppu,
             interrupt_handler,
@@ -78,36 +81,56 @@ impl MemoryMap {
             memory,
             rom_size,
             cycles: micro_ops,
-            dma_progress,
             serial,
             window,
-            boot
+            boot_rom: boot,
         };
         MemoryMap::init_memory(mem, rom)
     }
 
-    fn in_oam<T: 'static + Into<usize> + Copy>(&self, address: T) -> bool {
+    fn in_echo(&self, address: usize) -> bool {
+        (0xE000..0xFDFF).contains(&address)
+    }
+
+    fn in_oam(&self, address: usize) -> bool {
+        (0xFE00_usize..=0xFEFF_usize).contains(&address)
+    }
+
+    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> bool {
+        if !self.in_oam(address.into()) {
+            false
+        } else {
+            self.ppu.borrow_mut().oam_corruption = Some(IncDec);
+            true
+        }
+    }
+
+    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
         let translated_address = if address.type_id() == TypeId::of::<u8>() {
             address.into() + 0xFF00
         } else {
             address.into()
         };
-        // TODO: Figure out if the OAM check should always be in this range
-        (0xFE00_usize..=0xFEFF_usize).contains(&translated_address)
-    }
 
-    pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> bool {
-        if !self.in_oam(address) {
-            false
-        } else {
-            self.ppu.oam_corruption = Some(IncDec);
-            true
+        if self.boot_rom.is_some() && translated_address < 0x100 {
+            let value = self.boot_rom.as_ref().unwrap()[translated_address];
+            self.cycle();
+            return value;
         }
 
-    }
+        if self.in_echo(translated_address) {
+            return self.read(translated_address - 0x1000);
+        }
 
-    pub fn read<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
-        let value = self.read_without_cycle(address);
+        if self.in_oam(translated_address) && self.ppu.oam_read_block {
+            self.ppu.oam_corruption = match self.ppu.oam_corruption {
+                None => Some(Read),
+                Some(IncDec) => Some(ReadWrite),
+                _ => unreachable!(),
+            };
+        }
+
+        let value = self.read_without_cycle(translated_address);
         self.cycle();
         value
     }
@@ -117,22 +140,33 @@ impl MemoryMap {
         address: Address,
         value: Value,
     ) {
-        self.write_without_cycle(address, value.into());
-        self.cycle();
-    }
-
-    pub fn read_without_cycle<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> u8 {
-        //println!("Reading address {} with value {}", address.into(), self.memory(address.into()));
         let translated_address = if address.type_id() == TypeId::of::<u8>() {
             address.into() + 0xFF00
         } else {
             address.into()
         };
 
-        if self.boot != None && translated_address < 0x100 {
-            return self.boot.as_ref().unwrap()[translated_address]
+        if translated_address == 0xFF50 && self.boot_rom.is_some() && value.into() == 1 {
+            self.boot_rom = None;
+            self.cycle();
+            return;
         }
 
+        if self.in_echo(translated_address) {
+            return self.write(translated_address - 0x1000, value);
+        }
+
+        if self.in_oam(translated_address) && self.ppu.oam_write_block {
+            self.ppu.oam_corruption = match self.ppu.oam_corruption {
+                None | Some(IncDec) => Some(Write),
+                _ => unreachable!(),
+            };
+        }
+        self.write_without_cycle(translated_address, value.into());
+        self.cycle();
+    }
+
+    pub fn read_without_cycle(&self, translated_address: usize) -> u8 {
         self.ppu
             .read(translated_address)
             .or_else(|| self.interrupt_handler.read(translated_address))
@@ -142,18 +176,7 @@ impl MemoryMap {
             .unwrap_or(self.memory[translated_address])
     }
 
-    fn write_without_cycle<T: 'static + Into<usize> + Copy>(&mut self, address: T, value: u8) {
-        //println!("Writing address {}", address.into());
-        let translated_address = if address.type_id() == TypeId::of::<u8>() {
-            address.into() + 0xFF00
-        } else {
-            address.into()
-        };
-
-        if translated_address == 0xFF50 && self.boot != None && value == 1 {
-            return self.boot = None
-        }
-
+    fn write_without_cycle(&mut self, translated_address: usize, value: u8) {
         if !(self.ppu.write(translated_address, value)
             || self.timer.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
@@ -171,34 +194,55 @@ impl MemoryMap {
         self.machine_cycle();
     }
 
-    fn dma_transfer(&mut self) {
-        if let Executing(n) = self.ppu.dma {
-            while self.dma_progress < n {
-                self.ppu.oam[self.dma_progress as usize] = self
-                    .read_without_cycle(self.ppu.dma_offset * 0x100 + self.dma_progress as usize);
-                self.dma_progress += 1;
-            }
-            if self.dma_progress as usize == self.ppu.oam.len() {
-                self.dma_progress = 0;
-            }
+    pub fn dma_transfer(&mut self) {
+        if !self.ppu.dma_running {
+            return;
+        }
+        let elapsed = self.ppu.clock_count.wrapping_sub(self.ppu.dma_started - 4);
+        if elapsed < 8 {
+            return;
+        }
+
+        self.ppu.dma_block_oam = true;
+
+        // 8 cycles delay + 160 machine cycles
+        if elapsed < 8 + 160 * 4 {
+            return;
+        }
+
+        // Finish running
+        self.ppu.dma_block_oam = false;
+        self.ppu.dma_running = false;
+
+        // Copy memory
+        let start = if self.ppu.dma >= 0xFE {
+            self.ppu.dma - 0x20
+        } else {
+            self.ppu.dma
+        } as usize
+            * 0x100;
+
+        for (index, address) in (start..start + 160).enumerate() {
+            self.ppu.oam[index] = match address {
+                0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000],
+                _ => self.read_without_cycle(address),
+            };
         }
     }
 
     fn machine_cycle(&mut self) {
         match self.ppu.machine_cycle() {
-            StatTrigger(ModeChange(_, VerticalBlank)) => {
+            (true, true) => {
+                self.update_screen();
                 self.interrupt_handler.set(VBlank);
                 self.interrupt_handler.set(Stat);
             }
-            Normal(ModeChange(_, VerticalBlank)) => self.interrupt_handler.set(VBlank),
-            Normal(ModeChange(VerticalBlank, OamSearch(_))) => self.update_screen(),
-            StatTrigger(state) => {
-                if let ModeChange(_, VerticalBlank) = state {
-                    self.update_screen()
-                }
-                self.interrupt_handler.set(Stat)
+            (true, false) => {
+                self.update_screen();
+                self.interrupt_handler.set(VBlank)
             }
-            _ => (),
+            (false, true) => self.interrupt_handler.set(Stat),
+            (false, false) => (),
         };
 
         if self.timer.machine_cycle() {
@@ -222,7 +266,7 @@ impl MemoryMap {
     fn update_screen(&mut self) {
         if let Some(window) = self.window.as_mut() {
             window
-                .update_with_buffer(&self.ppu.pixels.as_slice(), 160, 144)
+                .update_with_buffer(self.ppu.screen.as_slice(), 160, 144)
                 .unwrap()
         }
     }
@@ -230,13 +274,13 @@ impl MemoryMap {
     fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
         rom.iter().enumerate().for_each(|(i, &v)| mem.memory[i] = v);
 
-        if mem.boot.is_some() {
-           return mem;
+        if mem.boot_rom.is_some() {
+            return mem;
         }
 
         macro_rules! set_memory {
             { $mm:ident, $($addr:literal: $val:literal,)* } =>
-            { $($mm.write_without_cycle($addr as u16, $val);)* }
+            { $($mm.write_without_cycle($addr, $val);)* }
         }
 
         set_memory! {

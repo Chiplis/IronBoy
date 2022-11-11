@@ -28,13 +28,13 @@ pub struct Gameboy {
 impl Gameboy {
     pub fn new(mem: MemoryMap) -> Self {
         Self {
-            reg: Register::new(mem.boot.is_some()),
+            reg: Register::new(mem.boot_rom.is_some()),
             mem,
             ei_counter: -1,
             ime: false,
             halted: false,
             bugged_pc: None,
-            counter: 0
+            counter: 0,
         }
     }
 }
@@ -48,8 +48,8 @@ impl Gameboy {
             self.halted = interrupt_cycles == 0;
             if self.halted
                 && !self.ime
-                && self.mem.read_without_cycle(IE_ADDRESS as u16)
-                    & self.mem.read_without_cycle(IF_ADDRESS as u16)
+                && self.mem.read_without_cycle(IE_ADDRESS)
+                    & self.mem.read_without_cycle(IF_ADDRESS)
                     & 0x1F
                     != 0
             {
@@ -109,8 +109,8 @@ impl Gameboy {
 
         if !self.ime
             && self.halted
-            && self.mem.read_without_cycle(IE_ADDRESS as u16)
-                & self.mem.read_without_cycle(IF_ADDRESS as u16)
+            && self.mem.read_without_cycle(IE_ADDRESS)
+                & self.mem.read_without_cycle(IF_ADDRESS)
                 & 0x1F
                 != 0
         {
@@ -217,6 +217,7 @@ impl Gameboy {
 
             CpA(op) => {
                 let n = self.get_op(op);
+
                 self.reg.set_flags(
                     self[A].value == n,
                     true,
@@ -410,12 +411,13 @@ impl Gameboy {
             LdAR16(n) => self[A].value = self.mem.read(n),
             LdhAU16(n) => self[A].value = self.mem.read(n),
             LdhAU8(n) => {
+                self.counter += 1;
                 let x = self.mem.read(n);
                 self[A].value = x;
             }
             LdhU8A(n) => {
                 self.mem.write(n, self[A].value);
-            },
+            }
             LdhHlU8(n) => self.mem.write(hl, n),
             LdhAC => self[A].value = self.mem.read(self[C]),
             LdHldA => {
@@ -546,16 +548,10 @@ impl Gameboy {
                         ByteRegister { value: _, id: high },
                         ByteRegister { value: _, id: low },
                     ) => {
-                        self.set_word_register(
-                            self.reg.sp.value().wrapping_sub(1),
-                            self.reg.sp,
-                        );
+                        self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                         let value = self[high].value;
                         self.mem.write(self.reg.sp, value);
-                        self.set_word_register(
-                            self.reg.sp.value().wrapping_sub(1),
-                            self.reg.sp,
-                        );
+                        self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                         let value = self[low].value;
                         self.mem.write(self.reg.sp, value);
                     }

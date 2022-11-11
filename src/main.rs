@@ -58,7 +58,12 @@ fn main() {
         panic!("The input ROM isn't a file")
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryMap::new(&rom, rom_path.to_str().unwrap(), args.headless, args.boot_rom);
+    let mem = MemoryMap::new(
+        &rom,
+        rom_path.to_str().unwrap(),
+        args.headless,
+        args.boot_rom,
+    );
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames: usize = 0;
@@ -120,7 +125,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use std::fs::{read, read_dir, DirEntry};
-    use std::{env, io};
+    use std::{env, io, panic};
 
     use std::io::Error;
 
@@ -136,6 +141,8 @@ mod tests {
     fn test_roms() -> Result<(), io::Error> {
         let (test_status_tx, test_status_rv) = channel();
         let args: Vec<String> = env::args().collect();
+
+        panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
         let skip_known = args.contains(&"skip-known".to_owned());
         let skip_same = args.contains(&"skip-same".to_owned());
@@ -166,27 +173,27 @@ mod tests {
                 true
             })
             .collect();
+
         let total = all_tests.len();
         for (idx, entry) in all_tests.into_iter().enumerate() {
             let tx_finish = test_status_tx.clone();
             thread::spawn(move || {
                 const TEST_DURATION: u8 = 30;
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-
+                println!("Testing {}", rom);
                 let rom_vec = read(&rom).unwrap();
                 let mem = MemoryMap::new(&rom_vec, &rom, true, None);
                 let mut gameboy = Gameboy::new(mem);
-                println!("Beginning test loop");
                 let mut tests_counter = 0;
                 let r = rom.clone();
-                let (tx, rx) = std::sync::mpsc::channel();
+                let (tx, rx) = channel();
 
                 thread::spawn(move || {
                     for i in 0..TEST_DURATION {
                         thread::sleep(Duration::from_secs(1));
-                        print!("Saving screenshot #{i} for {r}");
+                        println!("Saving screenshot #{i} for {r}");
                         if let Err(e) = tx.send(r.clone()) {
-                            println!("Panicked with {e} while saving screenshot #{i} for {r}")
+                            panic!("Panicked with {e} while saving screenshot #{i} for {r}")
                         };
                     }
                 });
@@ -208,7 +215,7 @@ mod tests {
                         let pixels = gameboy
                             .mem
                             .ppu
-                            .pixels
+                            .screen
                             .iter()
                             .flat_map(map_pixel)
                             .collect::<Vec<u8>>();
@@ -229,22 +236,13 @@ mod tests {
                             .decode()
                             .unwrap();
                         let screenshot = screenshot.as_bytes();
-                        let ok_image =
+                        let _ok_image =
                             Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
                         let latest_image = Reader::open(
                             screenshot_path
                                 .clone()
                                 .replace("test_output", "test_latest"),
                         );
-                        if ok_image.is_ok()
-                            && ok_image.unwrap().decode().unwrap().as_bytes() == screenshot
-                        {
-                            println!(
-                                "Ending {} test because result was confirmed as OK",
-                                screenshot_path
-                            );
-                            break 'inner;
-                        }
                         if skip_same
                             && latest_image.is_ok()
                             && latest_image.unwrap().decode().unwrap().as_bytes() == screenshot
