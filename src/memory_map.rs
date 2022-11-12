@@ -130,7 +130,7 @@ impl MemoryMap {
             };
         }
 
-        let value = self.read_without_cycle(translated_address);
+        let value = self.internal_read(translated_address);
         self.cycle();
         value
     }
@@ -162,11 +162,11 @@ impl MemoryMap {
                 _ => unreachable!(),
             };
         }
-        self.write_without_cycle(translated_address, value.into());
+        self.internal_write(translated_address, value.into());
         self.cycle();
     }
 
-    pub fn read_without_cycle(&self, translated_address: usize) -> u8 {
+    pub fn internal_read(&self, translated_address: usize) -> u8 {
         self.ppu
             .read(translated_address)
             .or_else(|| self.interrupt_handler.read(translated_address))
@@ -176,7 +176,7 @@ impl MemoryMap {
             .unwrap_or(self.memory[translated_address])
     }
 
-    fn write_without_cycle(&mut self, translated_address: usize, value: u8) {
+    fn internal_write(&mut self, translated_address: usize, value: u8) {
         if !(self.ppu.write(translated_address, value)
             || self.timer.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
@@ -225,7 +225,7 @@ impl MemoryMap {
         for (index, address) in (start..start + 160).enumerate() {
             self.ppu.oam[index] = match address {
                 0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000],
-                _ => self.read_without_cycle(address),
+                _ => self.internal_read(address),
             };
         }
     }
@@ -279,12 +279,11 @@ impl MemoryMap {
         }
 
         macro_rules! set_memory {
-            { $mm:ident, $($addr:literal: $val:literal,)* } =>
-            { $($mm.write_without_cycle($addr, $val);)* }
+            { $($addr:literal: $val:literal,)* } =>
+            { $(mem.internal_write($addr, $val);)* }
         }
 
         set_memory! {
-            mem,
             0xFF05: 0x0,
             0xFF06: 0x0,
             0xFF07: 0x0,

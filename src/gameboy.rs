@@ -48,8 +48,8 @@ impl Gameboy {
             self.halted = interrupt_cycles == 0;
             if self.halted
                 && !self.ime
-                && self.mem.read_without_cycle(IE_ADDRESS)
-                    & self.mem.read_without_cycle(IF_ADDRESS)
+                && self.mem.internal_read(IE_ADDRESS)
+                    & self.mem.internal_read(IF_ADDRESS)
                     & 0x1F
                     != 0
             {
@@ -109,8 +109,8 @@ impl Gameboy {
 
         if !self.ime
             && self.halted
-            && self.mem.read_without_cycle(IE_ADDRESS)
-                & self.mem.read_without_cycle(IF_ADDRESS)
+            && self.mem.internal_read(IE_ADDRESS)
+                & self.mem.internal_read(IF_ADDRESS)
                 & 0x1F
                 != 0
         {
