@@ -90,9 +90,9 @@ impl PixelFifo {
         self.tail = 0;
     }
 
-    fn push_background(&mut self, tile_low: u8, tile_hight: u8) {
+    fn push_background(&mut self, tile_low: u8, tile_high: u8) {
         for i in (0..8).rev() {
-            let color = (((tile_hight >> i) & 0x01) << 1) | ((tile_low >> i) & 0x01);
+            let color = (((tile_high >> i) & 0x01) << 1) | ((tile_low >> i) & 0x01);
             debug_assert!(color < 4);
             let pixel = color;
             self.queue[self.head as usize] = pixel;
@@ -104,12 +104,12 @@ impl PixelFifo {
     fn push_sprite(
         &mut self,
         tile_low: u8,
-        tile_hight: u8,
+        tile_high: u8,
         palette: bool,
         background_priority: bool,
     ) {
         let pixel = |x| {
-            let color: u8 = (((tile_hight >> x) & 0x01) << 1) | ((tile_low >> x) & 0x01);
+            let color: u8 = (((tile_high >> x) & 0x01) << 1) | ((tile_low >> x) & 0x01);
             debug_assert!(color < 4);
 
             color | ((background_priority as u8) << 3) | ((palette as u8) << 4)
@@ -188,7 +188,7 @@ impl MemoryArea for PixelProcessingUnit {
                     if value & 0x80 == 0 {
                         // disable ppu
                         self.ly = 0;
-                        self.line_start_clock_count = 0;
+                        self.line_start_ticks = 0;
                         // set to mode 0
                         self.stat &= !0b11;
                         self.state = HorizontalBlank(TurnOnHBlank);
@@ -197,7 +197,7 @@ impl MemoryArea for PixelProcessingUnit {
                         debug_assert_eq!(self.ly, 0);
                         self.ly_for_compare = 0;
                         debug_assert_eq!(self.stat & 0b11, 0b00);
-                        self.next_clock_count = self.clock_count;
+                        self.next_ticks = self.ticks;
                     }
                 }
                 self.lcdc = value
@@ -289,11 +289,11 @@ pub struct PixelProcessingUnit {
     /// to control the timing. 0xff means that this will not trigger a interrupt.
     stat_mode_for_interrupt: u8,
     /// Current clock cycle
-    pub(crate) clock_count: u64,
+    pub(crate) ticks: u64,
     /// Next clock cycle where the PPU will be updated
-    pub next_clock_count: u64,
+    pub next_ticks: u64,
     /// The clock count in which the current scanline has started.
-    pub line_start_clock_count: u64,
+    pub line_start_ticks: u64,
 
     pub background_fifo: PixelFifo,
     pub sprite_fifo: PixelFifo,
@@ -304,11 +304,11 @@ pub struct PixelProcessingUnit {
     fetcher_x: u8,
     fetch_tile_number: u8,
     fetch_tile_data_low: u8,
-    fetch_tile_data_hight: u8,
+    fetch_tile_data_high: u8,
 
     sprite_tile_address: u16,
     sprite_tile_data_low: u8,
-    sprite_tile_data_hight: u8,
+    sprite_tile_data_high: u8,
 
     reach_window: bool,
     is_in_window: bool,
@@ -358,9 +358,9 @@ impl PixelProcessingUnit {
             state: VerticalBlank(EndVBlank),
             ly_for_compare: 0,
 
-            clock_count: 0,
-            next_clock_count: 23_440_377,
-            line_start_clock_count: 23_435_361,
+            ticks: 0,
+            next_ticks: 23_440_377,
+            line_start_ticks: 23_435_361,
 
             background_fifo: PixelFifo::default(),
             sprite_fifo: PixelFifo::default(),
@@ -369,11 +369,11 @@ impl PixelProcessingUnit {
             fetcher_x: 0x14,
             fetch_tile_number: 0,
             fetch_tile_data_low: 0,
-            fetch_tile_data_hight: 0,
+            fetch_tile_data_high: 0,
 
             sprite_tile_address: 0,
             sprite_tile_data_low: 0,
-            sprite_tile_data_hight: 0,
+            sprite_tile_data_high: 0,
 
             reach_window: true,
             is_in_window: false,
@@ -420,7 +420,7 @@ impl PixelProcessingUnit {
 
     pub fn start_dma(&mut self, value: u8) {
         self.dma = value;
-        self.dma_started = self.clock_count - 4;
+        self.dma_started = self.ticks - 4;
         if self.dma_running {
             // HACK: if a DMA requested was make right before this one, this dma_started
             // rewritten would cancel the oam_block of that DMA. To fix this, I will hackly
@@ -432,13 +432,13 @@ impl PixelProcessingUnit {
     }
 
     pub fn machine_cycle(&mut self) -> (bool, bool) {
-        self.clock_count += 4;
+        self.ticks += 4;
 
         // Most of the ppu behaviour is based on the LIJI32/SameBoy including all of the timing,
         // and most of the implementation.
         if self.lcdc & 0x80 == 0 {
             // ppu is disabled
-            self.next_clock_count = self.clock_count;
+            self.next_ticks = self.ticks;
             return (false, false);
         }
 
@@ -447,10 +447,10 @@ impl PixelProcessingUnit {
 
         self.update_stat(&mut stat_interrupt);
 
-        while self.next_clock_count < self.clock_count {
+        while self.next_ticks < self.ticks {
             let (clocks, state) =
                 self.handle_state_transition(&mut vblank_interrupt, &mut stat_interrupt);
-            self.next_clock_count += clocks;
+            self.next_ticks += clocks;
             self.state = state;
         }
 
@@ -487,7 +487,7 @@ impl PixelProcessingUnit {
             }
             // 1
             HorizontalBlank(ClockLine) => {
-                self.line_start_clock_count = self.next_clock_count - 8;
+                self.line_start_ticks = self.next_ticks - 8;
                 self.wyc = 0xff;
 
                 (76, HorizontalBlank(BlockOam))
@@ -516,7 +516,7 @@ impl PixelProcessingUnit {
             PixelTransfer(FinishTurnOn) => (0, PixelTransfer(ClearQueue)),
 
             HorizontalBlank(StartLine) => {
-                self.line_start_clock_count = self.next_clock_count;
+                self.line_start_ticks = self.next_ticks;
                 self.screen_x = 0;
 
                 (3, HorizontalBlank(EndHBlank))
@@ -545,7 +545,7 @@ impl PixelProcessingUnit {
                 self.ly_for_compare = self.ly;
 
                 self.set_stat_mode(2);
-                self.oam_start_clock_count = self.clock_count;
+                self.oam_start_clock_count = self.ticks;
                 self.stat_mode_for_interrupt = 2;
                 self.update_stat(stat_interrupt);
                 self.stat_mode_for_interrupt = 0xff;
@@ -566,7 +566,7 @@ impl PixelProcessingUnit {
             }
             // 84
             PixelTransfer(StartTransfer) => {
-                debug_assert_eq!(self.next_clock_count - self.line_start_clock_count, 84);
+                debug_assert_eq!(self.next_ticks - self.line_start_ticks, 84);
                 self.set_stat_mode(3);
                 self.stat_mode_for_interrupt = 3;
                 self.update_stat(stat_interrupt);
@@ -720,7 +720,7 @@ impl PixelProcessingUnit {
                 (2, PixelTransfer(HighSpriteDataSetting))
             }
             PixelTransfer(HighSpriteDataSetting) => {
-                self.sprite_tile_data_hight = self.vram[self.sprite_tile_address as usize + 1];
+                self.sprite_tile_data_high = self.vram[self.sprite_tile_address as usize + 1];
 
                 (1, PixelTransfer(SpritePushing))
             }
@@ -732,14 +732,14 @@ impl PixelProcessingUnit {
                 } else {
                     self.sprite_tile_data_low
                 };
-                let tile_hight = if flip_x {
-                    self.sprite_tile_data_hight.reverse_bits()
+                let tile_height = if flip_x {
+                    self.sprite_tile_data_high.reverse_bits()
                 } else {
-                    self.sprite_tile_data_hight
+                    self.sprite_tile_data_high
                 };
                 self.sprite_fifo.push_sprite(
                     tile_low,
-                    tile_hight,
+                    tile_height,
                     sprite.flags & 0x10 != 0,
                     sprite.flags & 0x80 != 0,
                 );
@@ -773,7 +773,7 @@ impl PixelProcessingUnit {
             }
             HorizontalBlank(StartHBlankDelay) => (2, HorizontalBlank(ElapsedTickCalculation)),
             HorizontalBlank(ElapsedTickCalculation) => {
-                let elapsed = self.next_clock_count - self.line_start_clock_count;
+                let elapsed = self.next_ticks - self.line_start_ticks;
 
                 (454 - elapsed, HorizontalBlank(ReachWindow))
             }
@@ -878,7 +878,7 @@ impl PixelProcessingUnit {
     }
 
     fn handle_oam_corruption(&mut self) {
-        let row = (self.clock_count - self.oam_start_clock_count) as usize / 4;
+        let row = (self.ticks - self.oam_start_clock_count) as usize / 4;
 
         if self.stat & 0b11 != 2 {
             return self.oam_corruption = None;
@@ -1009,8 +1009,8 @@ impl PixelProcessingUnit {
         let push_to_fifo = |ppu: &mut PixelProcessingUnit| {
             if ppu.background_fifo.is_empty() {
                 let low = ppu.fetch_tile_data_low;
-                let hight = ppu.fetch_tile_data_hight;
-                ppu.background_fifo.push_background(low, hight);
+                let high = ppu.fetch_tile_data_high;
+                ppu.background_fifo.push_background(low, high);
                 ppu.fetcher_step = 0;
             }
         };
@@ -1052,10 +1052,10 @@ impl PixelProcessingUnit {
                 self.fetch_tile_data_low = self.vram[fetch_tile_address as usize - 0x8000];
             }
             4 => {}
-            // fetch tile data (hight)
+            // fetch tile data (high)
             5 => {
                 let fetch_tile_address = fetch_tile_address(self, is_in_window, ly);
-                self.fetch_tile_data_hight = self.vram[fetch_tile_address as usize + 1 - 0x8000];
+                self.fetch_tile_data_high = self.vram[fetch_tile_address as usize + 1 - 0x8000];
                 if self.is_in_window {
                     self.fetcher_x += 1;
                 }

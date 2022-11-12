@@ -204,7 +204,7 @@ impl MemoryManagementUnit {
         if !self.ppu.dma_running {
             return;
         }
-        let elapsed = self.ppu.clock_count.wrapping_sub(self.ppu.dma_started);
+        let elapsed = self.ppu.ticks.wrapping_sub(self.ppu.dma_started);
         if elapsed < 8 {
             return;
         }
