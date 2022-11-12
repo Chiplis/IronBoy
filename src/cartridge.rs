@@ -3,8 +3,8 @@ use crate::mmu::MemoryManagementUnit;
 
 #[derive(Debug)]
 pub struct Cartridge {
-    title: String,
-    publisher: String,
+    title: Option<String>,
+    publisher: Option<String>,
     mbc: u8,
     rom_size: usize,
     ram_size: u8,
@@ -18,8 +18,8 @@ pub struct Cartridge {
 impl Cartridge {
     pub fn new(rom: &Vec<u8>) -> Self {
         Self {
-            title: from_utf8(&rom[0x134..=0x143]).unwrap().to_string(),
-            publisher: from_utf8(&rom[0x144..=0x145]).unwrap().to_string(),
+            title: from_utf8(&rom[0x134..=0x143]).map(|t| t.to_string()).ok(),
+            publisher: from_utf8(&rom[0x144..=0x145]).map(|t| t.to_string()).ok(),
             mbc: rom[0x147],
             rom_size: 32 << rom[0x148],
             ram_size: rom[0x149],
