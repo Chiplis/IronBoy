@@ -1,6 +1,5 @@
 use std::str::from_utf8;
 
-
 #[derive(Debug)]
 pub struct Cartridge {
     title: Option<String>,
@@ -17,8 +16,9 @@ pub struct Cartridge {
 
 impl Cartridge {
     pub fn new(rom: &[u8]) -> Self {
+        let title: Vec<u8> = rom[0x134..=0x143].iter().copied().take_while(|c| *c != 0).collect();
         Self {
-            title: from_utf8(&rom[0x134..=0x143]).map(|t| t.to_string()).ok(),
+            title: from_utf8(title.as_slice()).map(|t| t.to_string()).ok(),
             publisher: from_utf8(&rom[0x144..=0x145]).map(|t| t.to_string()).ok(),
             mbc: rom[0x147],
             rom_size: 32 << rom[0x148],
