@@ -80,6 +80,7 @@ pub struct PixelFifo {
     /// next position to pop
     tail: u8,
 }
+
 impl PixelFifo {
     pub fn is_empty(&self) -> bool {
         self.head == self.tail
@@ -524,16 +525,16 @@ impl PixelProcessingUnit {
             // 3
             HorizontalBlank(EndHBlank) => {
                 self.oam_read_block = true;
+                self.set_stat_mode(0);
 
                 if self.ly == 0 {
                     self.ly_for_compare = 0;
-                    self.set_stat_mode(0);
                     self.stat_mode_for_interrupt = 0xff;
                 } else {
                     self.ly_for_compare = 0xFF;
-                    self.set_stat_mode(0);
                     self.stat_mode_for_interrupt = 2;
                 }
+
                 self.update_stat(stat_interrupt);
 
                 (1, OamSearch(StartOamSearch))
@@ -600,36 +601,39 @@ impl PixelProcessingUnit {
             // Loop for every line from 0 to 144
             PixelTransfer(WindowActivationCheck) => {
                 let window_enabled = self.lcdc & 0x20 != 0;
-                if !self.is_in_window && self.reach_window && window_enabled {
-                    let mut should_active = false;
-                    if self.wx == 0 {
-                        let cmp = [-7i8, -9, -10, -11, -12, -13, -14, -14];
-                        if self.scanline_x == cmp[(self.scx % 8) as usize] as u8 {
-                            should_active = true;
-                        }
-                    } else if self.wx < 166 {
-                        if self.wx == self.scanline_x.wrapping_add(7) {
-                            should_active = true;
-                        } else if self.wx == self.scanline_x.wrapping_add(6) {
-                            // TODO: && !wx_just_changed
-                            should_active = true;
-                            if self.screen_x > 0 {
-                                self.screen_x -= 1;
-                            }
-                        }
-                    }
+                if self.is_in_window || !self.reach_window || !window_enabled {
+                    return (0, PixelTransfer(SpriteHandling))
+                }
 
-                    if should_active {
-                        // wrapping add, because wyc starts at -1
-                        self.wyc = self.wyc.wrapping_add(1);
-                        if self.wx == 0 && self.scx % 8 != 0 {
-                            // wait 1
-                            return (1, PixelTransfer(WindowActivation));
-                        }
-                        return (0, PixelTransfer(WindowActivation));
-                    } else if self.wx == 166 && self.wx == self.scanline_x + 7 {
-                        self.wyc += 1;
+                let mut should_active = false;
+
+                if self.wx == 0 {
+                    let cmp = [-7i8, -9, -10, -11, -12, -13, -14, -14];
+                    if self.scanline_x == cmp[(self.scx % 8) as usize] as u8 {
+                        should_active = true;
                     }
+                } else if self.wx < 166 {
+                    if self.wx == self.scanline_x.wrapping_add(7) {
+                        should_active = true;
+                    } else if self.wx == self.scanline_x.wrapping_add(6) {
+                        // TODO: && !wx_just_changed
+                        should_active = true;
+                        if self.screen_x > 0 {
+                            self.screen_x -= 1;
+                        }
+                    }
+                }
+
+                if should_active {
+                    // wrapping add, because wyc starts at -1
+                    self.wyc = self.wyc.wrapping_add(1);
+                    if self.wx == 0 && self.scx % 8 != 0 {
+                        // wait 1
+                        return (1, PixelTransfer(WindowActivation))
+                    }
+                    return (0, PixelTransfer(WindowActivation));
+                } else if self.wx == 166 && self.wx == self.scanline_x + 7 {
+                    self.wyc += 1;
                 }
 
                 (0, PixelTransfer(SpriteHandling))
@@ -648,7 +652,7 @@ impl PixelProcessingUnit {
                 while self.sprite_buffer_len > 0
                     && (self.scanline_x < 160 || self.scanline_x >= (-8i8) as u8)
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx
-                        < self.scanline_x.wrapping_add(8)
+                    < self.scanline_x.wrapping_add(8)
                 {
                     self.sprite_buffer_len -= 1;
                 }
@@ -661,7 +665,7 @@ impl PixelProcessingUnit {
                 if self.sprite_buffer_len > 0
                     && sprite_enabled
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx
-                        == self.scanline_x.wrapping_add(8)
+                    == self.scanline_x.wrapping_add(8)
                 {
                     (0, PixelTransfer(BackgroundFetching))
                 } else {
@@ -1116,7 +1120,7 @@ impl PixelProcessingUnit {
                 3 => BLACK,
                 _ => unreachable!(),
             }
-            .into();
+                .into();
             self.screen_x += 1;
             self.scanline_x += 1;
         }

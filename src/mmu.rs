@@ -42,7 +42,6 @@ pub struct MemoryManagementUnit {
 impl MemoryManagementUnit {
     pub fn new(
         rom: &Vec<u8>,
-        rom_name: &str,
         headless: bool,
         boot_rom: Option<String>,
     ) -> MemoryManagementUnit {
