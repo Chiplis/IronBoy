@@ -1,12 +1,11 @@
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
-use crate::memory_map::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
+use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
-use std::borrow::BorrowMut;
 use std::fs::read;
 
 use crate::serial::LinkCable;
@@ -19,7 +18,12 @@ pub enum OamCorruptionCause {
     ReadWrite,
 }
 
-pub struct MemoryMap {
+pub trait MemoryArea {
+    fn read(&self, address: usize) -> Option<u8>;
+    fn write(&mut self, address: usize, value: u8) -> bool;
+}
+
+pub struct MemoryManagementUnit {
     pub boot_rom: Option<Vec<u8>>,
     pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
@@ -33,13 +37,13 @@ pub struct MemoryMap {
     pub window: Option<Window>,
 }
 
-impl MemoryMap {
+impl MemoryManagementUnit {
     pub fn new(
         rom: &Vec<u8>,
         rom_name: &str,
         headless: bool,
         boot_rom: Option<String>,
-    ) -> MemoryMap {
+    ) -> MemoryManagementUnit {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
@@ -72,7 +76,7 @@ impl MemoryMap {
                 .unwrap(),
             )
         };
-        let mem = MemoryMap {
+        let mem = MemoryManagementUnit {
             dma: 0xFF,
             joypad,
             ppu,
@@ -85,7 +89,7 @@ impl MemoryMap {
             window,
             boot_rom: boot,
         };
-        MemoryMap::init_memory(mem, rom)
+        MemoryManagementUnit::init_memory(mem, rom)
     }
 
     fn in_echo(&self, address: usize) -> bool {
@@ -100,7 +104,7 @@ impl MemoryMap {
         if !self.in_oam(address.into()) {
             false
         } else {
-            self.ppu.borrow_mut().oam_corruption = Some(IncDec);
+            self.ppu.oam_corruption = Some(IncDec);
             true
         }
     }
@@ -122,13 +126,12 @@ impl MemoryMap {
             return self.read(translated_address - 0x1000);
         }
 
-        if self.in_oam(translated_address) && self.ppu.oam_read_block {
-            self.ppu.oam_corruption = match self.ppu.oam_corruption {
-                None => Some(Read),
-                Some(IncDec) => Some(ReadWrite),
-                _ => unreachable!(),
-            };
-        }
+        self.ppu.oam_corruption = match (self.in_oam(translated_address), self.ppu.oam_read_block, self.ppu.oam_corruption) {
+            (true, true, None) => Some(Read),
+            (true, true, Some(IncDec)) => Some(ReadWrite),
+            (true, true, _) => unreachable!(),
+            _ => None
+        };
 
         let value = self.internal_read(translated_address);
         self.cycle();
@@ -156,12 +159,12 @@ impl MemoryMap {
             return self.write(translated_address - 0x1000, value);
         }
 
-        if self.in_oam(translated_address) && self.ppu.oam_write_block {
-            self.ppu.oam_corruption = match self.ppu.oam_corruption {
-                None | Some(IncDec) => Some(Write),
-                _ => unreachable!(),
-            };
-        }
+        self.ppu.oam_corruption = match (self.in_oam(translated_address), self.ppu.oam_read_block, self.ppu.oam_corruption) {
+            (true, true, None | Some(IncDec)) => Some(Write),
+            (true, true, _) => unreachable!(),
+            _ => None
+        };
+
         self.internal_write(translated_address, value.into());
         self.cycle();
     }
@@ -198,7 +201,7 @@ impl MemoryMap {
         if !self.ppu.dma_running {
             return;
         }
-        let elapsed = self.ppu.clock_count.wrapping_sub(self.ppu.dma_started - 4);
+        let elapsed = self.ppu.clock_count.wrapping_sub(self.ppu.dma_started);
         if elapsed < 8 {
             return;
         }
@@ -271,7 +274,7 @@ impl MemoryMap {
         }
     }
 
-    fn init_memory(mut mem: MemoryMap, rom: &[u8]) -> MemoryMap {
+    fn init_memory(mut mem: MemoryManagementUnit, rom: &[u8]) -> MemoryManagementUnit {
         rom.iter().enumerate().for_each(|(i, &v)| mem.memory[i] = v);
 
         if mem.boot_rom.is_some() {

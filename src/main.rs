@@ -2,7 +2,7 @@ use std::thread;
 
 use gameboy::Gameboy;
 
-use crate::memory_map::MemoryMap;
+use crate::mmu::MemoryManagementUnit;
 use std::time::{Duration, Instant};
 
 use minifb::Key::Escape;
@@ -16,7 +16,7 @@ mod instruction;
 mod instruction_fetcher;
 mod interrupt;
 mod joypad;
-mod memory_map;
+mod mmu;
 mod ppu;
 mod register;
 mod serial;
@@ -58,7 +58,7 @@ fn main() {
         panic!("The input ROM isn't a file")
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryMap::new(
+    let mem = MemoryManagementUnit::new(
         &rom,
         rom_path.to_str().unwrap(),
         args.headless,
@@ -76,7 +76,7 @@ fn main() {
             slowest_frame = current_frame
         }
         if gameboy
-            .mem
+            .mmu
             .window
             .as_ref()
             .map(|window| window.is_key_down(Escape))
@@ -100,17 +100,17 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
         let previously_halted = gameboy.halted;
         let cycles = gameboy.cycle() as u16;
         elapsed_cycles += cycles as u32 * 4;
-        let mem_cycles = cycles - gameboy.mem.cycles;
+        let mem_cycles = cycles - gameboy.mmu.cycles;
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
-            panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mem.cycles)
+            panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mmu.cycles)
         } else if mem_cycles == 1 {
-            gameboy.mem.cycle()
+            gameboy.mmu.cycle()
         } else {
             for _ in 0..mem_cycles {
-                gameboy.mem.cycle()
+                gameboy.mmu.cycle()
             }
         }
-        gameboy.mem.cycles = 0;
+        gameboy.mmu.cycles = 0;
     }
     if sleep {
         let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
@@ -129,7 +129,7 @@ mod tests {
 
     use std::io::Error;
 
-    use crate::{run_frame, Gameboy, MemoryMap};
+    use crate::{run_frame, Gameboy, MemoryManagementUnit};
     use image::io::Reader;
     use image::RgbaImage;
     use std::path::Path;
@@ -182,7 +182,7 @@ mod tests {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
                 println!("Testing {}", rom);
                 let rom_vec = read(&rom).unwrap();
-                let mem = MemoryMap::new(&rom_vec, &rom, true, None);
+                let mem = MemoryManagementUnit::new(&rom_vec, &rom, true, None);
                 let mut gameboy = Gameboy::new(mem);
                 let mut tests_counter = 0;
                 let r = rom.clone();
@@ -213,7 +213,7 @@ mod tests {
                             [r, g, b, a]
                         };
                         let pixels = gameboy
-                            .mem
+                            .mmu
                             .ppu
                             .screen
                             .iter()

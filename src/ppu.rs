@@ -1,4 +1,4 @@
-use crate::memory_map::OamCorruptionCause;
+use crate::mmu::{MemoryArea, OamCorruptionCause};
 use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 
 use HorizontalBlankPhase::*;
@@ -152,6 +152,72 @@ pub struct Sprite {
     pub flags: u8,
 }
 
+impl MemoryArea for PixelProcessingUnit {
+    fn read(&self, address: usize) -> Option<u8> {
+        let value = match address {
+            0x8000..=0x9FFF if self.vram_read_block => 0xFF,
+            0xFE00..=0xFE9F if self.dma_block_oam || self.oam_read_block => 0xFF,
+            0x8000..=0x9FFF => self.vram[address - 0x8000],
+            0xFE00..=0xFE9F => self.oam[address - 0xFE00],
+            0xFF40 => self.lcdc,
+            0xFF41 => self.stat | 0x80,
+            0xFF42 => self.scy,
+            0xFF43 => self.scx,
+            0xFF44 => self.ly,
+            0xFF45 => self.lyc,
+            0xFF46 => self.dma,
+            0xFF47 => self.bgp,
+            0xFF48 => self.obp0,
+            0xFF49 => self.obp1,
+            0xFF4A => self.wy,
+            0xFF4B => self.wx,
+            _ => return None,
+        };
+        Some(value)
+    }
+
+    fn write(&mut self, address: usize, value: u8) -> bool {
+        match address {
+            0x8000..=0x9FFF if self.vram_write_block => (),
+            0xFE00..=0xFE9F if self.oam_write_block => (),
+            0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
+            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
+            0xFF46 => self.start_dma(value),
+            0xFF40 => {
+                if value & 0x80 != self.lcdc & 0x80 {
+                    if value & 0x80 == 0 {
+                        // disable ppu
+                        self.ly = 0;
+                        self.line_start_clock_count = 0;
+                        // set to mode 0
+                        self.stat &= !0b11;
+                        self.state = HorizontalBlank(TurnOnHBlank);
+                    } else {
+                        // enable ppu
+                        debug_assert_eq!(self.ly, 0);
+                        self.ly_for_compare = 0;
+                        debug_assert_eq!(self.stat & 0b11, 0b00);
+                        self.next_clock_count = self.clock_count;
+                    }
+                }
+                self.lcdc = value
+            }
+            0xFF41 => self.stat = 0x80 | (value & !0b111) | (self.stat & 0b111),
+            0xFF42 => self.scy = value,
+            0xFF43 => self.scx = value,
+            0xFF44 => {} // ly is read only
+            0xFF45 => self.lyc = value,
+            0xFF47 => self.bgp = value,
+            0xFF48 => self.obp0 = value,
+            0xFF49 => self.obp1 = value,
+            0xFF4A => self.wy = value,
+            0xFF4B => self.wx = value,
+            _ => return false,
+        }
+        true
+    }
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub struct PixelProcessingUnit {
     oam_start_clock_count: u64,
@@ -267,7 +333,7 @@ impl PixelProcessingUnit {
             vram: [0; 0x2000],
             oam: [0; 0xA0],
             dma: 0xFF,
-            dma_started: 0x7fff_ffff_ffff_ffff,
+            dma_started: 0,
             dma_running: false,
             dma_block_oam: false,
             oam_read_block: false,
@@ -322,70 +388,6 @@ impl PixelProcessingUnit {
         }
     }
 
-    pub fn write(&mut self, address: usize, value: u8) -> bool {
-        match address {
-            0x8000..=0x9FFF if self.vram_write_block => (),
-            0xFE00..=0xFE9F if self.oam_write_block => (),
-            0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
-            0xFF46 => self.start_dma(value),
-            0xFF40 => {
-                if value & 0x80 != self.lcdc & 0x80 {
-                    if value & 0x80 == 0 {
-                        // disable ppu
-                        self.ly = 0;
-                        self.line_start_clock_count = 0;
-                        // set to mode 0
-                        self.stat &= !0b11;
-                        self.state = HorizontalBlank(TurnOnHBlank);
-                    } else {
-                        // enable ppu
-                        debug_assert_eq!(self.ly, 0);
-                        self.ly_for_compare = 0;
-                        debug_assert_eq!(self.stat & 0b11, 0b00);
-                        self.next_clock_count = self.clock_count;
-                    }
-                }
-                self.lcdc = value
-            }
-            0xFF41 => self.stat = 0x80 | (value & !0b111) | (self.stat & 0b111),
-            0xFF42 => self.scy = value,
-            0xFF43 => self.scx = value,
-            0xFF44 => {} // ly is read only
-            0xFF45 => self.lyc = value,
-            0xFF47 => self.bgp = value,
-            0xFF48 => self.obp0 = value,
-            0xFF49 => self.obp1 = value,
-            0xFF4A => self.wy = value,
-            0xFF4B => self.wx = value,
-            _ => return false,
-        }
-        true
-    }
-
-    pub fn read(&self, address: usize) -> Option<u8> {
-        let value = match address {
-            0x8000..=0x9FFF if self.vram_read_block => 0xFF,
-            0xFE00..=0xFE9F if self.dma_block_oam || self.oam_read_block => 0xFF,
-            0x8000..=0x9FFF => self.vram[address - 0x8000],
-            0xFE00..=0xFE9F => self.oam[address - 0xFE00],
-            0xFF40 => self.lcdc,
-            0xFF41 => self.stat | 0x80,
-            0xFF42 => self.scy,
-            0xFF43 => self.scx,
-            0xFF44 => self.ly,
-            0xFF45 => self.lyc,
-            0xFF46 => self.dma,
-            0xFF47 => self.bgp,
-            0xFF48 => self.obp0,
-            0xFF49 => self.obp1,
-            0xFF4A => self.wy,
-            0xFF4B => self.wx,
-            _ => return None,
-        };
-        Some(value)
-    }
-
     fn search_objects(&mut self) {
         self.sprite_buffer_len = 0;
         let sprite_height = if self.lcdc & 0x04 != 0 { 16 } else { 8 };
@@ -418,7 +420,7 @@ impl PixelProcessingUnit {
 
     pub fn start_dma(&mut self, value: u8) {
         self.dma = value;
-        self.dma_started = self.clock_count;
+        self.dma_started = self.clock_count - 4;
         if self.dma_running {
             // HACK: if a DMA requested was make right before this one, this dma_started
             // rewritten would cancel the oam_block of that DMA. To fix this, I will hackly

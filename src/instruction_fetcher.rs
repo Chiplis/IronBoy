@@ -5,7 +5,7 @@ use crate::instruction::Command::*;
 use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Instruction, RstVec};
 use crate::instruction_fetcher::RegisterOperand::HL;
-use crate::memory_map::MemoryMap;
+use crate::mmu::MemoryManagementUnit;
 use crate::register::RegisterId::*;
 use crate::register::{Bit, ConditionCode, Register, RegisterId};
 
@@ -18,7 +18,7 @@ pub struct InstructionFetcher;
 
 impl InstructionFetcher {
     #[deny(unreachable_patterns)]
-    pub fn fetch_instruction(pc: u16, reg: &Register, ram: &mut MemoryMap) -> Instruction {
+    pub fn fetch_instruction(pc: u16, reg: &Register, ram: &mut MemoryManagementUnit) -> Instruction {
         let opcode = ram.read(pc);
         let register_ids = [B, C, D, E, H, L, A];
         let operands = [

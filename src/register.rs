@@ -1,4 +1,4 @@
-use crate::memory_map::MemoryMap;
+use crate::mmu::MemoryManagementUnit;
 use crate::register::RegisterId::{A, B, C, D, E, H, L};
 use crate::register::WordRegister::StackPointer;
 use std::ops::{Index, IndexMut};
@@ -80,7 +80,7 @@ impl Register {
         Double(self[H], self[L])
     }
 
-    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryMap) {
+    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryManagementUnit) {
         self.set_word_register_with_callback(value, reg, |_mem| (), mem);
     }
 
@@ -88,8 +88,8 @@ impl Register {
         &mut self,
         value: u16,
         reg: WordRegister,
-        callback: fn(&mut MemoryMap),
-        mem: &mut MemoryMap,
+        callback: fn(&mut MemoryManagementUnit),
+        mem: &mut MemoryManagementUnit,
     ) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
