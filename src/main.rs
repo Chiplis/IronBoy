@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::thread;
 
 use gameboy::Gameboy;
@@ -21,6 +23,7 @@ mod ppu;
 mod register;
 mod serial;
 mod timer;
+mod cartridge;
 
 const FREQUENCY: u32 = 4194304;
 

@@ -7,6 +7,7 @@ use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use std::fs::read;
+use crate::cartridge::Cartridge;
 
 use crate::serial::LinkCable;
 
@@ -25,6 +26,7 @@ pub trait MemoryArea {
 
 pub struct MemoryManagementUnit {
     pub boot_rom: Option<Vec<u8>>,
+    cartridge: Cartridge,
     pub memory: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PixelProcessingUnit,
@@ -54,12 +56,26 @@ impl MemoryManagementUnit {
 
         let serial = LinkCable::new();
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
-        let window = if headless {
-            None
-        } else {
-            Some(
+        let cartridge = Cartridge::new(rom);
+        let window_title = format!("{:?}", cartridge);
+        let mut mem = MemoryManagementUnit {
+            cartridge,
+            dma: 0xFF,
+            joypad,
+            ppu,
+            interrupt_handler,
+            timer,
+            memory,
+            rom_size,
+            cycles: micro_ops,
+            serial,
+            window: None,
+            boot_rom: boot,
+        };
+        if !headless {
+            mem.window = Some(
                 Window::new(
-                    format!("{} - ESC to exit", rom_name).as_str(),
+                    window_title.as_str(),
                     160,
                     144,
                     WindowOptions {
@@ -73,22 +89,9 @@ impl MemoryManagementUnit {
                         none: false,
                     },
                 )
-                .unwrap(),
-            )
-        };
-        let mem = MemoryManagementUnit {
-            dma: 0xFF,
-            joypad,
-            ppu,
-            interrupt_handler,
-            timer,
-            memory,
-            rom_size,
-            cycles: micro_ops,
-            serial,
-            window,
-            boot_rom: boot,
-        };
+                    .unwrap(),
+            );
+        }
         MemoryManagementUnit::init_memory(mem, rom)
     }
 
