@@ -7,6 +7,7 @@ use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
+use std::cmp::max;
 use std::fs::read;
 
 use crate::serial::LinkCable;
@@ -24,9 +25,20 @@ pub trait MemoryArea {
     fn write(&mut self, address: usize, value: u8) -> bool;
 }
 
+#[derive(Default)]
+struct MemoryBankController {
+    rom_bank: u8,
+    ram_bank: u8,
+    ram_enabled: bool,
+    expansion_mode: u8,
+}
+
 pub struct MemoryManagementUnit {
+    rom_offset: usize,
+    ram_offset: usize,
     pub boot_rom: Option<Vec<u8>>,
     cartridge: Cartridge,
+    mbc: MemoryBankController,
     rom: Vec<u8>,
     eram: Vec<u8>,
     pub wram: Vec<u8>,
@@ -55,8 +67,10 @@ impl MemoryManagementUnit {
         let serial = LinkCable::new();
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
         let cartridge = Cartridge::new(&rom);
+        println!("{:?}", &cartridge);
         let window_title = format!("{:?}", cartridge);
         let mut mem = MemoryManagementUnit {
+            rom_offset: 0x4000,
             rom,
             zram: vec![0; 2 * 1024 * 1024],
             eram: vec![0; 2 * 1024 * 1024],
@@ -72,6 +86,8 @@ impl MemoryManagementUnit {
             serial,
             window: None,
             boot_rom: boot,
+            ram_offset: 0,
+            mbc: Default::default()
         };
         if !headless {
             mem.window = Some(
@@ -184,8 +200,8 @@ impl MemoryManagementUnit {
     fn bank_read(&self, address: usize) -> u8 {
         match address as u16 {
             0x0000..=0x3FFF => self.rom[address],
-            0x4000..=0x7FFF => self.rom[address],
-            0xA000..=0xBFFF => self.eram[address],
+            0x4000..=0x7FFF => self.rom[self.rom_offset + (address & 0x3FFF)],
+            0xA000..=0xBFFF => self.eram[self.ram_offset + (address & 0x1FFF)],
             0xC000..=0xDFFF => self.wram[address],
             _ => self.zram[address],
         }
@@ -193,7 +209,33 @@ impl MemoryManagementUnit {
 
     fn bank_write(&mut self, address: usize, value: u8) {
         match address as u16 {
-            0xA000..=0xBFFF => self.eram[address] = value,
+            0x0000..=0x1FFF => match self.cartridge.mbc {
+                2 | 3 => self.mbc.ram_enabled = value & 0x0F == 0x0A,
+                _ => (),
+            }
+            0x2000..=0x3FFF => match self.cartridge.mbc {
+                1 | 2 | 3 => {
+                    self.mbc.rom_bank = (self.mbc.rom_bank & 0x60) + max(1, value & 0x1F);
+                    self.rom_offset = self.mbc.rom_bank as usize * 0x4000;
+                }
+                _ => ()
+            }
+            0x4000..=0x5FFF => match self.cartridge.mbc {
+                1 | 2 | 3 if self.mbc.expansion_mode != 0 => {
+                    self.mbc.ram_bank = value & 3;
+                    self.ram_offset = self.mbc.ram_bank as usize * 0x2000;
+                }
+                1 | 2 | 3 => {
+                    self.mbc.rom_bank = (self.mbc.rom_bank & 0x1F) + ((value & 3) << 5);
+                    self.rom_offset = self.mbc.rom_bank as usize * 0x4000;
+                }
+                _ => ()
+            }
+            0x6000..=0x7FFF => match self.cartridge.mbc {
+                2 | 3 => self.mbc.expansion_mode = value & 1,
+                _ => ()
+            }
+            0xA000..=0xBFFF => self.eram[self.ram_offset + (address & 0x1FFF)] = value,
             0xC000..=0xDFFF => self.wram[address] = value,
             _ => self.zram[address] = value,
         }
@@ -215,7 +257,6 @@ impl MemoryManagementUnit {
             || self.interrupt_handler.write(translated_address, value)
             || self.joypad.write(translated_address, value)
             || self.serial.write(translated_address, value))
-            && (translated_address >= self.rom_size)
         {
             self.bank_write(translated_address, value);
         }

@@ -140,7 +140,7 @@ mod tests {
         let (test_status_tx, test_status_rv) = channel();
         let args: Vec<String> = env::args().collect();
 
-        panic::set_hook(Box::new(|_info| std::process::exit(1)));
+        // panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
         let skip_known = args.contains(&"skip-known".to_owned());
         let skip_same = args.contains(&"skip-same".to_owned());

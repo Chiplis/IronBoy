@@ -4,7 +4,7 @@ use std::str::from_utf8;
 pub struct Cartridge {
     title: Option<String>,
     publisher: Option<String>,
-    mbc: u8,
+    pub(crate) mbc: u8,
     rom_size: usize,
     ram_size: u8,
     destination: u8,
