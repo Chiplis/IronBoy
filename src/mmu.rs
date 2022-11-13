@@ -27,7 +27,10 @@ pub trait MemoryArea {
 pub struct MemoryManagementUnit {
     pub boot_rom: Option<Vec<u8>>,
     cartridge: Cartridge,
-    pub memory: Vec<u8>,
+    rom: Vec<u8>,
+    eram: Vec<u8>,
+    pub wram: Vec<u8>,
+    zram: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PixelProcessingUnit,
     serial: LinkCable,
@@ -41,7 +44,7 @@ pub struct MemoryManagementUnit {
 
 impl MemoryManagementUnit {
     pub fn new(
-        rom: &Vec<u8>,
+        rom: Vec<u8>,
         headless: bool,
         boot_rom: Option<String>,
     ) -> MemoryManagementUnit {
@@ -50,21 +53,24 @@ impl MemoryManagementUnit {
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new(boot_rom.is_some());
         let rom_size = rom.len() as usize;
-        let memory = vec![0; 0x10000];
+        let memory = vec![0; 2 * 1024 * 1024];
         let micro_ops = 0;
 
         let serial = LinkCable::new();
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
-        let cartridge = Cartridge::new(rom);
+        let cartridge = Cartridge::new(&rom);
         let window_title = format!("{:?}", cartridge);
         let mut mem = MemoryManagementUnit {
+            rom,
+            zram: vec![0; 2 * 1024 * 1024],
+            eram: vec![0; 2 * 1024 * 1024],
             cartridge,
             dma: 0xFF,
             joypad,
             ppu,
             interrupt_handler,
             timer,
-            memory,
+            wram: memory,
             rom_size,
             cycles: micro_ops,
             serial,
@@ -91,7 +97,7 @@ impl MemoryManagementUnit {
                     .unwrap(),
             );
         }
-        MemoryManagementUnit::init_memory(mem, rom)
+        MemoryManagementUnit::init_memory(mem)
     }
 
     fn in_echo(&self, address: usize) -> bool {
@@ -171,6 +177,24 @@ impl MemoryManagementUnit {
         self.cycle();
     }
 
+    fn bank_read(&self, address: usize) -> u8 {
+        match address as u16 {
+            0x0000..=0x3FFF => self.rom[address],
+            0x4000..=0x7FFF => self.rom[address],
+            0xA000..=0xBFFF => self.eram[address],
+            0xC000..=0xDFFF => self.wram[address],
+            _ => self.zram[address]
+        }
+    }
+
+    fn bank_write(&mut self, address: usize, value: u8) {
+        match address as u16 {
+            0xA000..=0xBFFF => self.eram[address] = value,
+            0xC000..=0xDFFF => self.wram[address] = value,
+            _ => self.zram[address] = value
+        }
+    }
+
     pub fn internal_read(&self, translated_address: usize) -> u8 {
         self.ppu
             .read(translated_address)
@@ -178,7 +202,7 @@ impl MemoryManagementUnit {
             .or_else(|| self.timer.read(translated_address))
             .or_else(|| self.joypad.read(translated_address))
             .or_else(|| self.serial.read(translated_address))
-            .unwrap_or(self.memory[translated_address])
+            .unwrap_or_else(|| self.bank_read(translated_address))
     }
 
     fn internal_write(&mut self, translated_address: usize, value: u8) {
@@ -189,7 +213,7 @@ impl MemoryManagementUnit {
             || self.serial.write(translated_address, value))
             && (translated_address >= self.rom_size)
         {
-            self.memory[translated_address] = value
+            self.bank_write(translated_address, value);
         }
     }
 
@@ -276,9 +300,7 @@ impl MemoryManagementUnit {
         }
     }
 
-    fn init_memory(mut mem: MemoryManagementUnit, rom: &[u8]) -> MemoryManagementUnit {
-        rom.iter().enumerate().for_each(|(i, &v)| mem.memory[i] = v);
-
+    fn init_memory(mut mem: MemoryManagementUnit) -> MemoryManagementUnit {
         if mem.boot_rom.is_some() {
             return mem;
         }

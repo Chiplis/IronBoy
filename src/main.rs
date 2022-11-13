@@ -62,7 +62,7 @@ fn main() {
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
     let mem = MemoryManagementUnit::new(
-        &rom,
+        rom,
         args.headless,
         args.boot_rom,
     );
@@ -184,7 +184,7 @@ mod tests {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
                 println!("Testing {}", rom);
                 let rom_vec = read(&rom).unwrap();
-                let mem = MemoryManagementUnit::new(&rom_vec, true, None);
+                let mem = MemoryManagementUnit::new(rom_vec, true, None);
                 let mut gameboy = Gameboy::new(mem);
                 let mut tests_counter = 0;
                 let r = rom.clone();

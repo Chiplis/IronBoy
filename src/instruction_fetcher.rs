@@ -280,7 +280,7 @@ impl InstructionFetcher {
                 0x1F => Rr(OpRegister(A), true),
 
                 0x10 => {
-                    let opcode = ram.memory[pc as usize + 1];
+                    let opcode = ram.wram[pc as usize + 1];
                     match opcode {
                         0x00 => Stop,
                         _ => panic!("Invalid opcode after STOP: {}", opcode),
