@@ -1,3 +1,4 @@
+use crate::cartridge::Cartridge;
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
@@ -7,7 +8,6 @@ use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use std::fs::read;
-use crate::cartridge::Cartridge;
 
 use crate::serial::LinkCable;
 
@@ -43,11 +43,7 @@ pub struct MemoryManagementUnit {
 }
 
 impl MemoryManagementUnit {
-    pub fn new(
-        rom: Vec<u8>,
-        headless: bool,
-        boot_rom: Option<String>,
-    ) -> MemoryManagementUnit {
+    pub fn new(rom: Vec<u8>, headless: bool, boot_rom: Option<String>) -> MemoryManagementUnit {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
@@ -94,7 +90,7 @@ impl MemoryManagementUnit {
                         none: false,
                     },
                 )
-                    .unwrap(),
+                .unwrap(),
             );
         }
         MemoryManagementUnit::init_memory(mem)
@@ -134,11 +130,15 @@ impl MemoryManagementUnit {
             return self.read(translated_address - 0x1000);
         }
 
-        self.ppu.oam_corruption = match (self.in_oam(translated_address), self.ppu.oam_read_block, self.ppu.oam_corruption) {
+        self.ppu.oam_corruption = match (
+            self.in_oam(translated_address),
+            self.ppu.oam_read_block,
+            self.ppu.oam_corruption,
+        ) {
             (true, true, None) => Some(Read),
             (true, true, Some(IncDec)) => Some(ReadWrite),
             (true, true, _) => unreachable!(),
-            _ => None
+            _ => None,
         };
 
         let value = self.internal_read(translated_address);
@@ -167,10 +167,14 @@ impl MemoryManagementUnit {
             return self.write(translated_address - 0x1000, value);
         }
 
-        self.ppu.oam_corruption = match (self.in_oam(translated_address), self.ppu.oam_read_block, self.ppu.oam_corruption) {
+        self.ppu.oam_corruption = match (
+            self.in_oam(translated_address),
+            self.ppu.oam_read_block,
+            self.ppu.oam_corruption,
+        ) {
             (true, true, None | Some(IncDec)) => Some(Write),
             (true, true, _) => unreachable!(),
-            _ => None
+            _ => None,
         };
 
         self.internal_write(translated_address, value.into());
@@ -183,7 +187,7 @@ impl MemoryManagementUnit {
             0x4000..=0x7FFF => self.rom[address],
             0xA000..=0xBFFF => self.eram[address],
             0xC000..=0xDFFF => self.wram[address],
-            _ => self.zram[address]
+            _ => self.zram[address],
         }
     }
 
@@ -191,7 +195,7 @@ impl MemoryManagementUnit {
         match address as u16 {
             0xA000..=0xBFFF => self.eram[address] = value,
             0xC000..=0xDFFF => self.wram[address] = value,
-            _ => self.zram[address] = value
+            _ => self.zram[address] = value,
         }
     }
 

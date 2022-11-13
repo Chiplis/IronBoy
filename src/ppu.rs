@@ -602,7 +602,7 @@ impl PixelProcessingUnit {
             PixelTransfer(WindowActivationCheck) => {
                 let window_enabled = self.lcdc & 0x20 != 0;
                 if self.is_in_window || !self.reach_window || !window_enabled {
-                    return (0, PixelTransfer(SpriteHandling))
+                    return (0, PixelTransfer(SpriteHandling));
                 }
 
                 let mut should_active = false;
@@ -629,7 +629,7 @@ impl PixelProcessingUnit {
                     self.wyc = self.wyc.wrapping_add(1);
                     if self.wx == 0 && self.scx % 8 != 0 {
                         // wait 1
-                        return (1, PixelTransfer(WindowActivation))
+                        return (1, PixelTransfer(WindowActivation));
                     }
                     return (0, PixelTransfer(WindowActivation));
                 } else if self.wx == 166 && self.wx == self.scanline_x + 7 {
@@ -652,7 +652,7 @@ impl PixelProcessingUnit {
                 while self.sprite_buffer_len > 0
                     && (self.scanline_x < 160 || self.scanline_x >= (-8i8) as u8)
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx
-                    < self.scanline_x.wrapping_add(8)
+                        < self.scanline_x.wrapping_add(8)
                 {
                     self.sprite_buffer_len -= 1;
                 }
@@ -665,7 +665,7 @@ impl PixelProcessingUnit {
                 if self.sprite_buffer_len > 0
                     && sprite_enabled
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx
-                    == self.scanline_x.wrapping_add(8)
+                        == self.scanline_x.wrapping_add(8)
                 {
                     (0, PixelTransfer(BackgroundFetching))
                 } else {
@@ -1120,7 +1120,7 @@ impl PixelProcessingUnit {
                 3 => BLACK,
                 _ => unreachable!(),
             }
-                .into();
+            .into();
             self.screen_x += 1;
             self.scanline_x += 1;
         }

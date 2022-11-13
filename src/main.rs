@@ -13,6 +13,7 @@ use std::path::Path;
 
 use clap::Parser;
 
+mod cartridge;
 mod gameboy;
 mod instruction;
 mod instruction_fetcher;
@@ -23,7 +24,6 @@ mod ppu;
 mod register;
 mod serial;
 mod timer;
-mod cartridge;
 
 const FREQUENCY: u32 = 4194304;
 
@@ -61,11 +61,7 @@ fn main() {
         panic!("The input ROM isn't a file")
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryManagementUnit::new(
-        rom,
-        args.headless,
-        args.boot_rom,
-    );
+    let mem = MemoryManagementUnit::new(rom, args.headless, args.boot_rom);
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames: usize = 0;

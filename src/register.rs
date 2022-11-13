@@ -80,7 +80,12 @@ impl Register {
         Double(self[H], self[L])
     }
 
-    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryManagementUnit) {
+    pub fn set_word_register(
+        &mut self,
+        value: u16,
+        reg: WordRegister,
+        mem: &mut MemoryManagementUnit,
+    ) {
         self.set_word_register_with_callback(value, reg, |_mem| (), mem);
     }
 

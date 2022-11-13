@@ -1,7 +1,7 @@
 use crate::joypad::SelectedButtons::{Action, Direction};
+use crate::mmu::MemoryArea;
 use minifb::{Key, Window};
 use Key::*;
-use crate::mmu::MemoryArea;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SelectedButtons {
@@ -16,7 +16,6 @@ pub struct Joypad {
 }
 
 impl MemoryArea for Joypad {
-
     fn read(&self, address: usize) -> Option<u8> {
         let value = self.selected_buttons as u8 | self.buttons();
         match address {

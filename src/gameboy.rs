@@ -48,9 +48,7 @@ impl Gameboy {
             self.halted = interrupt_cycles == 0;
             if self.halted
                 && !self.ime
-                && self.mmu.internal_read(IE_ADDRESS)
-                    & self.mmu.internal_read(IF_ADDRESS)
-                    & 0x1F
+                && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F
                     != 0
             {
                 self.halted = false;
@@ -109,10 +107,7 @@ impl Gameboy {
 
         if !self.ime
             && self.halted
-            && self.mmu.internal_read(IE_ADDRESS)
-                & self.mmu.internal_read(IF_ADDRESS)
-                & 0x1F
-                != 0
+            && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F != 0
         {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);

@@ -18,7 +18,11 @@ pub struct InstructionFetcher;
 
 impl InstructionFetcher {
     #[deny(unreachable_patterns)]
-    pub fn fetch_instruction(pc: u16, reg: &Register, ram: &mut MemoryManagementUnit) -> Instruction {
+    pub fn fetch_instruction(
+        pc: u16,
+        reg: &Register,
+        ram: &mut MemoryManagementUnit,
+    ) -> Instruction {
         let opcode = ram.read(pc);
         let register_ids = [B, C, D, E, H, L, A];
         let operands = [
