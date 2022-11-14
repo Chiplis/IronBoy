@@ -94,10 +94,7 @@ impl Gameboy {
 
         match self.bugged_pc {
             Some(ProgramCounter(pc)) => {
-                self.mmu.wram.remove(pc as usize);
-                if pc < self.reg.pc.value() {
-                    self.set_pc(self.reg.pc.value() - 1, false);
-                }
+                self.set_pc(pc, false);
             }
             None => {}
             _ => panic!(),
@@ -111,8 +108,8 @@ impl Gameboy {
         {
             self.halted = false;
             self.bugged_pc = Some(self.reg.pc);
-            let x = self.mmu.read(self.reg.pc);
-            self.mmu.wram.insert(self.reg.pc.value() as usize, x);
+            let x = self.mmu.internal_read(self.reg.pc.into());
+            self.mmu.work_ram.insert(self.reg.pc.value() as usize, x);
         }
         if command != Halt {
             command_cycles

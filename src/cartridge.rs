@@ -1,8 +1,8 @@
 use std::str::from_utf8;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Cartridge {
-    title: Option<String>,
+    pub(crate) title: Option<String>,
     publisher: Option<String>,
     pub(crate) mbc: u8,
     rom_size: usize,

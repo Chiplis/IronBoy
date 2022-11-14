@@ -19,6 +19,7 @@ mod instruction;
 mod instruction_fetcher;
 mod interrupt;
 mod joypad;
+mod mbc;
 mod mmu;
 mod ppu;
 mod register;
@@ -61,7 +62,7 @@ fn main() {
         panic!("The input ROM isn't a file")
     }
     let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryManagementUnit::new(rom, args.headless, args.boot_rom);
+    let mem = MemoryManagementUnit::new(rom, args.headless, args.boot_rom, &args.rom_file);
 
     let mut gameboy = Gameboy::new(mem);
     let mut frames: usize = 0;
@@ -180,7 +181,7 @@ mod tests {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
                 println!("Testing {}", rom);
                 let rom_vec = read(&rom).unwrap();
-                let mem = MemoryManagementUnit::new(rom_vec, true, None);
+                let mem = MemoryManagementUnit::new(rom_vec, true, None, &rom);
                 let mut gameboy = Gameboy::new(mem);
                 let mut tests_counter = 0;
                 let r = rom.clone();

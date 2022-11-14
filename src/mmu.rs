@@ -2,6 +2,7 @@ use crate::cartridge::Cartridge;
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
+use crate::mbc::{MemoryBankController, MBC0, MBC1};
 use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
@@ -9,6 +10,7 @@ use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 use std::cmp::max;
 use std::fs::read;
+use std::path::Path;
 
 use crate::serial::LinkCable;
 
@@ -25,43 +27,28 @@ pub trait MemoryArea {
     fn write(&mut self, address: usize, value: u8) -> bool;
 }
 
-#[derive(Default)]
-struct MemoryBankController {
-    rom_bank: u8,
-    ram_bank: u8,
-    ram_enabled: bool,
-    expansion_mode: u8,
-}
-
 pub struct MemoryManagementUnit {
-    rom_offset: usize,
-    ram_offset: usize,
     pub boot_rom: Option<Vec<u8>>,
-    cartridge: Cartridge,
-    mbc: MemoryBankController,
-    rom: Vec<u8>,
-    eram: Vec<u8>,
-    pub wram: Vec<u8>,
-    zram: Vec<u8>,
+    mbc: Box<dyn MemoryBankController>,
+    pub work_ram: Vec<u8>,
+    high_ram: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PixelProcessingUnit,
     serial: LinkCable,
     timer: Timer,
     joypad: Joypad,
-    rom_size: usize,
     pub cycles: u16,
     pub dma: u8,
     pub window: Option<Window>,
 }
 
 impl MemoryManagementUnit {
-    pub fn new(rom: Vec<u8>, headless: bool, boot_rom: Option<String>) -> MemoryManagementUnit {
+    pub fn new(rom: Vec<u8>, headless: bool, boot_rom: Option<String>, rom_path: &String) -> MemoryManagementUnit {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
         let timer = Timer::new(boot_rom.is_some());
-        let rom_size = rom.len() as usize;
-        let memory = vec![0; 2 * 1024 * 1024];
+        let memory = vec![0; 0xE000 - 0xC000];
         let micro_ops = 0;
 
         let serial = LinkCable::new();
@@ -70,24 +57,32 @@ impl MemoryManagementUnit {
         println!("{:?}", &cartridge);
         let window_title = format!("{:?}", cartridge);
         let mut mem = MemoryManagementUnit {
-            rom_offset: 0x4000,
-            rom,
-            zram: vec![0; 2 * 1024 * 1024],
-            eram: vec![0; 2 * 1024 * 1024],
-            cartridge,
+            high_ram: vec![0; 2 * 1024 * 1024],
             dma: 0xFF,
             joypad,
             ppu,
             interrupt_handler,
             timer,
-            wram: memory,
-            rom_size,
+            work_ram: memory,
             cycles: micro_ops,
             serial,
             window: None,
             boot_rom: boot,
-            ram_offset: 0,
-            mbc: Default::default()
+            mbc: match cartridge.mbc {
+                0x00 => Box::new(MBC0 {
+                    rom,
+                    ram: vec![0; 32 * 1024],
+                }),
+                0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
+                // 0x0F..=0x13 => Box::new(MBC3{..Default::default()}),
+                _ => {
+                    println!("MBC ID {} not implemented, defaulting to MBC0 - {}", cartridge.mbc, rom_path);
+                    Box::new(MBC0 {
+                        rom,
+                        ram: vec![0; 32 * 1024],
+                    })
+                },
+            },
         };
         if !headless {
             mem.window = Some(
@@ -110,10 +105,6 @@ impl MemoryManagementUnit {
             );
         }
         MemoryManagementUnit::init_memory(mem)
-    }
-
-    fn in_echo(&self, address: usize) -> bool {
-        (0xE000..0xFDFF).contains(&address)
     }
 
     fn in_oam(&self, address: usize) -> bool {
@@ -140,10 +131,6 @@ impl MemoryManagementUnit {
             let value = self.boot_rom.as_ref().unwrap()[translated_address];
             self.cycle();
             return value;
-        }
-
-        if self.in_echo(translated_address) {
-            return self.read(translated_address - 0x1000);
         }
 
         self.ppu.oam_corruption = match (
@@ -179,10 +166,6 @@ impl MemoryManagementUnit {
             return;
         }
 
-        if self.in_echo(translated_address) {
-            return self.write(translated_address - 0x1000, value);
-        }
-
         self.ppu.oam_corruption = match (
             self.in_oam(translated_address),
             self.ppu.oam_read_block,
@@ -197,47 +180,21 @@ impl MemoryManagementUnit {
         self.cycle();
     }
 
-    fn bank_read(&self, address: usize) -> u8 {
+    fn internal_ram_read(&self, address: usize) -> u8 {
         match address as u16 {
-            0x0000..=0x3FFF => self.rom[address],
-            0x4000..=0x7FFF => self.rom[self.rom_offset + (address & 0x3FFF)],
-            0xA000..=0xBFFF => self.eram[self.ram_offset + (address & 0x1FFF)],
-            0xC000..=0xDFFF => self.wram[address],
-            _ => self.zram[address],
+            0xC000..=0xDFFF => self.work_ram[address - 0xC000],
+            0xE000..=0xFDFF => self.work_ram[address - 0x2000 - 0xC000],
+            0xFEA0..=0xFFFF => self.high_ram[address],
+            _ => panic!("Unhandled address for read: {}", address),
         }
     }
 
-    fn bank_write(&mut self, address: usize, value: u8) {
+    fn internal_ram_write(&mut self, address: usize, value: u8) {
         match address as u16 {
-            0x0000..=0x1FFF => match self.cartridge.mbc {
-                2 | 3 => self.mbc.ram_enabled = value & 0x0F == 0x0A,
-                _ => (),
-            }
-            0x2000..=0x3FFF => match self.cartridge.mbc {
-                1 | 2 | 3 => {
-                    self.mbc.rom_bank = (self.mbc.rom_bank & 0x60) + max(1, value & 0x1F);
-                    self.rom_offset = self.mbc.rom_bank as usize * 0x4000;
-                }
-                _ => ()
-            }
-            0x4000..=0x5FFF => match self.cartridge.mbc {
-                1 | 2 | 3 if self.mbc.expansion_mode != 0 => {
-                    self.mbc.ram_bank = value & 3;
-                    self.ram_offset = self.mbc.ram_bank as usize * 0x2000;
-                }
-                1 | 2 | 3 => {
-                    self.mbc.rom_bank = (self.mbc.rom_bank & 0x1F) + ((value & 3) << 5);
-                    self.rom_offset = self.mbc.rom_bank as usize * 0x4000;
-                }
-                _ => ()
-            }
-            0x6000..=0x7FFF => match self.cartridge.mbc {
-                2 | 3 => self.mbc.expansion_mode = value & 1,
-                _ => ()
-            }
-            0xA000..=0xBFFF => self.eram[self.ram_offset + (address & 0x1FFF)] = value,
-            0xC000..=0xDFFF => self.wram[address] = value,
-            _ => self.zram[address] = value,
+            0xC000..=0xDFFF => self.work_ram[address - 0xC000] = value,
+            0xE000..=0xFDFF => self.work_ram[address - 0x2000 - 0xC000] = value,
+            0xFEA0..=0xFFFF => self.high_ram[address] = value,
+            _ => panic!("Unhandled address for write: {}", address),
         }
     }
 
@@ -248,7 +205,8 @@ impl MemoryManagementUnit {
             .or_else(|| self.timer.read(translated_address))
             .or_else(|| self.joypad.read(translated_address))
             .or_else(|| self.serial.read(translated_address))
-            .unwrap_or_else(|| self.bank_read(translated_address))
+            .or_else(|| self.mbc.read(translated_address))
+            .unwrap_or_else(|| self.internal_ram_read(translated_address))
     }
 
     fn internal_write(&mut self, translated_address: usize, value: u8) {
@@ -256,9 +214,10 @@ impl MemoryManagementUnit {
             || self.timer.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
             || self.joypad.write(translated_address, value)
-            || self.serial.write(translated_address, value))
+            || self.serial.write(translated_address, value)
+            || self.mbc.write(translated_address, value))
         {
-            self.bank_write(translated_address, value);
+            self.internal_ram_write(translated_address, value);
         }
     }
 
