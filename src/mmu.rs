@@ -2,7 +2,6 @@ use crate::cartridge::Cartridge;
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::joypad::Joypad;
-use crate::mbc::{MemoryBankController, MBC0, MBC1};
 use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
@@ -10,6 +9,9 @@ use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 
 use std::fs::read;
+use crate::mbc0::MBC0;
+use crate::mbc1::MBC1;
+use crate::mbc::MemoryBankController;
 
 
 use crate::serial::LinkCable;
@@ -74,10 +76,7 @@ impl MemoryManagementUnit {
             window: None,
             boot_rom: boot,
             mbc: match cartridge.mbc {
-                0x00 => Box::new(MBC0 {
-                    rom,
-                    ram: vec![0; 32 * 1024],
-                }),
+                0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
                 0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
                 // 0x0F..=0x13 => Box::new(MBC3{..Default::default()}),
                 _ => {
@@ -85,10 +84,7 @@ impl MemoryManagementUnit {
                         "MBC ID {} not implemented, defaulting to MBC0 - {}",
                         cartridge.mbc, rom_path
                     );
-                    Box::new(MBC0 {
-                        rom,
-                        ram: vec![0; 32 * 1024],
-                    })
+                    Box::new(MBC0::new(rom, vec![0; 32 * 1024]))
                 }
             },
         };

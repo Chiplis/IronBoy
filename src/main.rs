@@ -25,6 +25,8 @@ mod ppu;
 mod register;
 mod serial;
 mod timer;
+mod mbc1;
+mod mbc0;
 
 const FREQUENCY: u32 = 4194304;
 
