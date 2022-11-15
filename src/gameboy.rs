@@ -19,6 +19,7 @@ pub struct Gameboy {
     pub reg: Register,
     pub ei_counter: i8,
     pub ime: bool,
+    halt_bug: bool,
     pub mmu: MemoryManagementUnit,
     pub halted: bool,
     counter: usize,
@@ -27,6 +28,7 @@ pub struct Gameboy {
 impl Gameboy {
     pub fn new(mem: MemoryManagementUnit) -> Self {
         Self {
+            halt_bug: false,
             reg: Register::new(mem.boot_rom.is_some()),
             mmu: mem,
             ei_counter: -1,
@@ -59,29 +61,9 @@ impl Gameboy {
         }
 
         let instruction =
-            InstructionFetcher::fetch_instruction(self.reg.pc.value(), &self.reg, &mut self.mmu);
+            InstructionFetcher::fetch_instruction(self.halt_bug, self.reg.pc.value(), &self.reg, &mut self.mmu);
         let (_, command) = (instruction.0, instruction.1);
-        /*
-        let line = self.mem.ppu.ly();
-        let _log = format!(
-            "op:0x{:02x}|pc:{}|sp:{}|a:{}|b:{}|c:{}|d:{}|e:{}|h:{}|l:{}|f:{}|ly:{}|lt:{}",
-            opcode,
-            self.reg.pc.value() + 1,
-            self.reg.sp.value(),
-            self[A].value,
-            self[B].value,
-            self[C].value,
-            self[D].value,
-            self[E].value,
-            self[H].value,
-            self[L].value,
-            self.reg.flags.value(),
-            line,
-            self.mem.ppu.last_ticks
-        );
-        println!("{}", log);
-        println!("{:?}", command);
-        */
+
         self.set_pc(self.reg.pc.value() + command.size() as u16, false);
 
         self.execute_instruction(command)
@@ -90,12 +72,13 @@ impl Gameboy {
     fn execute_instruction(&mut self, command: Command) -> u8 {
         let command_cycles = self.handle_command(command);
 
+        self.halt_bug = false;
 
         if !self.ime
             && self.halted
             && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F != 0
         {
-            // TODO: Figure a different implementation for HALT bug, last implementation in ‹9b32354›
+            self.halt_bug = true;
         }
         if command != Halt {
             command_cycles

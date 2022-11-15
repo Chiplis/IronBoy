@@ -30,7 +30,7 @@ pub trait MemoryArea {
 pub struct MemoryManagementUnit {
     pub boot_rom: Option<Vec<u8>>,
     mbc: Box<dyn MemoryBankController>,
-    pub work_ram: Vec<u8>,
+    work_ram: Vec<u8>,
     high_ram: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
     pub ppu: PixelProcessingUnit,

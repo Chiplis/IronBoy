@@ -19,6 +19,7 @@ pub struct InstructionFetcher;
 impl InstructionFetcher {
     #[deny(unreachable_patterns)]
     pub fn fetch_instruction(
+        halt_bug: bool,
         pc: u16,
         reg: &Register,
         ram: &mut MemoryManagementUnit,
@@ -38,11 +39,14 @@ impl InstructionFetcher {
         let operand_idx = ((opcode & 0x0F) % 8) as usize;
         let register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
 
+        let pc_offset = if halt_bug { 0 } else { 1 };
+        let pc = [pc, pc + pc_offset, pc + pc_offset + 1];
+
         Instruction(
             opcode,
             match opcode {
                 0xCB => {
-                    let cb_opcode = ram.read(pc + 1) as u8;
+                    let cb_opcode = ram.read(pc[1]) as u8;
 
                     let bit: usize =
                         ((cb_opcode as usize % 0x40) >> 4) * 2 + usize::from(cb_opcode & 0x0F > 7);
@@ -110,12 +114,12 @@ impl InstructionFetcher {
                     }
                 }
 
-                0x06 => LdR8U8(B, ram.read(pc + 1)),
-                0x0E => LdR8U8(C, ram.read(pc + 1)),
-                0x16 => LdR8U8(D, ram.read(pc + 1)),
-                0x1E => LdR8U8(E, ram.read(pc + 1)),
-                0x26 => LdR8U8(H, ram.read(pc + 1)),
-                0x2E => LdR8U8(L, ram.read(pc + 1)),
+                0x06 => LdR8U8(B, ram.read(pc[1])),
+                0x0E => LdR8U8(C, ram.read(pc[1])),
+                0x16 => LdR8U8(D, ram.read(pc[1])),
+                0x1E => LdR8U8(E, ram.read(pc[1])),
+                0x26 => LdR8U8(H, ram.read(pc[1])),
+                0x2E => LdR8U8(L, ram.read(pc[1])),
 
                 0x40..=0x6F => match operands[operand_idx] {
                     RegisterOperand::HL => LdR8Hl(register_ids[register_idx]),
@@ -187,19 +191,19 @@ impl InstructionFetcher {
                     }
                 }
 
-                0x36 => LdhHlU8(ram.read(pc + 1)),
+                0x36 => LdhHlU8(ram.read(pc[1])),
 
                 0x0A => LdAR16(reg.bc()),
                 0x1A => LdAR16(reg.de()),
 
-                0xFA => LdhAU16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0xFA => LdhAU16(u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])])),
 
-                0x3E => LdAU8(ram.read(pc + 1)),
+                0x3E => LdAU8(ram.read(pc[1])),
 
                 0x02 => LdR16A(reg.bc()),
                 0x12 => LdR16A(reg.de()),
 
-                0xEA => LdhU16A(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0xEA => LdhU16A(u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])])),
 
                 0xF2 => LdhAC,
                 0xE2 => LdhCA,
@@ -209,30 +213,30 @@ impl InstructionFetcher {
                 0x2A => LdAHli,
                 0x22 => LdHliA,
 
-                0xE0 => LdhU8A(ram.read(pc + 1)),
-                0xF0 => LdhAU8(ram.read(pc + 1)),
+                0xE0 => LdhU8A(ram.read(pc[1])),
+                0xF0 => LdhAU8(ram.read(pc[1])),
 
                 0x01 => LdR16U16(
                     reg.bc(),
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
                 0x11 => LdR16U16(
                     reg.de(),
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
                 0x21 => LdR16U16(
                     reg.hl(),
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
                 0x31 => LdR16U16(
                     reg.sp,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
 
                 0xF9 => LdSpHl,
-                0xF8 => LdHlSpI8(ram.read(pc + 1) as i8),
+                0xF8 => LdHlSpI8(ram.read(pc[1]) as i8),
 
-                0x08 => LdU16Sp(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0x08 => LdU16Sp(u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])])),
 
                 0xF5 => PushAf,
                 0xC5 => PushR16(reg.bc()),
@@ -244,14 +248,14 @@ impl InstructionFetcher {
                 0xE1 => PopR16(reg.hl()),
                 0xF1 => PopR16(reg.af()),
 
-                0xC6 => AddA(OpByte(ram.read(pc + 1))),
-                0xCE => AdcA(OpByte(ram.read(pc + 1))),
-                0xD6 => SubA(OpByte(ram.read(pc + 1))),
-                0xDE => SbcA(OpByte(ram.read(pc + 1))),
-                0xE6 => AndA(OpByte(ram.read(pc + 1))),
-                0xF6 => OrA(OpByte(ram.read(pc + 1))),
-                0xEE => XorA(OpByte(ram.read(pc + 1))),
-                0xFE => CpA(OpByte(ram.read(pc + 1))),
+                0xC6 => AddA(OpByte(ram.read(pc[1]))),
+                0xCE => AdcA(OpByte(ram.read(pc[1]))),
+                0xD6 => SubA(OpByte(ram.read(pc[1]))),
+                0xDE => SbcA(OpByte(ram.read(pc[1]))),
+                0xE6 => AndA(OpByte(ram.read(pc[1]))),
+                0xF6 => OrA(OpByte(ram.read(pc[1]))),
+                0xEE => XorA(OpByte(ram.read(pc[1]))),
+                0xFE => CpA(OpByte(ram.read(pc[1]))),
 
                 0x09 => AddHlR16(reg.bc()),
                 0x19 => AddHlR16(reg.de()),
@@ -268,7 +272,7 @@ impl InstructionFetcher {
                 0x2B => DecR16(reg.hl()),
                 0x3B => DecR16(reg.sp),
 
-                0xE8 => AddSpI8(ram.read(pc + 1) as i8),
+                0xE8 => AddSpI8(ram.read(pc[1]) as i8),
 
                 0x27 => Daa,
                 0x2F => Cpl,
@@ -284,58 +288,58 @@ impl InstructionFetcher {
                 0x1F => Rr(OpRegister(A), true),
 
                 0x10 => {
-                    let opcode = ram.work_ram[pc as usize + 1];
+                    let opcode = ram.internal_read(pc[1] as usize);
                     match opcode {
                         0x00 => Stop,
                         _ => panic!("Invalid opcode after STOP: {}", opcode),
                     }
                 }
 
-                0xC3 => JpU16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0xC3 => JpU16(u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])])),
                 0xC2 => JpCcU16(
                     ConditionCode::NZ,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
                 0xCA => JpCcU16(
                     ConditionCode::Z,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
                 0xD2 => JpCcU16(
                     ConditionCode::NC,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
 
                 0xDA => JpCcU16(
                     ConditionCode::C,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
                 0xE9 => JpHl,
 
-                0x18 => JrI8(ram.read(pc + 1) as i8),
-                0x20 => JrCcI8(ConditionCode::NZ, ram.read(pc + 1) as i8),
-                0x28 => JrCcI8(ConditionCode::Z, ram.read(pc + 1) as i8),
-                0x30 => JrCcI8(ConditionCode::NC, ram.read(pc + 1) as i8),
-                0x38 => JrCcI8(ConditionCode::C, ram.read(pc + 1) as i8),
-                0xCD => CallU16(u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)])),
+                0x18 => JrI8(ram.read(pc[1]) as i8),
+                0x20 => JrCcI8(ConditionCode::NZ, ram.read(pc[1]) as i8),
+                0x28 => JrCcI8(ConditionCode::Z, ram.read(pc[1]) as i8),
+                0x30 => JrCcI8(ConditionCode::NC, ram.read(pc[1]) as i8),
+                0x38 => JrCcI8(ConditionCode::C, ram.read(pc[1]) as i8),
+                0xCD => CallU16(u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])])),
 
                 0xC4 => CallCcU16(
                     ConditionCode::NZ,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
 
                 0xCC => CallCcU16(
                     ConditionCode::Z,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
 
                 0xD4 => CallCcU16(
                     ConditionCode::NC,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
 
                 0xDC => CallCcU16(
                     ConditionCode::C,
-                    u16::from_le_bytes([ram.read(pc + 1), ram.read(pc + 2)]),
+                    u16::from_le_bytes([ram.read(pc[1]), ram.read(pc[2])]),
                 ),
 
                 0xC7 => Rst(RstVec::X00),
@@ -369,9 +373,9 @@ impl InstructionFetcher {
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                     panic!(
                         "P: {}, C: {}, N: {}",
-                        ram.read(pc - 1),
+                        ram.read(pc[0] - 1),
                         opcode,
-                        ram.read(pc + 1)
+                        ram.read(pc[1])
                     )
                 }
             },
