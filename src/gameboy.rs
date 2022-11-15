@@ -22,7 +22,6 @@ pub struct Gameboy {
     pub mmu: MemoryManagementUnit,
     pub halted: bool,
     counter: usize,
-    bugged_pc: Option<WordRegister>,
 }
 
 impl Gameboy {
@@ -33,7 +32,6 @@ impl Gameboy {
             ei_counter: -1,
             ime: false,
             halted: false,
-            bugged_pc: None,
             counter: 0,
         }
     }
@@ -92,24 +90,12 @@ impl Gameboy {
     fn execute_instruction(&mut self, command: Command) -> u8 {
         let command_cycles = self.handle_command(command);
 
-        match self.bugged_pc {
-            Some(ProgramCounter(pc)) => {
-                self.set_pc(pc, false);
-            }
-            None => {}
-            _ => panic!(),
-        }
-
-        self.bugged_pc = None;
 
         if !self.ime
             && self.halted
             && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F != 0
         {
-            self.halted = false;
-            self.bugged_pc = Some(self.reg.pc);
-            let x = self.mmu.internal_read(self.reg.pc.into());
-            self.mmu.work_ram.insert(self.reg.pc.value() as usize, x);
+            // TODO: Figure a different implementation for HALT bug, last implementation in ‹9b32354›
         }
         if command != Halt {
             command_cycles
