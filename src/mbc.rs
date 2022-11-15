@@ -1,5 +1,5 @@
 use crate::cartridge::Cartridge;
-use crate::mmu::{MemoryArea, MemoryManagementUnit};
+use crate::mmu::{MemoryArea};
 use std::cmp::max;
 
 pub trait MemoryBankController: MemoryArea {}

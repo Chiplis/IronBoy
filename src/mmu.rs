@@ -8,9 +8,9 @@ use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
-use std::cmp::max;
+
 use std::fs::read;
-use std::path::Path;
+
 
 use crate::serial::LinkCable;
 
@@ -43,7 +43,12 @@ pub struct MemoryManagementUnit {
 }
 
 impl MemoryManagementUnit {
-    pub fn new(rom: Vec<u8>, headless: bool, boot_rom: Option<String>, rom_path: &String) -> MemoryManagementUnit {
+    pub fn new(
+        rom: Vec<u8>,
+        headless: bool,
+        boot_rom: Option<String>,
+        rom_path: &String,
+    ) -> MemoryManagementUnit {
         let ppu = PixelProcessingUnit::new();
         let joypad = Joypad::new();
         let interrupt_handler = InterruptHandler::new();
@@ -76,12 +81,15 @@ impl MemoryManagementUnit {
                 0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
                 // 0x0F..=0x13 => Box::new(MBC3{..Default::default()}),
                 _ => {
-                    println!("MBC ID {} not implemented, defaulting to MBC0 - {}", cartridge.mbc, rom_path);
+                    println!(
+                        "MBC ID {} not implemented, defaulting to MBC0 - {}",
+                        cartridge.mbc, rom_path
+                    );
                     Box::new(MBC0 {
                         rom,
                         ram: vec![0; 32 * 1024],
                     })
-                },
+                }
             },
         };
         if !headless {
@@ -199,23 +207,23 @@ impl MemoryManagementUnit {
     }
 
     pub fn internal_read(&self, translated_address: usize) -> u8 {
-        self.ppu
+        self.mbc
             .read(translated_address)
+            .or_else(|| self.ppu.read(translated_address))
             .or_else(|| self.interrupt_handler.read(translated_address))
             .or_else(|| self.timer.read(translated_address))
             .or_else(|| self.joypad.read(translated_address))
             .or_else(|| self.serial.read(translated_address))
-            .or_else(|| self.mbc.read(translated_address))
             .unwrap_or_else(|| self.internal_ram_read(translated_address))
     }
 
     fn internal_write(&mut self, translated_address: usize, value: u8) {
-        if !(self.ppu.write(translated_address, value)
-            || self.timer.write(translated_address, value)
+        if !(self.mbc.write(translated_address, value)
+            || self.ppu.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
+            || self.timer.write(translated_address, value)
             || self.joypad.write(translated_address, value)
-            || self.serial.write(translated_address, value)
-            || self.mbc.write(translated_address, value))
+            || self.serial.write(translated_address, value))
         {
             self.internal_ram_write(translated_address, value);
         }

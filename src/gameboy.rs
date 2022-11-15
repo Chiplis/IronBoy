@@ -60,8 +60,12 @@ impl Gameboy {
             return interrupt_cycles;
         }
 
-        let instruction =
-            InstructionFetcher::fetch_instruction(self.halt_bug, self.reg.pc.value(), &self.reg, &mut self.mmu);
+        let instruction = InstructionFetcher::fetch_instruction(
+            self.halt_bug,
+            self.reg.pc.value(),
+            &self.reg,
+            &mut self.mmu,
+        );
         let (_, command) = (instruction.0, instruction.1);
 
         self.set_pc(self.reg.pc.value() + command.size() as u16, false);
