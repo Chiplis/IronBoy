@@ -11,6 +11,7 @@ use std::any::{Any, TypeId};
 use std::fs::read;
 use crate::mbc0::MBC0;
 use crate::mbc1::MBC1;
+use crate::mbc3::MBC3;
 use crate::mbc::MemoryBankController;
 
 
@@ -78,7 +79,7 @@ impl MemoryManagementUnit {
             mbc: match cartridge.mbc {
                 0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
                 0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
-                // 0x0F..=0x13 => Box::new(MBC3{..Default::default()}),
+                0x0F..=0x13 => Box::new(MBC3::new(cartridge, rom)),
                 _ => {
                     println!(
                         "MBC ID {} not implemented, defaulting to MBC0 - {}",

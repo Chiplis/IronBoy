@@ -27,6 +27,7 @@ mod serial;
 mod timer;
 mod mbc1;
 mod mbc0;
+mod mbc3;
 
 const FREQUENCY: u32 = 4194304;
 
