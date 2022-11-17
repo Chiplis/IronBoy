@@ -22,18 +22,12 @@ Arguments:
   <ROM_FILE>  GameBoy ROM file to input
 
 Options:
-
-      --headless               Toggle headless mode
-      
-      --fast                   Toggle waiting between frames
-      
-      --threshold <THRESHOLD>  Sleep threshold between frames [default: 0]
-      
+      --headless               Toggle headless mode (runs the emulator without a backing window, used for test execution)
+      --fast                   Toggle waiting between frames to attempt to lock framerate to 60 FPS
+      --threshold <THRESHOLD>  Minimum threshold to trigger sleep between frames [default: 0]
       --boot-rom <BOOT_ROM>    Use specified boot ROM
- 
- -h, --help                   Print help information
- 
- -V, --version                Print version information
+  -h, --help                   Print help information
+  -V, --version                Print version information
 ```
 
 ## Missing features
