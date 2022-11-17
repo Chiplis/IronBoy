@@ -41,11 +41,11 @@ struct Args {
     #[clap(long, default_value = "false")]
     headless: bool,
 
-    /// Toggle waiting between frames
+    /// Toggle waiting between frames to attempt to lock framerate to 60 FPS
     #[clap(long, default_value = "false")]
     fast: bool,
 
-    /// Sleep threshold between frames
+    /// Minimum threshold to trigger sleep between frames
     #[clap(long, default_value_t = 0.0)]
     threshold: f64,
 
