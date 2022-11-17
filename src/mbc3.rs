@@ -74,11 +74,24 @@ impl RealTimeClock {
     }
 
     fn write(&mut self, register: u8, value: u8) {
+        if (0x08..=0x0A).contains(&value) {
+            if self.halted {
+                return;
+            }
+
+            let total = self.seconds as u64
+                + self.minutes as u64 * 60
+                + self.hours as u64 * 3600
+                + self.days as u64 * 24 * 3600;
+
+            self.clock = PausableClock::new(Duration::from_secs(total), self.clock.is_paused());
+        }
+
         match register {
-            0x08 if !self.halted => self.seconds = value,
-            0x09 if !self.halted => self.minutes = value,
-            0x0A if !self.halted => self.hours = value,
-            0x0B if !self.halted => self.days = (self.days & 0x100) | value as u16,
+            0x08 => self.seconds = value,
+            0x09 => self.minutes = value,
+            0x0A => self.hours = value,
+            0x0B => self.days = (self.days & 0x100) | value as u16,
             0x0C => {
                 self.days = value as u16 | if value & 1 == 0 { value as u16 } else { 0x100 };
                 self.day_carry_bit = value & 0x80 != 0;
@@ -86,14 +99,6 @@ impl RealTimeClock {
             }
             _ => (),
         };
-        if (0x08..=0x0A).contains(&value) {
-            let total = self.seconds as u64
-                + self.minutes as u64 * 60
-                + self.hours as u64 * 3600
-                + self.days as u64 * 24 * 3600;
-            let clock = PausableClock::new(Duration::from_secs(total), self.clock.is_paused());
-            self.clock = clock;
-        }
     }
 }
 
