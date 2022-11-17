@@ -146,9 +146,6 @@ mod tests {
 
         // panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
-        let skip_known = args.contains(&"skip-known".to_owned());
-        let skip_same = args.contains(&"skip-same".to_owned());
-
         let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
         let all_tests: Vec<DirEntry> = all_tests
             .map(|entry| entry.unwrap())
@@ -158,19 +155,12 @@ mod tests {
                     rom.replace("test_rom", "test_latest").replace('\\', "/") + ".png";
 
                 let latest_image = Path::new(&latest_img_path);
-                if skip_known && latest_image.exists() {
-                    println!("Skipping already tested ROM: {}", rom);
-                    return false;
-                }
+
                 if !rom.ends_with(".gb") {
                     println!("Skipping non ROM file: {rom}");
                     return false;
                 }
                 let rom_vec = read(&rom).unwrap();
-                if rom_vec.len() > 32768 {
-                    println!("Still need to implement MBC for larger ROM's: {}", rom);
-                    return false;
-                }
 
                 true
             })
@@ -245,16 +235,6 @@ mod tests {
                                 .clone()
                                 .replace("test_output", "test_latest"),
                         );
-                        if skip_same
-                            && latest_image.is_ok()
-                            && latest_image.unwrap().decode().unwrap().as_bytes() == screenshot
-                        {
-                            println!(
-                                "Ending {} test because result was same as previously saved one",
-                                screenshot_path
-                            );
-                            break 'inner;
-                        }
                     }
 
                     run_frame(&mut gameboy, false, 0.0);
