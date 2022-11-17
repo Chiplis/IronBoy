@@ -8,12 +8,11 @@ use crate::timer::Timer;
 use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
 
-use std::fs::read;
+use crate::mbc::MemoryBankController;
 use crate::mbc0::MBC0;
 use crate::mbc1::MBC1;
 use crate::mbc3::MBC3;
-use crate::mbc::MemoryBankController;
-
+use std::fs::read;
 
 use crate::serial::LinkCable;
 

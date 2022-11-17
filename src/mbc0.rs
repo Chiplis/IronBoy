@@ -10,10 +10,7 @@ impl MemoryBankController for MBC0 {}
 
 impl MBC0 {
     pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
-        Self {
-            rom,
-            ram
-        }
+        Self { rom, ram }
     }
 }
 

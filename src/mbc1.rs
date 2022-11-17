@@ -1,7 +1,7 @@
-use std::cmp::max;
 use crate::cartridge::Cartridge;
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
+use std::cmp::max;
 
 #[derive(Default)]
 pub struct MBC1 {
