@@ -37,7 +37,7 @@ struct Args {
     /// GameBoy ROM file to input
     rom_file: String,
 
-    /// Toggle headless mode
+    /// Toggle headless mode (runs the emulator without a backing window, used for test execution)
     #[clap(long, default_value = "false")]
     headless: bool,
 
@@ -140,7 +140,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn test_roms() -> Result<(), io::Error> {
+    fn test_roms() -> Result<(), Error> {
         let (test_status_tx, test_status_rv) = channel();
         let args: Vec<String> = env::args().collect();
 
@@ -276,71 +276,5 @@ mod tests {
             }
         }
         Err(Error::last_os_error())
-    }
-
-    #[test]
-    fn test_regressions() -> Result<(), io::Error> {
-        use image::io::Reader;
-
-        let mut regressions = vec![];
-        for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_latest")))? {
-            let p = {
-                let path = entry.map(|e| e.path()).unwrap();
-                path.to_str().unwrap().to_owned()
-            };
-            let path = p
-                .split('\\')
-                .flat_map(|p| p.split('/'))
-                .collect::<Vec<&str>>();
-            let directory = path[0..path.len() - 2].join("/");
-            let img_name = path.last().unwrap();
-            let ok_image = Reader::open(directory.clone() + "/test_ok/" + img_name);
-            let latest_image = Reader::open(directory + "/test_latest/" + img_name);
-            if ok_image.is_err() {
-                continue;
-            }
-            if ok_image.unwrap().decode().unwrap().as_bytes()
-                != latest_image.unwrap().decode().unwrap().as_bytes()
-            {
-                regressions.push(img_name.replace(".png", ""));
-            }
-        }
-
-        if !regressions.is_empty() {
-            panic!("\nRegressions found:\n{}", regressions.join("\n"));
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_differences() -> Result<(), io::Error> {
-        use image::io::Reader;
-
-        let mut differences = vec![];
-        for entry in read_dir(env::current_dir().unwrap().join(Path::new("test_latest")))? {
-            let p = {
-                let path = entry.map(|e| e.path()).unwrap();
-                path.to_str().unwrap().to_owned().replace('\\', "/")
-            };
-            let path = p.split('/').collect::<Vec<&str>>();
-            let directory = path[0..path.len() - 2].join("/");
-            let img_name = path.last().unwrap();
-
-            let output_image = Reader::open(directory.clone() + "/test_output/" + img_name);
-            let latest_image = Reader::open(directory + "/test_latest/" + img_name);
-
-            if output_image.is_err() {
-                differences.push("MISSING: ".to_owned() + &*img_name.replace(".png", ""));
-            } else if output_image.unwrap().decode().unwrap().as_bytes()
-                != latest_image.unwrap().decode().unwrap().as_bytes()
-            {
-                differences.push(img_name.replace(".png", ""));
-            }
-        }
-        if !differences.is_empty() {
-            print!("Differences found:\n{}", differences.join("\n"));
-        }
-        Ok(())
     }
 }
