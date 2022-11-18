@@ -26,6 +26,7 @@ Arguments:
 
 Options:
       --headless               Runs the emulator without a backing window, used during test execution
+      --cold-boot              Boot title screen even when opening save file
       --fast                   Wait between frames to attempt to lock framerate to 60 FPS
       --save-on-exit           Automatically save state before exiting emulator
       --threshold <THRESHOLD>  Minimum threshold to trigger sleep between frames [default: 0]
@@ -45,6 +46,7 @@ S -> Save
 Esc -> Close
 ```
 
+---
 ## Missing features
 
 * Sound
