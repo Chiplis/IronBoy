@@ -39,6 +39,12 @@ struct RealTimeClock {
 
 impl RealTimeClock {
     fn latch(&mut self, value: u8) {
+        let total = self.seconds as u64 + self.minutes as u64 * 60 + self.hours as u64 * 3600 + self.days as u64 * 24 * 3600;
+
+        if total > self.clock.now().elapsed_millis() / 1000 {
+            self.clock = PausableClock::new(Duration::from_secs(total), false);
+        }
+
         match value {
             0 => {
                 let secs = self.clock.now().elapsed_millis() / 1000;
