@@ -1,6 +1,6 @@
 use std::str::from_utf8;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Default, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Cartridge {
     pub(crate) title: Option<String>,
     publisher: Option<String>,

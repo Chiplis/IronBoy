@@ -4,7 +4,7 @@ use crate::register::WordRegister::StackPointer;
 use std::ops::{Index, IndexMut};
 use WordRegister::{AccFlag, Double, ProgramCounter};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum RegisterId {
     A,
     B,
@@ -15,11 +15,45 @@ pub enum RegisterId {
     L,
 }
 
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub struct Register {
     registers: Vec<ByteRegister>,
     pub flags: FlagRegister,
     pub sp: WordRegister,
     pub pc: WordRegister,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct ByteRegister {
+    pub value: u8,
+    pub id: RegisterId,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct FlagRegister {
+    pub z: bool,
+    pub n: bool,
+    pub h: bool,
+    pub c: bool,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub enum WordRegister {
+    Double(ByteRegister, ByteRegister),
+    AccFlag(ByteRegister, FlagRegister),
+    StackPointer(u16),
+    ProgramCounter(u16),
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct Bit(pub u8);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ConditionCode {
+    Z,
+    NZ,
+    C,
+    NC,
 }
 
 impl Register {
@@ -144,20 +178,6 @@ impl Register {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ByteRegister {
-    pub value: u8,
-    pub id: RegisterId,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FlagRegister {
-    pub z: bool,
-    pub n: bool,
-    pub h: bool,
-    pub c: bool,
-}
-
 impl FlagRegister {
     pub fn value(&self) -> u8 {
         [self.c, self.h, self.n, self.z]
@@ -176,14 +196,6 @@ impl FlagRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum WordRegister {
-    Double(ByteRegister, ByteRegister),
-    AccFlag(ByteRegister, FlagRegister),
-    StackPointer(u16),
-    ProgramCounter(u16),
-}
-
 impl WordRegister {
     pub fn value(self) -> u16 {
         match self {
@@ -198,17 +210,6 @@ impl WordRegister {
             StackPointer(n) | ProgramCounter(n) => n,
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Bit(pub u8);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ConditionCode {
-    Z,
-    NZ,
-    C,
-    NC,
 }
 
 impl Index<RegisterId> for Register {

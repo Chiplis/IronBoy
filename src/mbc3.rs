@@ -7,7 +7,7 @@ use crate::cartridge::Cartridge;
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MBC3 {
     cartridge: Cartridge,
     rom: Vec<u8>,
@@ -22,7 +22,7 @@ pub struct MBC3 {
     rtc_enabled: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct RealTimeClock {
     clock: PausableClock,
     seconds: u8,

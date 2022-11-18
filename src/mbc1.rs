@@ -3,7 +3,7 @@ use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
 use std::cmp::max;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MBC1 {
     cartridge: Cartridge,
     rom: Vec<u8>,

@@ -3,12 +3,13 @@ use crate::mmu::MemoryArea;
 use minifb::{Key, Window};
 use Key::*;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum SelectedButtons {
     Action = 0x10,
     Direction = 0x20,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Joypad {
     selected_buttons: SelectedButtons,
     action_buttons: u8,

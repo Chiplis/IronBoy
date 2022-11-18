@@ -9,15 +9,16 @@ use crate::mmu::MemoryManagementUnit;
 use crate::register::RegisterId::*;
 use crate::register::{Bit, ConditionCode, Register, RegisterId};
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 enum RegisterOperand {
     HL,
     Operand(RegisterId),
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct InstructionFetcher;
 
 impl InstructionFetcher {
-    #[deny(unreachable_patterns)]
     pub fn fetch_instruction(
         halt_bug: bool,
         pc: u16,

@@ -7,6 +7,128 @@ use PixelTransferPhase::*;
 use PpuState::*;
 use VerticalBlankPhase::*;
 
+#[derive(PartialEq, Eq, Clone)]
+pub struct PixelProcessingUnit {
+    oam_start_clock_count: u64,
+    pub(crate) oam_corruption: Option<OamCorruptionCause>,
+    /// 8000-9FFF: Video RAM
+    pub vram: Vec<u8>,
+    /// FE00-FE9F: Sprite Attribute table
+    pub oam: Vec<u8>,
+    pub dma: u8,
+    /// The cycle in which the last DMA transfer was requested.
+    pub(crate) dma_started: u64,
+    /// If the DMA is running, including the initial delay.
+    pub(crate) dma_running: bool,
+    /// Oam read is blocked
+    pub(crate) dma_block_oam: bool,
+
+    pub(crate) oam_read_block: bool,
+    pub(crate) oam_write_block: bool,
+    vram_read_block: bool,
+    vram_write_block: bool,
+
+    /// The current screen been render.
+    /// Each pixel is a shade of gray, from 0 to 3
+    pub screen: Vec<u32>,
+    /// sprites that will be rendered in the next mode 3 scanline
+    pub sprite_buffer: Vec<Sprite>,
+    /// the length of the `sprite_buffer`
+    pub sprite_buffer_len: u8,
+    /// Window Internal Line Counter
+    pub wyc: u8,
+
+    /// FF40: LCD Control Register
+    pub lcdc: u8,
+    /// FF41: LCD Status Register
+    /// Bit 6 - LYC=LY STAT Interrupt source
+    /// Bit 5 - Mode 2 OAM STAT Interrupt source
+    /// Bit 4 - Mode 1 VBlank STAT Interrupt source
+    /// Bit 3 - Mode 0 HBlank STAT Interrupt source
+    /// Bit 2 - LYC=LY Flag
+    /// Bit 1-0 - Mode Flag
+    pub stat: u8,
+    /// FF42: Scroll Y Register
+    pub scy: u8,
+    /// FF43: Scroll x Register
+    pub scx: u8,
+    /// FF44: LCDC Y-Coordinate
+    pub ly: u8,
+    /// FF45: LY Compare
+    pub lyc: u8,
+    /// FF47: BG & Window Palette Data
+    pub bgp: u8,
+    /// FF48:
+    pub obp0: u8,
+    /// FF49:
+    pub obp1: u8,
+    /// FF4A: Window Y Position
+    pub wy: u8,
+    /// FF4B: Window X Position
+    pub wx: u8,
+
+    pub state: PpuState,
+    /// When making the LY==LYC comparison, uses this value instead of ly to control the comparison
+    /// timing. This is 0xFF if this will not update the stat.
+    ly_for_compare: u8,
+
+    stat_signal: bool,
+    ly_compare_signal: bool,
+    /// use this value instead of the current stat mode when controlling the stat interrupt signal,
+    /// to control the timing. 0xff means that this will not trigger a interrupt.
+    stat_mode_for_interrupt: u8,
+    /// Current clock cycle
+    pub(crate) ticks: u64,
+    /// Next clock cycle where the PPU will be updated
+    pub next_ticks: u64,
+    /// The clock count in which the current scanline has started.
+    pub line_start_ticks: u64,
+
+    pub background_fifo: PixelFifo,
+    pub sprite_fifo: PixelFifo,
+
+    // pixel fetcher
+    fetcher_step: u8,
+    /// the tile x position that the pixel fetcher is in
+    fetcher_x: u8,
+    fetch_tile_number: u8,
+    fetch_tile_data_low: u8,
+    fetch_tile_data_high: u8,
+
+    sprite_tile_address: u16,
+    sprite_tile_data_low: u8,
+    sprite_tile_data_high: u8,
+
+    reach_window: bool,
+    is_in_window: bool,
+
+    /// Sprites at 0 cause a extra delay in the sprite fetching.
+    sprite_at_0_penalty: u8,
+
+    /// The x position of the next screen pixel to be draw in the current scanline
+    pub screen_x: u8,
+    /// The x position in the current scanline, from -(8 + scx%8) to 160. Negative values
+    /// (represented by positives between 241 and 255) are use for detecting sprites that starts
+    /// to the left of the screen, and for discarding pixels for scrolling.
+    scanline_x: u8,
+}
+
+#[derive(PartialEq, Eq, Default, Clone, Copy, Debug)]
+pub struct Sprite {
+    pub sx: u8,
+    pub sy: u8,
+    pub tile: u8,
+    pub flags: u8,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Color {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
 #[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum PixelTransferPhase {
     TurnOnPixelTransfer,
@@ -152,14 +274,6 @@ impl PixelFifo {
     }
 }
 
-#[derive(PartialEq, Eq, Default, Clone, Copy, Debug)]
-pub struct Sprite {
-    pub sx: u8,
-    pub sy: u8,
-    pub tile: u8,
-    pub flags: u8,
-}
-
 impl MemoryArea for PixelProcessingUnit {
     fn read(&self, address: usize) -> Option<u8> {
         let value = match address {
@@ -226,118 +340,11 @@ impl MemoryArea for PixelProcessingUnit {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
-pub struct PixelProcessingUnit {
-    oam_start_clock_count: u64,
-    pub(crate) oam_corruption: Option<OamCorruptionCause>,
-    /// 8000-9FFF: Video RAM
-    pub vram: Vec<u8>,
-    /// FE00-FE9F: Sprite Attribute table
-    pub oam: Vec<u8>,
-    pub dma: u8,
-    /// The cycle in which the last DMA transfer was requested.
-    pub(crate) dma_started: u64,
-    /// If the DMA is running, including the initial delay.
-    pub(crate) dma_running: bool,
-    /// Oam read is blocked
-    pub(crate) dma_block_oam: bool,
-
-    pub(crate) oam_read_block: bool,
-    pub(crate) oam_write_block: bool,
-    vram_read_block: bool,
-    vram_write_block: bool,
-
-    /// The current screen been render.
-    /// Each pixel is a shade of gray, from 0 to 3
-    pub screen: Vec<u32>,
-    /// sprites that will be rendered in the next mode 3 scanline
-    pub sprite_buffer: Vec<Sprite>,
-    /// the length of the `sprite_buffer`
-    pub sprite_buffer_len: u8,
-    /// Window Internal Line Counter
-    pub wyc: u8,
-
-    /// FF40: LCD Control Register
-    pub lcdc: u8,
-    /// FF41: LCD Status Register
-    /// Bit 6 - LYC=LY STAT Interrupt source
-    /// Bit 5 - Mode 2 OAM STAT Interrupt source
-    /// Bit 4 - Mode 1 VBlank STAT Interrupt source
-    /// Bit 3 - Mode 0 HBlank STAT Interrupt source
-    /// Bit 2 - LYC=LY Flag
-    /// Bit 1-0 - Mode Flag
-    pub stat: u8,
-    /// FF42: Scroll Y Register
-    pub scy: u8,
-    /// FF43: Scroll x Register
-    pub scx: u8,
-    /// FF44: LCDC Y-Coordinate
-    pub ly: u8,
-    /// FF45: LY Compare
-    pub lyc: u8,
-    /// FF47: BG & Window Palette Data
-    pub bgp: u8,
-    /// FF48:
-    pub obp0: u8,
-    /// FF49:
-    pub obp1: u8,
-    /// FF4A: Window Y Position
-    pub wy: u8,
-    /// FF4B: Window X Position
-    pub wx: u8,
-
-    pub state: PpuState,
-    /// When making the LY==LYC comparison, uses this value instead of ly to control the comparison
-    /// timing. This is 0xFF if this will not update the stat.
-    ly_for_compare: u8,
-
-    stat_signal: bool,
-    ly_compare_signal: bool,
-    /// use this value instead of the current stat mode when controlling the stat interrupt signal,
-    /// to control the timing. 0xff means that this will not trigger a interrupt.
-    stat_mode_for_interrupt: u8,
-    /// Current clock cycle
-    pub(crate) ticks: u64,
-    /// Next clock cycle where the PPU will be updated
-    pub next_ticks: u64,
-    /// The clock count in which the current scanline has started.
-    pub line_start_ticks: u64,
-
-    pub background_fifo: PixelFifo,
-    pub sprite_fifo: PixelFifo,
-
-    // pixel fetcher
-    fetcher_step: u8,
-    /// the tile x position that the pixel fetcher is in
-    fetcher_x: u8,
-    fetch_tile_number: u8,
-    fetch_tile_data_low: u8,
-    fetch_tile_data_high: u8,
-
-    sprite_tile_address: u16,
-    sprite_tile_data_low: u8,
-    sprite_tile_data_high: u8,
-
-    reach_window: bool,
-    is_in_window: bool,
-
-    /// Sprites at 0 cause a extra delay in the sprite fetching.
-    sprite_at_0_penalty: u8,
-
-    /// The x position of the next screen pixel to be draw in the current scanline
-    pub screen_x: u8,
-    /// The x position in the current scanline, from -(8 + scx%8) to 160. Negative values
-    /// (represented by positives between 241 and 255) are use for detecting sprites that starts
-    /// to the left of the screen, and for discarding pixels for scrolling.
-    scanline_x: u8,
-}
-
 impl PixelProcessingUnit {
     pub fn new() -> Self {
         Self {
             oam_start_clock_count: 0,
             oam_corruption: None,
-            #[rustfmt::skip]
             vram: vec![0; 0x2000],
             oam: vec![0; 0xA0],
             dma: 0xFF,
@@ -1132,14 +1139,6 @@ impl PixelProcessingUnit {
             self.scanline_x += 1;
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct Color {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
 }
 
 impl From<Color> for u32 {

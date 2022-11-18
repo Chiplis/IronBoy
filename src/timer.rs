@@ -1,5 +1,6 @@
 use crate::mmu::MemoryArea;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Timer {
     tima: u8,
     tma: u8,

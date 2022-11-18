@@ -16,17 +16,12 @@ use std::fs::read;
 
 use crate::serial::LinkCable;
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum OamCorruptionCause {
     IncDec,
     Read,
     Write,
     ReadWrite,
-}
-
-pub trait MemoryArea {
-    fn read(&self, address: usize) -> Option<u8>;
-    fn write(&mut self, address: usize, value: u8) -> bool;
 }
 
 pub struct MemoryManagementUnit {
@@ -42,6 +37,11 @@ pub struct MemoryManagementUnit {
     pub cycles: u16,
     pub dma: u8,
     pub window: Option<Window>,
+}
+
+pub trait MemoryArea {
+    fn read(&self, address: usize) -> Option<u8>;
+    fn write(&mut self, address: usize, value: u8) -> bool;
 }
 
 impl MemoryManagementUnit {

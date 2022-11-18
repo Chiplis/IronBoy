@@ -92,6 +92,18 @@ pub enum Command {
     XorA(InstructionOperand),
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RstVec {
+    X00 = 0x00,
+    X08 = 0x08,
+    X10 = 0x10,
+    X18 = 0x18,
+    X20 = 0x20,
+    X28 = 0x28,
+    X30 = 0x30,
+    X38 = 0x38,
+}
+
 #[deny(unreachable_patterns)]
 impl Command {
     pub fn size(&self) -> u8 {
@@ -193,16 +205,4 @@ impl Command {
             }
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum RstVec {
-    X00 = 0x00,
-    X08 = 0x08,
-    X10 = 0x10,
-    X18 = 0x18,
-    X20 = 0x20,
-    X28 = 0x28,
-    X30 = 0x30,
-    X38 = 0x38,
 }
