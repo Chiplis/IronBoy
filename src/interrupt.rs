@@ -1,7 +1,9 @@
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 use crate::mmu::MemoryArea;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum InterruptId {
     VBlank = 0x40,
     Stat = 0x48,
@@ -10,7 +12,7 @@ pub enum InterruptId {
     Input = 0x60,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct InterruptHandler {
     flag: u8,
     enable: u8,

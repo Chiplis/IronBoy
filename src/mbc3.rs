@@ -1,5 +1,7 @@
 use std::cmp::max;
-use std::time::{Duration};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 
 use pausable_clock::PausableClock;
 
@@ -7,7 +9,7 @@ use crate::cartridge::Cartridge;
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
 
-#[derive(Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct MBC3 {
     cartridge: Cartridge,
     rom: Vec<u8>,
@@ -22,8 +24,9 @@ pub struct MBC3 {
     rtc_enabled: bool,
 }
 
-#[derive(Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 struct RealTimeClock {
+    #[serde(skip)]
     clock: PausableClock,
     seconds: u8,
     minutes: u8,
@@ -163,4 +166,5 @@ impl MemoryArea for MBC3 {
     }
 }
 
+#[typetag::serde]
 impl MemoryBankController for MBC3 {}

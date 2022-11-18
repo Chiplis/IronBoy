@@ -10,11 +10,14 @@ use crate::register::WordRegister::{ProgramCounter, StackPointer};
 use crate::register::{ByteRegister, Register, RegisterId, WordRegister};
 use std::cmp::max;
 
+use serde::{Deserialize, Serialize};
+
 use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, InstructionOperand};
 use crate::interrupt::InterruptId;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 
+#[derive(Serialize, Deserialize)]
 pub struct Gameboy {
     pub reg: Register,
     pub ei_counter: i8,

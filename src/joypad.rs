@@ -1,15 +1,18 @@
 use crate::joypad::SelectedButtons::{Action, Direction};
 use crate::mmu::MemoryArea;
+use crate::renderer;
 use minifb::{Key, Window};
 use Key::*;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum SelectedButtons {
     Action = 0x10,
     Direction = 0x20,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Joypad {
     selected_buttons: SelectedButtons,
     action_buttons: u8,
@@ -49,7 +52,12 @@ impl Joypad {
         }
     }
 
-    pub fn machine_cycle(&mut self, window: &Window) -> bool {
+    pub fn machine_cycle(&mut self) -> bool {
+        let window = match renderer::instance() {
+            None => return false,
+            Some(window) => window,
+        };
+
         let previous_buttons = self.buttons();
 
         self.action_buttons = Self::map_buttons([Z, C, Backspace, Enter], window);

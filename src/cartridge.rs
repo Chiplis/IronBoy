@@ -1,6 +1,8 @@
 use std::str::from_utf8;
 
-#[derive(Default, Debug, Eq, PartialEq, PartialOrd)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Default, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Cartridge {
     pub(crate) title: Option<String>,
     publisher: Option<String>,

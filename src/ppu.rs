@@ -1,13 +1,15 @@
 use crate::mmu::{MemoryArea, OamCorruptionCause};
 use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 
+use serde::{Deserialize, Serialize};
+
 use HorizontalBlankPhase::*;
 use OamSearchPhase::*;
 use PixelTransferPhase::*;
 use PpuState::*;
 use VerticalBlankPhase::*;
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct PixelProcessingUnit {
     oam_start_clock_count: u64,
     pub(crate) oam_corruption: Option<OamCorruptionCause>,
@@ -113,7 +115,7 @@ pub struct PixelProcessingUnit {
     scanline_x: u8,
 }
 
-#[derive(PartialEq, Eq, Default, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Clone, Copy, Debug)]
 pub struct Sprite {
     pub sx: u8,
     pub sy: u8,
@@ -129,7 +131,7 @@ struct Color {
     a: u8,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum PixelTransferPhase {
     TurnOnPixelTransfer,
     TurnOnDelay,
@@ -151,7 +153,7 @@ pub enum PixelTransferPhase {
     EndTransfer,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum HorizontalBlankPhase {
     TurnOnHBlank,
     StartHBlank,
@@ -165,7 +167,7 @@ pub enum HorizontalBlankPhase {
     EndHBlank,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum VerticalBlankPhase {
     StartVBlank,
     IncreaseVBlankLine,
@@ -180,13 +182,13 @@ pub enum VerticalBlankPhase {
     EndVBlank,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum OamSearchPhase {
     StartOamSearch,
     EndOamSearch,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Copy, Clone, Debug, Ord, PartialOrd, Eq)]
 pub enum PpuState {
     OamSearch(OamSearchPhase),
     PixelTransfer(PixelTransferPhase),
@@ -194,7 +196,7 @@ pub enum PpuState {
     VerticalBlank(VerticalBlankPhase),
 }
 
-#[derive(PartialEq, Eq, Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Clone, Debug)]
 pub struct PixelFifo {
     queue: Vec<u8>,
     /// next position to push

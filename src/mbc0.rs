@@ -1,12 +1,15 @@
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
 
-#[derive(Default, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct MBC0 {
     pub rom: Vec<u8>,
     pub ram: Vec<u8>,
 }
 
+#[typetag::serde]
 impl MemoryBankController for MBC0 {}
 
 impl MBC0 {

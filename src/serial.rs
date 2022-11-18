@@ -1,13 +1,15 @@
 use crate::mmu::MemoryArea;
 use crate::serial::State::{Off, Transfer};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum State {
     Off,
     Transfer(u8),
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct LinkCable {
     pub(crate) data: u8,
     pub(crate) control: u8,

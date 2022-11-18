@@ -4,7 +4,9 @@ use crate::register::WordRegister::StackPointer;
 use std::ops::{Index, IndexMut};
 use WordRegister::{AccFlag, Double, ProgramCounter};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum RegisterId {
     A,
     B,
@@ -15,7 +17,7 @@ pub enum RegisterId {
     L,
 }
 
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Register {
     registers: Vec<ByteRegister>,
     pub flags: FlagRegister,
@@ -23,13 +25,13 @@ pub struct Register {
     pub pc: WordRegister,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct ByteRegister {
     pub value: u8,
     pub id: RegisterId,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct FlagRegister {
     pub z: bool,
     pub n: bool,
@@ -37,7 +39,7 @@ pub struct FlagRegister {
     pub c: bool,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum WordRegister {
     Double(ByteRegister, ByteRegister),
     AccFlag(ByteRegister, FlagRegister),
@@ -45,10 +47,10 @@ pub enum WordRegister {
     ProgramCounter(u16),
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Bit(pub u8);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ConditionCode {
     Z,
     NZ,

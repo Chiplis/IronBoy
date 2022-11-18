@@ -3,7 +3,9 @@ use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
 use std::cmp::max;
 
-#[derive(Default, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct MBC1 {
     cartridge: Cartridge,
     rom: Vec<u8>,
@@ -28,6 +30,7 @@ impl MBC1 {
     }
 }
 
+#[typetag::serde]
 impl MemoryBankController for MBC1 {}
 
 impl MemoryArea for MBC1 {

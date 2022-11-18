@@ -7,11 +7,14 @@ use gameboy::Gameboy;
 use crate::mmu::MemoryManagementUnit;
 use std::time::{Duration, Instant};
 
-use minifb::Key::Escape;
-use std::fs::read;
+use minifb::Key::{Escape, S};
+use std::fs::{read, File};
+use std::io::{Read, Write};
 use std::path::Path;
 
+use crate::cartridge::Cartridge;
 use clap::Parser;
+use minifb::{Scale, ScaleMode, Window, WindowOptions};
 
 mod cartridge;
 mod gameboy;
@@ -26,6 +29,7 @@ mod mbc3;
 mod mmu;
 mod ppu;
 mod register;
+mod renderer;
 mod serial;
 mod timer;
 
@@ -37,13 +41,17 @@ struct Args {
     /// GameBoy ROM file to input
     rom_file: String,
 
-    /// Toggle headless mode (runs the emulator without a backing window, used for test execution)
+    /// Runs the emulator without a backing window, used during test execution
     #[clap(long, default_value = "false")]
     headless: bool,
 
-    /// Toggle waiting between frames to attempt to lock framerate to 60 FPS
+    /// Wait between frames to attempt to lock framerate to 60 FPS
     #[clap(long, default_value = "false")]
     fast: bool,
+
+    /// Automatically save state before exiting emulator
+    #[clap(long, default_value = "false")]
+    save_on_exit: bool,
 
     /// Minimum threshold to trigger sleep between frames
     #[clap(long, default_value_t = 0.0)]
@@ -64,10 +72,45 @@ fn main() {
     if !rom_path.is_file() {
         panic!("The input ROM isn't a file")
     }
-    let rom = read(rom_path).expect("Unable to read ROM file");
-    let mem = MemoryManagementUnit::new(rom, args.headless, args.boot_rom, &args.rom_file);
 
-    let mut gameboy = Gameboy::new(mem);
+    let rom_path = rom_path.to_str().unwrap();
+
+    if !args.headless {
+        renderer::set_instance(
+            Window::new(
+                rom_path,
+                160,
+                144,
+                WindowOptions {
+                    borderless: false,
+                    transparency: false,
+                    title: true,
+                    resize: true,
+                    scale: Scale::X1,
+                    scale_mode: ScaleMode::Stretch,
+                    topmost: false,
+                    none: false,
+                },
+            )
+            .unwrap(),
+        );
+    }
+
+    let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
+        let rom = read(rom_path).expect("Unable to read ROM file");
+        let cartridge = Cartridge::new(&rom);
+        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, &args.rom_file);
+        Gameboy::new(mem)
+    } else {
+        let save_file = &mut vec![];
+        File::open(rom_path)
+            .unwrap()
+            .read_to_end(save_file)
+            .unwrap();
+        let gb = bincode::deserialize(save_file.as_slice()).unwrap();
+        gb
+    };
+
     let mut frames: usize = 0;
     let start = Instant::now();
     let mut slowest_frame = 0.0;
@@ -77,14 +120,21 @@ fn main() {
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
-        if gameboy
-            .mmu
-            .window
+        if renderer::instance()
             .as_ref()
             .map(|window| window.is_key_down(Escape))
             .unwrap_or(false)
         {
+            if args.save_on_exit {
+                save_state(rom_path, &gameboy, ".sav.esc");
+            }
             break;
+        } else if renderer::instance()
+            .as_ref()
+            .map(|window| window.is_key_down(S))
+            .unwrap_or(false)
+        {
+            save_state(rom_path, &gameboy, ".sav");
         }
     }
     println!(
@@ -92,6 +142,20 @@ fn main() {
         frames as f64 / start.elapsed().as_secs_f64(),
         slowest_frame
     );
+}
+
+fn save_state(rom_path: &str, gameboy: &Gameboy, append: &str) {
+    println!("Saving state...");
+    let append = if !rom_path.ends_with(append) {
+        append
+    } else {
+        ""
+    };
+    let mut save_file = File::create(rom_path.to_string() + append).unwrap();
+    save_file
+        .write_all(bincode::serialize(gameboy).unwrap().as_slice())
+        .unwrap();
+    println!("Savefile {}{} successfully generated.", rom_path, append);
 }
 
 fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
@@ -127,10 +191,11 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use std::fs::{read, read_dir, DirEntry};
-    use std::{env, io, panic};
+    use std::{env, panic};
 
     use std::io::Error;
 
+    use crate::cartridge::Cartridge;
     use crate::{run_frame, Gameboy, MemoryManagementUnit};
     use image::io::Reader;
     use image::RgbaImage;
@@ -142,7 +207,7 @@ mod tests {
     #[test]
     fn test_roms() -> Result<(), Error> {
         let (test_status_tx, test_status_rv) = channel();
-        let args: Vec<String> = env::args().collect();
+        let _args: Vec<String> = env::args().collect();
 
         // panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
@@ -154,13 +219,13 @@ mod tests {
                 let latest_img_path =
                     rom.replace("test_rom", "test_latest").replace('\\', "/") + ".png";
 
-                let latest_image = Path::new(&latest_img_path);
+                let _latest_image = Path::new(&latest_img_path);
 
                 if !rom.ends_with(".gb") {
                     println!("Skipping non ROM file: {rom}");
                     return false;
                 }
-                let rom_vec = read(&rom).unwrap();
+                let _rom_vec = read(&rom).unwrap();
 
                 true
             })
@@ -174,7 +239,9 @@ mod tests {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
                 println!("Testing {}", rom);
                 let rom_vec = read(&rom).unwrap();
-                let mem = MemoryManagementUnit::new(rom_vec, true, None, &rom);
+                let cartridge = Cartridge::new(&rom_vec);
+
+                let mem = MemoryManagementUnit::new(rom_vec, cartridge, None, &rom);
                 let mut gameboy = Gameboy::new(mem);
                 let mut tests_counter = 0;
                 let r = rom.clone();
@@ -227,10 +294,10 @@ mod tests {
                             .unwrap()
                             .decode()
                             .unwrap();
-                        let screenshot = screenshot.as_bytes();
+                        let _screenshot = screenshot.as_bytes();
                         let _ok_image =
                             Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
-                        let latest_image = Reader::open(
+                        let _latest_image = Reader::open(
                             screenshot_path
                                 .clone()
                                 .replace("test_output", "test_latest"),

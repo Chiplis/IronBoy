@@ -5,18 +5,20 @@ use crate::joypad::Joypad;
 use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
-use minifb::{Scale, ScaleMode, Window, WindowOptions};
 use std::any::{Any, TypeId};
+
+use serde::{Deserialize, Serialize};
 
 use crate::mbc::MemoryBankController;
 use crate::mbc0::MBC0;
 use crate::mbc1::MBC1;
 use crate::mbc3::MBC3;
+use crate::renderer;
 use std::fs::read;
 
 use crate::serial::LinkCable;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum OamCorruptionCause {
     IncDec,
     Read,
@@ -24,6 +26,7 @@ pub enum OamCorruptionCause {
     ReadWrite,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct MemoryManagementUnit {
     pub boot_rom: Option<Vec<u8>>,
     mbc: Box<dyn MemoryBankController>,
@@ -36,7 +39,6 @@ pub struct MemoryManagementUnit {
     joypad: Joypad,
     pub cycles: u16,
     pub dma: u8,
-    pub window: Option<Window>,
 }
 
 pub trait MemoryArea {
@@ -47,7 +49,7 @@ pub trait MemoryArea {
 impl MemoryManagementUnit {
     pub fn new(
         rom: Vec<u8>,
-        headless: bool,
+        cartridge: Cartridge,
         boot_rom: Option<String>,
         rom_path: &String,
     ) -> MemoryManagementUnit {
@@ -60,10 +62,8 @@ impl MemoryManagementUnit {
 
         let serial = LinkCable::new();
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
-        let cartridge = Cartridge::new(&rom);
-        println!("{:?}", &cartridge);
-        let window_title = format!("{:?}", cartridge);
-        let mut mem = MemoryManagementUnit {
+
+        let mem = MemoryManagementUnit {
             high_ram: vec![0; 2 * 1024 * 1024],
             dma: 0xFF,
             joypad,
@@ -73,7 +73,6 @@ impl MemoryManagementUnit {
             work_ram: memory,
             cycles: micro_ops,
             serial,
-            window: None,
             boot_rom: boot,
             mbc: match cartridge.mbc {
                 0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
@@ -88,26 +87,7 @@ impl MemoryManagementUnit {
                 }
             },
         };
-        if !headless {
-            mem.window = Some(
-                Window::new(
-                    window_title.as_str(),
-                    160,
-                    144,
-                    WindowOptions {
-                        borderless: false,
-                        transparency: false,
-                        title: true,
-                        resize: true,
-                        scale: Scale::X1,
-                        scale_mode: ScaleMode::Stretch,
-                        topmost: false,
-                        none: false,
-                    },
-                )
-                .unwrap(),
-            );
-        }
+
         MemoryManagementUnit::init_memory(mem)
     }
 
@@ -290,18 +270,13 @@ impl MemoryManagementUnit {
             self.interrupt_handler.set(Serial)
         };
 
-        if self
-            .window
-            .as_ref()
-            .map(|window| self.joypad.machine_cycle(window))
-            .unwrap_or(false)
-        {
+        if self.joypad.machine_cycle() {
             self.interrupt_handler.set(Input)
         }
     }
 
     fn update_screen(&mut self) {
-        if let Some(window) = self.window.as_mut() {
+        if let Some(window) = renderer::instance().as_mut() {
             window
                 .update_with_buffer(self.ppu.screen.as_slice(), 160, 144)
                 .unwrap()
