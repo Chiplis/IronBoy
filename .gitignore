@@ -1,5 +1,6 @@
 **/*.DS_Store
-**/*.gitignore
+**/*.sav
+**/*.sav.json
 /target
 /.idea
 *.iml

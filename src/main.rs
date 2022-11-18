@@ -103,7 +103,7 @@ fn main() {
             .unwrap_or(false)
         {
             if args.save_on_exit {
-                save_state(rom_path, &mut gameboy, ".esc.json");
+                save_state(rom_path, &mut gameboy, ".esc.sav.json");
             }
             break;
         } else if renderer::instance()
@@ -111,7 +111,7 @@ fn main() {
             .map(|window| window.is_key_down(S))
             .unwrap_or(false)
         {
-            save_state(rom_path, &mut gameboy, ".json");
+            save_state(rom_path, &mut gameboy, ".sav.json");
         }
     }
     println!(
