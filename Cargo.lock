@@ -289,6 +289,7 @@ dependencies = [
  "clap",
  "image",
  "minifb",
+ "once_cell",
  "pausable_clock",
  "serde",
  "typetag",

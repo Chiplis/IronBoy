@@ -14,7 +14,6 @@ use std::path::Path;
 
 use crate::cartridge::Cartridge;
 use clap::Parser;
-use minifb::{Scale, ScaleMode, Window, WindowOptions};
 
 mod cartridge;
 mod gameboy;
@@ -74,27 +73,6 @@ fn main() {
     }
 
     let rom_path = rom_path.to_str().unwrap();
-
-    if !args.headless {
-        renderer::set_instance(
-            Window::new(
-                rom_path,
-                160,
-                144,
-                WindowOptions {
-                    borderless: false,
-                    transparency: false,
-                    title: true,
-                    resize: true,
-                    scale: Scale::X1,
-                    scale_mode: ScaleMode::Stretch,
-                    topmost: false,
-                    none: false,
-                },
-            )
-            .unwrap(),
-        );
-    }
 
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
         let rom = read(rom_path).expect("Unable to read ROM file");
