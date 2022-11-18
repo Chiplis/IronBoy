@@ -42,6 +42,7 @@ Enter (PC) / Return (Mac) -> Start
 Backspace (PC) / Delete (Mac) -> Select
 
 S -> Save
+Esc -> Close
 ```
 
 ## Missing features
