@@ -14,6 +14,8 @@ use std::path::Path;
 
 use crate::cartridge::Cartridge;
 use clap::Parser;
+use crate::register::Register;
+use crate::register::WordRegister::{ProgramCounter, StackPointer};
 
 mod cartridge;
 mod gameboy;
@@ -44,6 +46,10 @@ struct Args {
     #[clap(long, default_value = "false")]
     headless: bool,
 
+    /// Boot title screen even when opening save file
+    #[clap(long, default_value = "false")]
+    cold_boot: bool,
+
     /// Wait between frames to attempt to lock framerate to 60 FPS
     #[clap(long, default_value = "false")]
     fast: bool,
@@ -58,7 +64,7 @@ struct Args {
 
     /// Use specified boot ROM
     #[clap(long)]
-    boot_rom: Option<String>,
+    boot_rom: Option<String>
 }
 
 fn main() {
@@ -87,6 +93,10 @@ fn main() {
             .unwrap();
         serde_json::de::from_slice(save_file.as_slice()).unwrap()
     };
+
+    if args.cold_boot {
+        gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())
+    }
 
     let mut frames: usize = 0;
     let start = Instant::now();
