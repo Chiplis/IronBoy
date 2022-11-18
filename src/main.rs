@@ -85,8 +85,7 @@ fn main() {
             .unwrap()
             .read_to_end(save_file)
             .unwrap();
-        let gb = bincode::deserialize(save_file.as_slice()).unwrap();
-        gb
+        serde_json::de::from_slice(save_file.as_slice()).unwrap()
     };
 
     let mut frames: usize = 0;
@@ -104,7 +103,7 @@ fn main() {
             .unwrap_or(false)
         {
             if args.save_on_exit {
-                save_state(rom_path, &gameboy, ".sav.esc");
+                save_state(rom_path, &mut gameboy, ".esc.json");
             }
             break;
         } else if renderer::instance()
@@ -112,7 +111,7 @@ fn main() {
             .map(|window| window.is_key_down(S))
             .unwrap_or(false)
         {
-            save_state(rom_path, &gameboy, ".sav");
+            save_state(rom_path, &mut gameboy, ".json");
         }
     }
     println!(
@@ -122,16 +121,19 @@ fn main() {
     );
 }
 
-fn save_state(rom_path: &str, gameboy: &Gameboy, append: &str) {
+fn save_state(rom_path: &str, gameboy: &mut Gameboy, append: &str) {
     println!("Saving state...");
     let append = if !rom_path.ends_with(append) {
         append
     } else {
         ""
     };
+
+    gameboy.mmu.mbc.save();
+
     let mut save_file = File::create(rom_path.to_string() + append).unwrap();
     save_file
-        .write_all(bincode::serialize(gameboy).unwrap().as_slice())
+        .write_all(serde_json::ser::to_vec(gameboy).unwrap().as_slice())
         .unwrap();
     println!("Savefile {}{} successfully generated.", rom_path, append);
 }

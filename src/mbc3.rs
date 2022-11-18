@@ -1,5 +1,5 @@
 use std::cmp::max;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use crate::cartridge::Cartridge;
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MBC3 {
     cartridge: Cartridge,
     rom: Vec<u8>,
@@ -24,7 +24,7 @@ pub struct MBC3 {
     rtc_enabled: bool,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct RealTimeClock {
     #[serde(skip)]
     clock: PausableClock,
@@ -35,14 +35,22 @@ struct RealTimeClock {
     halted: bool,
     latched: bool,
     day_carry_bit: bool,
+    timestamp: SystemTime,
 }
 
 impl RealTimeClock {
     fn latch(&mut self, value: u8) {
-        let total = self.seconds as u64 + self.minutes as u64 * 60 + self.hours as u64 * 3600 + self.days as u64 * 24 * 3600;
+        let mut total_secs = self.seconds as u64
+            + self.minutes as u64 * 60
+            + self.hours as u64 * 3600
+            + self.days as u64 * 24 * 3600;
 
-        if total > self.clock.now().elapsed_millis() / 1000 {
-            self.clock = PausableClock::new(Duration::from_secs(total), false);
+        let since_last = SystemTime::now().duration_since(self.timestamp).unwrap();
+
+        if total_secs > self.clock.now().elapsed_millis() / 1000 {
+            println!("{}", since_last.as_secs());
+            total_secs += since_last.as_secs();
+            self.clock = PausableClock::new(Duration::from_secs(total_secs), false);
         }
 
         match value {
@@ -117,8 +125,24 @@ impl MBC3 {
             cartridge,
             rom,
             ram: vec![0; 1024 * 1024 * 2],
+            rom_bank: 0,
+            ram_rtc_bank: 0,
             rom_offset: 0x4000,
-            ..Default::default()
+            ram_offset: 0,
+            ram_enabled: false,
+            expansion_mode: 0,
+            rtc: RealTimeClock {
+                clock: Default::default(),
+                seconds: 0,
+                minutes: 0,
+                hours: 0,
+                days: 0,
+                halted: false,
+                latched: false,
+                day_carry_bit: false,
+                timestamp: SystemTime::now(),
+            },
+            rtc_enabled: false,
         }
     }
 }
@@ -173,4 +197,8 @@ impl MemoryArea for MBC3 {
 }
 
 #[typetag::serde]
-impl MemoryBankController for MBC3 {}
+impl MemoryBankController for MBC3 {
+    fn save(&mut self) {
+        self.rtc.timestamp = SystemTime::now();
+    }
+}

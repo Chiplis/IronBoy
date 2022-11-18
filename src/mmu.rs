@@ -29,7 +29,7 @@ pub enum OamCorruptionCause {
 #[derive(Serialize, Deserialize)]
 pub struct MemoryManagementUnit {
     pub boot_rom: Option<Vec<u8>>,
-    mbc: Box<dyn MemoryBankController>,
+    pub(crate) mbc: Box<dyn MemoryBankController>,
     work_ram: Vec<u8>,
     high_ram: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
