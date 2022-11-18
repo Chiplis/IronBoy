@@ -74,7 +74,7 @@ pub enum PpuState {
 
 #[derive(PartialEq, Eq, Default, Clone, Debug)]
 pub struct PixelFifo {
-    queue: [u8; 16],
+    queue: Vec<u8>,
     /// next position to push
     head: u8,
     /// next position to pop
@@ -82,6 +82,13 @@ pub struct PixelFifo {
 }
 
 impl PixelFifo {
+    fn new() -> Self {
+        Self {
+            queue: vec![0; 16],
+            ..Default::default()
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.head == self.tail
     }
@@ -224,9 +231,9 @@ pub struct PixelProcessingUnit {
     oam_start_clock_count: u64,
     pub(crate) oam_corruption: Option<OamCorruptionCause>,
     /// 8000-9FFF: Video RAM
-    pub vram: [u8; 0x2000],
+    pub vram: Vec<u8>,
     /// FE00-FE9F: Sprite Attribute table
-    pub oam: [u8; 0xA0],
+    pub oam: Vec<u8>,
     pub dma: u8,
     /// The cycle in which the last DMA transfer was requested.
     pub(crate) dma_started: u64,
@@ -242,9 +249,9 @@ pub struct PixelProcessingUnit {
 
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
-    pub screen: [u32; 144 * 160],
+    pub screen: Vec<u32>,
     /// sprites that will be rendered in the next mode 3 scanline
-    pub sprite_buffer: [Sprite; 10],
+    pub sprite_buffer: Vec<Sprite>,
     /// the length of the `sprite_buffer`
     pub sprite_buffer_len: u8,
     /// Window Internal Line Counter
@@ -331,8 +338,8 @@ impl PixelProcessingUnit {
             oam_start_clock_count: 0,
             oam_corruption: None,
             #[rustfmt::skip]
-            vram: [0; 0x2000],
-            oam: [0; 0xA0],
+            vram: vec![0; 0x2000],
+            oam: vec![0; 0xA0],
             dma: 0xFF,
             dma_started: 0,
             dma_running: false,
@@ -341,8 +348,8 @@ impl PixelProcessingUnit {
             oam_write_block: false,
             vram_read_block: false,
             vram_write_block: false,
-            screen: [0; 0x5A00],
-            sprite_buffer: [Sprite::default(); 10],
+            screen: vec![0; 0x5A00],
+            sprite_buffer: vec![Sprite::default(); 10],
             sprite_buffer_len: 0,
             wyc: 0,
             lcdc: 0x91,
@@ -363,8 +370,8 @@ impl PixelProcessingUnit {
             next_ticks: 23_440_377,
             line_start_ticks: 23_435_361,
 
-            background_fifo: PixelFifo::default(),
-            sprite_fifo: PixelFifo::default(),
+            background_fifo: PixelFifo::new(),
+            sprite_fifo: PixelFifo::new(),
 
             fetcher_step: 0x03,
             fetcher_x: 0x14,

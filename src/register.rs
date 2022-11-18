@@ -16,7 +16,7 @@ pub enum RegisterId {
 }
 
 pub struct Register {
-    registers: [ByteRegister; 7],
+    registers: Vec<ByteRegister>,
     pub flags: FlagRegister,
     pub sp: WordRegister,
     pub pc: WordRegister,
@@ -26,7 +26,7 @@ impl Register {
     pub fn new(boot_rom: bool) -> Self {
         if !boot_rom {
             Self {
-                registers: [
+                registers: vec![
                     ByteRegister { value: 0x01, id: A },
                     ByteRegister { value: 0x00, id: B },
                     ByteRegister { value: 0x13, id: C },
@@ -46,7 +46,7 @@ impl Register {
             }
         } else {
             Self {
-                registers: [
+                registers: vec![
                     ByteRegister { value: 0x0, id: A },
                     ByteRegister { value: 0x0, id: B },
                     ByteRegister { value: 0x0, id: C },
