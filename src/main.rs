@@ -7,7 +7,7 @@ use gameboy::Gameboy;
 use crate::mmu::MemoryManagementUnit;
 use std::time::{Duration, Instant};
 
-use minifb::Key::{Escape, S};
+use minifb::Key::{Escape, F, S};
 use std::fs::{read, File};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -16,7 +16,8 @@ use crate::cartridge::Cartridge;
 use crate::register::Register;
 
 use clap::Parser;
-use minifb::{Scale, ScaleMode, Window, WindowOptions};
+use minifb::{KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
+use KeyRepeat::No;
 
 mod cartridge;
 mod gameboy;
@@ -70,7 +71,7 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    let (sleep, threshold) = (!args.fast, args.threshold);
+    let (mut sleep, threshold) = (!args.fast, args.threshold);
     let rom_path = Path::new(&args.rom_file);
     if !rom_path.exists() {
         panic!("The input ROM path doesn't exist")
@@ -134,16 +135,16 @@ fn main() {
 
         let window = gameboy.mmu.renderer.window().as_ref();
 
-        if window
-            .map(|window| window.is_key_down(Escape))
-            .unwrap_or(false)
-        {
+        if window.map_or(false, |w| w.is_key_pressed(Escape, No)) {
             if args.save_on_exit {
                 save_state(rom_path, &mut gameboy, ".esc.sav.json");
             }
             break;
-        } else if window.map(|window| window.is_key_down(S)).unwrap_or(false) {
+        } else if window.map_or(false, |w| w.is_key_pressed(S, No)) {
             save_state(rom_path, &mut gameboy, ".sav.json");
+        } else if window.map_or(false, |w| w.is_key_pressed(F, No)) {
+            sleep = !sleep;
+            println!("Changed fast mode to {}", !sleep);
         }
     }
     println!(
