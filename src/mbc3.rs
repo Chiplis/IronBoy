@@ -42,20 +42,18 @@ impl RealTimeClock {
     fn latch(&mut self, value: u8) {
         match value {
             0 => {
-                let secs = self.clock.now().elapsed_millis() / 1000;
-                self.seconds = (secs % 60) as u8;
-                self.minutes = ((secs / 60) % 60) as u8;
-                self.hours = ((secs / 3600) % 24) as u8;
-                let days = (secs / (3600 * 24)) as u16;
-                self.days = days % 0x1FF;
-                self.day_carry_bit |= days > 0x1FF; // Day carry bit is not reset
-                self.clock.resume();
                 self.latched = true;
             }
             1 => {
                 if self.latched {
                     self.latched = false;
-                    self.clock.pause();
+                    let secs = self.clock.now().elapsed_millis() / 1000;
+                    self.seconds = (secs % 60) as u8;
+                    self.minutes = ((secs / 60) % 60) as u8;
+                    self.hours = ((secs / 3600) % 24) as u8;
+                    let days = (secs / (3600 * 24)) as u16;
+                    self.days = days % 0x1FF;
+                    self.day_carry_bit |= days > 0x1FF; // Day carry bit is not reset
                 }
             }
             _ => unreachable!(),
@@ -88,7 +86,7 @@ impl RealTimeClock {
                 + self.hours as u64 * 3600
                 + self.days as u64 * 24 * 3600;
 
-            self.clock = PausableClock::new(Duration::from_secs(total), self.clock.is_paused());
+            self.clock = PausableClock::new(Duration::from_secs(total), false);
         }
 
         match register {
