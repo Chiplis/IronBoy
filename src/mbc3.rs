@@ -86,7 +86,7 @@ impl RealTimeClock {
                 + self.hours as u64 * 3600
                 + self.days as u64 * 24 * 3600;
 
-            self.clock = PausableClock::new(Duration::from_secs(total), false);
+            self.clock = PausableClock::new(Duration::from_secs(total), self.clock.is_paused());
         }
 
         match register {
@@ -98,6 +98,11 @@ impl RealTimeClock {
                 self.days = value as u16 | if value & 1 == 0 { value as u16 } else { 0x100 };
                 self.day_carry_bit = value & 0x80 != 0;
                 self.halted = value & 0x40 != 0;
+                if self.halted {
+                    self.clock.pause();
+                } else {
+                    self.clock.resume();
+                }
             }
             _ => (),
         };
