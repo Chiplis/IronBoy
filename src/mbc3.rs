@@ -40,19 +40,6 @@ struct RealTimeClock {
 
 impl RealTimeClock {
     fn latch(&mut self, value: u8) {
-        let mut total_secs = self.seconds as u64
-            + self.minutes as u64 * 60
-            + self.hours as u64 * 3600
-            + self.days as u64 * 24 * 3600;
-
-        let since_last = SystemTime::now().duration_since(self.timestamp).unwrap();
-
-        if total_secs > self.clock.now().elapsed_millis() / 1000 {
-            println!("{}", since_last.as_secs());
-            total_secs += since_last.as_secs();
-            self.clock = PausableClock::new(Duration::from_secs(total_secs), false);
-        }
-
         match value {
             0 => {
                 let secs = self.clock.now().elapsed_millis() / 1000;
@@ -198,6 +185,26 @@ impl MemoryArea for MBC3 {
 
 #[typetag::serde]
 impl MemoryBankController for MBC3 {
+    fn start(&mut self) {
+        let total_secs = self.rtc.seconds as u64
+            + self.rtc.minutes as u64 * 60
+            + self.rtc.hours as u64 * 3600
+            + self.rtc.days as u64 * 24 * 3600;
+
+        let since_last = SystemTime::now()
+            .duration_since(self.rtc.timestamp)
+            .unwrap();
+
+        if total_secs > 0 {
+            println!(
+                "{} seconds passed since last turned on.",
+                since_last.as_secs()
+            );
+            self.rtc.clock =
+                PausableClock::new(Duration::from_secs(total_secs) + since_last, false);
+        }
+    }
+
     fn save(&mut self) {
         self.rtc.timestamp = SystemTime::now();
     }

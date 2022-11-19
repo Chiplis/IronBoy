@@ -120,6 +120,8 @@ fn main() {
         )
     }
 
+    gameboy.mmu.mbc.start();
+
     let mut frames: usize = 0;
     let start = Instant::now();
     let mut slowest_frame = 0.0;
