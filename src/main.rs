@@ -13,9 +13,10 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use crate::cartridge::Cartridge;
-use clap::Parser;
 use crate::register::Register;
-use crate::register::WordRegister::{ProgramCounter, StackPointer};
+
+use clap::Parser;
+use minifb::{Scale, ScaleMode, Window, WindowOptions};
 
 mod cartridge;
 mod gameboy;
@@ -64,7 +65,7 @@ struct Args {
 
     /// Use specified boot ROM
     #[clap(long)]
-    boot_rom: Option<String>
+    boot_rom: Option<String>,
 }
 
 fn main() {
@@ -98,6 +99,27 @@ fn main() {
         gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())
     }
 
+    if !args.headless {
+        gameboy.mmu.renderer.set_window(
+            Window::new(
+                &args.rom_file,
+                160,
+                144,
+                WindowOptions {
+                    borderless: false,
+                    transparency: false,
+                    title: true,
+                    resize: true,
+                    scale: Scale::X1,
+                    scale_mode: ScaleMode::Stretch,
+                    topmost: false,
+                    none: false,
+                },
+            )
+            .unwrap(),
+        )
+    }
+
     let mut frames: usize = 0;
     let start = Instant::now();
     let mut slowest_frame = 0.0;
@@ -107,8 +129,10 @@ fn main() {
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
-        if renderer::instance()
-            .as_ref()
+
+        let window = gameboy.mmu.renderer.window().as_ref();
+
+        if window
             .map(|window| window.is_key_down(Escape))
             .unwrap_or(false)
         {
@@ -116,11 +140,7 @@ fn main() {
                 save_state(rom_path, &mut gameboy, ".esc.sav.json");
             }
             break;
-        } else if renderer::instance()
-            .as_ref()
-            .map(|window| window.is_key_down(S))
-            .unwrap_or(false)
-        {
+        } else if window.map(|window| window.is_key_down(S)).unwrap_or(false) {
             save_state(rom_path, &mut gameboy, ".sav.json");
         }
     }

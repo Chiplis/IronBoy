@@ -1,6 +1,5 @@
 use crate::joypad::SelectedButtons::{Action, Direction};
 use crate::mmu::MemoryArea;
-use crate::renderer;
 use minifb::{Key, Window};
 use Key::*;
 
@@ -52,8 +51,8 @@ impl Joypad {
         }
     }
 
-    pub fn machine_cycle(&mut self) -> bool {
-        let window = match renderer::instance() {
+    pub fn machine_cycle(&mut self, window: &Option<Window>) -> bool {
+        let window = match window {
             None => return false,
             Some(window) => window,
         };

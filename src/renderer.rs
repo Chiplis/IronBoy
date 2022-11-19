@@ -1,35 +1,20 @@
-use crate::Args;
-use clap::Parser;
-use minifb::{Scale, ScaleMode, Window, WindowOptions};
-use once_cell::sync::Lazy;
+use minifb::Window;
 
-static mut INSTANCE: Lazy<Option<Window>> = Lazy::new(|| {
-    let args = Args::parse();
-    if args.headless {
-        None
-    } else {
-        Some(
-            Window::new(
-                &args.rom_file,
-                160,
-                144,
-                WindowOptions {
-                    borderless: false,
-                    transparency: false,
-                    title: true,
-                    resize: true,
-                    scale: Scale::X1,
-                    scale_mode: ScaleMode::Stretch,
-                    topmost: false,
-                    none: false,
-                },
-            )
-            .unwrap(),
-        )
+#[derive(Default)]
+pub struct Renderer {
+    window: Option<Window>,
+}
+
+impl Renderer {
+    pub fn new() -> Self {
+        Self { window: None }
     }
-});
 
-// TODO: Figure out a safer way to access the Window instance
-pub fn instance() -> &'static mut Option<Window> {
-    unsafe { &mut INSTANCE }
+    pub fn window(&mut self) -> &mut Option<Window> {
+        &mut self.window
+    }
+
+    pub fn set_window(&mut self, window: Window) {
+        self.window = Some(window);
+    }
 }

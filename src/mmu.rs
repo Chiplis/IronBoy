@@ -13,7 +13,8 @@ use crate::mbc::MemoryBankController;
 use crate::mbc0::MBC0;
 use crate::mbc1::MBC1;
 use crate::mbc3::MBC3;
-use crate::renderer;
+
+use crate::renderer::Renderer;
 use std::fs::read;
 
 use crate::serial::LinkCable;
@@ -28,6 +29,8 @@ pub enum OamCorruptionCause {
 
 #[derive(Serialize, Deserialize)]
 pub struct MemoryManagementUnit {
+    #[serde(skip)]
+    pub(crate) renderer: Renderer,
     pub boot_rom: Option<Vec<u8>>,
     pub(crate) mbc: Box<dyn MemoryBankController>,
     work_ram: Vec<u8>,
@@ -64,6 +67,7 @@ impl MemoryManagementUnit {
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
 
         let mem = MemoryManagementUnit {
+            renderer: Renderer::new(),
             high_ram: vec![0; 2 * 1024 * 1024],
             dma: 0xFF,
             joypad,
@@ -270,13 +274,13 @@ impl MemoryManagementUnit {
             self.interrupt_handler.set(Serial)
         };
 
-        if self.joypad.machine_cycle() {
+        if self.joypad.machine_cycle(self.renderer.window()) {
             self.interrupt_handler.set(Input)
         }
     }
 
     fn update_screen(&mut self) {
-        if let Some(window) = renderer::instance().as_mut() {
+        if let Some(window) = self.renderer.window().as_mut() {
             window
                 .update_with_buffer(self.ppu.screen.as_slice(), 160, 144)
                 .unwrap()
