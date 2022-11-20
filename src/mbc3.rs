@@ -28,6 +28,8 @@ pub struct MBC3 {
 struct RealTimeClock {
     #[serde(skip)]
     clock: PausableClock,
+    #[serde(skip)]
+    additional_secs: u64,
     seconds: u8,
     minutes: u8,
     hours: u8,
@@ -47,7 +49,7 @@ impl RealTimeClock {
             1 => {
                 if self.latched {
                     self.latched = false;
-                    let secs = self.clock.now().elapsed_millis() / 1000;
+                    let secs = self.clock.now().elapsed_millis() / 1000 + self.additional_secs;
                     self.seconds = (secs % 60) as u8;
                     self.minutes = ((secs / 60) % 60) as u8;
                     self.hours = ((secs / 3600) % 24) as u8;
@@ -123,6 +125,7 @@ impl MBC3 {
             expansion_mode: 0,
             rtc: RealTimeClock {
                 clock: Default::default(),
+                additional_secs: 0,
                 seconds: 0,
                 minutes: 0,
                 hours: 0,
@@ -194,18 +197,11 @@ impl MemoryBankController for MBC3 {
             + self.rtc.hours as u64 * 3600
             + self.rtc.days as u64 * 24 * 3600;
 
-        let since_last = SystemTime::now()
+        self.rtc.additional_secs = SystemTime::now()
             .duration_since(self.rtc.timestamp)
-            .unwrap();
-
-        if total_secs > 0 {
-            println!(
-                "{} seconds passed since last turned on.",
-                since_last.as_secs()
-            );
-            self.rtc.clock =
-                PausableClock::new(Duration::from_secs(total_secs) + since_last, false);
-        }
+            .unwrap()
+            .as_secs()
+            + total_secs;
     }
 
     fn save(&mut self) {
