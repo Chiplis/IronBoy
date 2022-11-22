@@ -119,7 +119,7 @@ fn main() {
 
     let mut frames: usize = 0;
     let start = Instant::now();
-    let mut slowest_frame = 0.0;
+    let mut slowest_frame = Duration::from_nanos(0);
     loop {
         frames += 1;
         let current_frame = run_frame(&mut gameboy, sleep);
@@ -142,7 +142,7 @@ fn main() {
         }
     }
     println!(
-        "Finished running at {} FPS average, slowest frame took {} seconds to render",
+        "Finished running at {} FPS average, slowest frame took {:?} seconds to render",
         frames as f64 / start.elapsed().as_secs_f64(),
         slowest_frame
     );
@@ -165,15 +165,18 @@ fn save_state(rom_path: &str, gameboy: &mut Gameboy, append: &str) {
     println!("Savefile {}{} successfully generated.", rom_path, append);
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool) -> f64 {
+const CYCLES_PER_FRAME: u16 = 17556;
+const NANOS_PER_FRAME: u64 = 16742706;
+
+fn run_frame(gameboy: &mut Gameboy, sleep: bool) -> Duration {
     let mut elapsed_cycles = 0;
     let start = Instant::now();
-    let mut pin = if let Some(pin) = gameboy.pin {
-        pin
+    let pin = if let Some(pin) = gameboy.pin {
+        (pin.0 + 1, pin.1)
     } else {
-        (0, Instant::now())
+        (1, Instant::now())
     };
-    while elapsed_cycles < 17556 {
+    while elapsed_cycles < CYCLES_PER_FRAME {
         let previously_halted = gameboy.halted;
         let cycles = gameboy.cycle() as u16;
         elapsed_cycles += cycles;
@@ -190,16 +193,15 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool) -> f64 {
         gameboy.mmu.cycles = 0;
     }
     if sleep {
-        let expected = pin.1 + Duration::from_nanos((pin.0 + 1) * 16742706);
+        let expected = pin.1 + Duration::from_nanos(pin.0 * NANOS_PER_FRAME);
         if Instant::now() < expected {
             thread::sleep(expected - Instant::now());
-            pin.0 += 1;
             gameboy.pin = Some(pin);
         } else {
             gameboy.pin = None;
         }
     }
-    start.elapsed().as_secs_f64()
+    start.elapsed()
 }
 
 #[cfg(test)]
