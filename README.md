@@ -29,7 +29,6 @@ Options:
       --cold-boot              Boot title screen even when opening save file
       --fast                   Start emulator with unlocked framerate
       --save-on-exit           Automatically save state before exiting emulator
-      --threshold <THRESHOLD>  Minimum threshold to trigger sleep between frames [default: 0]
       --boot-rom <BOOT_ROM>    Use specified boot ROM
   -h, --help                   Print help information
   -V, --version                Print version information

@@ -2,7 +2,7 @@ use std::cmp::max;
 use RegisterOperand::Operand;
 
 use crate::instruction::Command::*;
-use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
+use crate::instruction::Operand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Instruction, RstVec};
 use crate::instruction_fetcher::RegisterOperand::HL;
 use crate::mmu::MemoryManagementUnit;
@@ -16,10 +16,10 @@ enum RegisterOperand {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
-pub struct InstructionFetcher;
+pub struct Fetcher;
 
-impl InstructionFetcher {
-    pub fn fetch_instruction(
+impl Fetcher {
+    pub fn fetch(
         halt_bug: bool,
         pc: u16,
         reg: &Register,

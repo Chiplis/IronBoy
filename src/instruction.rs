@@ -1,4 +1,4 @@
-use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
+use crate::instruction::Operand::{OpByte, OpHL, OpRegister};
 use Command::*;
 
 use crate::register::{Bit, ConditionCode, RegisterId, WordRegister};
@@ -6,7 +6,7 @@ use crate::register::{Bit, ConditionCode, RegisterId, WordRegister};
 pub struct Instruction(pub u8, pub Command);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum InstructionOperand {
+pub enum Operand {
     OpRegister(RegisterId),
     OpByte(u8),
     OpHL,
@@ -15,17 +15,17 @@ pub enum InstructionOperand {
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    AdcA(InstructionOperand),
-    AddA(InstructionOperand),
+    AdcA(Operand),
+    AddA(Operand),
     AddHlR16(WordRegister),
     AddSpI8(i8),
-    AndA(InstructionOperand),
-    BitU3(Bit, InstructionOperand),
+    AndA(Operand),
+    BitU3(Bit, Operand),
     CallCcU16(ConditionCode, u16),
     CallU16(u16),
     Ccf,
     Cpl,
-    CpA(InstructionOperand),
+    CpA(Operand),
     Daa,
     DechHl,
     DecR16(WordRegister),
@@ -64,7 +64,7 @@ pub enum Command {
     LdSpHl,
     LdU16Sp(u16),
     Nop,
-    OrA(InstructionOperand),
+    OrA(Operand),
     PopR16(WordRegister),
     PushAf,
     PushR16(WordRegister),
@@ -73,23 +73,23 @@ pub enum Command {
     Ret,
     Reti,
     RetCc(ConditionCode),
-    Rl(InstructionOperand, bool),
-    Rlc(InstructionOperand, bool),
-    Rr(InstructionOperand, bool),
-    Rrc(InstructionOperand, bool),
+    Rl(Operand, bool),
+    Rlc(Operand, bool),
+    Rr(Operand, bool),
+    Rrc(Operand, bool),
     Rst(RstVec),
-    SbcA(InstructionOperand),
+    SbcA(Operand),
     Scf,
     SetU3Hl(Bit),
     SetU3R8(Bit, RegisterId),
-    Sla(InstructionOperand),
-    Sra(InstructionOperand),
-    Srl(InstructionOperand),
+    Sla(Operand),
+    Sra(Operand),
+    Srl(Operand),
     Stop,
-    SubA(InstructionOperand),
+    SubA(Operand),
     SwapHl,
     SwapR8(RegisterId),
-    XorA(InstructionOperand),
+    XorA(Operand),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

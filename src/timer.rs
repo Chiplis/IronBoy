@@ -66,7 +66,7 @@ impl Timer {
         }
     }
 
-    pub fn machine_cycle(&mut self) -> bool {
+    pub fn machine_cycle(&mut self, ticks: u16) -> bool {
         self.interrupt_served = false;
 
         let interrupt = self.interrupt;
@@ -79,7 +79,7 @@ impl Timer {
         self.interrupt = false;
 
         let old_ticks = self.ticks;
-        self.ticks = self.ticks.wrapping_add(4);
+        self.ticks = self.ticks.wrapping_add(ticks);
         self.tima_increase(old_ticks);
 
         interrupt

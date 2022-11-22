@@ -11,7 +11,7 @@ use VerticalBlankPhase::*;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct PixelProcessingUnit {
-    oam_start_clock_count: u64,
+    oam_start_clock_count: usize,
     pub(crate) oam_corruption: Option<OamCorruptionCause>,
     /// 8000-9FFF: Video RAM
     pub vram: Vec<u8>,
@@ -19,7 +19,7 @@ pub struct PixelProcessingUnit {
     pub oam: Vec<u8>,
     pub dma: u8,
     /// The cycle in which the last DMA transfer was requested.
-    pub(crate) dma_started: u64,
+    pub(crate) dma_started: usize,
     /// If the DMA is running, including the initial delay.
     pub(crate) dma_running: bool,
     /// Oam read is blocked
@@ -80,11 +80,11 @@ pub struct PixelProcessingUnit {
     /// to control the timing. 0xff means that this will not trigger a interrupt.
     stat_mode_for_interrupt: u8,
     /// Current clock cycle
-    pub(crate) ticks: u64,
+    pub(crate) ticks: usize,
     /// Next clock cycle where the PPU will be updated
-    pub next_ticks: u64,
+    pub next_ticks: usize,
     /// The clock count in which the current scanline has started.
-    pub line_start_ticks: u64,
+    pub line_start_ticks: usize,
 
     pub background_fifo: PixelFifo,
     pub sprite_fifo: PixelFifo,
@@ -448,8 +448,8 @@ impl PixelProcessingUnit {
         self.dma_running = true;
     }
 
-    pub fn machine_cycle(&mut self) -> (bool, bool) {
-        self.ticks += 4;
+    pub fn machine_cycle(&mut self, ticks: usize) -> (bool, bool) {
+        self.ticks += ticks;
 
         // Most of the ppu behaviour is based on the LIJI32/SameBoy including all of the timing,
         // and most of the implementation.
@@ -480,7 +480,7 @@ impl PixelProcessingUnit {
         &mut self,
         vblank_interrupt: &mut bool,
         stat_interrupt: &mut bool,
-    ) -> (u64, PpuState) {
+    ) -> (usize, PpuState) {
         match self.state {
             HorizontalBlank(TurnOnHBlank) => {
                 self.ly = 0;
@@ -702,7 +702,7 @@ impl PixelProcessingUnit {
                 if self.sprite_at_0_penalty != 0
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx == 0
                 {
-                    let penalty = self.sprite_at_0_penalty as u64;
+                    let penalty = self.sprite_at_0_penalty as usize;
                     self.sprite_at_0_penalty = 0;
                     return (penalty, PixelTransfer(FirstSpritePenalty));
                 }

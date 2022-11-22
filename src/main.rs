@@ -36,8 +36,6 @@ mod renderer;
 mod serial;
 mod timer;
 
-const FREQUENCY: u32 = 4194304;
-
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -60,10 +58,6 @@ struct Args {
     #[clap(long, default_value = "false")]
     save_on_exit: bool,
 
-    /// Minimum threshold to trigger sleep between frames
-    #[clap(long, default_value_t = 0.0)]
-    threshold: f64,
-
     /// Use specified boot ROM
     #[clap(long)]
     boot_rom: Option<String>,
@@ -71,7 +65,7 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    let (mut sleep, threshold) = (!args.fast, args.threshold);
+    let mut sleep = !args.fast;
     let rom_path = Path::new(&args.rom_file);
     if !rom_path.exists() {
         panic!("The input ROM path doesn't exist")
@@ -128,7 +122,7 @@ fn main() {
     let mut slowest_frame = 0.0;
     loop {
         frames += 1;
-        let current_frame = run_frame(&mut gameboy, sleep, threshold);
+        let current_frame = run_frame(&mut gameboy, sleep);
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
@@ -171,31 +165,38 @@ fn save_state(rom_path: &str, gameboy: &mut Gameboy, append: &str) {
     println!("Savefile {}{} successfully generated.", rom_path, append);
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool, threshold: f64) -> f64 {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool) -> f64 {
     let mut elapsed_cycles = 0;
-    const CYCLE_DURATION: f64 = 1.0_f64 / FREQUENCY as f64;
     let start = Instant::now();
-    while elapsed_cycles < FREQUENCY / 60 {
+    let mut pin = if let Some(pin) = gameboy.pin {
+        pin
+    } else {
+        (0, Instant::now())
+    };
+    while elapsed_cycles < 17556 {
         let previously_halted = gameboy.halted;
         let cycles = gameboy.cycle() as u16;
-        elapsed_cycles += cycles as u32 * 4;
+        elapsed_cycles += cycles;
         let mem_cycles = cycles - gameboy.mmu.cycles;
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
             panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mmu.cycles)
         } else if mem_cycles == 1 {
-            gameboy.mmu.cycle()
+            gameboy.mmu.cycle(4)
         } else {
             for _ in 0..mem_cycles {
-                gameboy.mmu.cycle()
+                gameboy.mmu.cycle(4)
             }
         }
         gameboy.mmu.cycles = 0;
     }
     if sleep {
-        let cycles_time: f64 = CYCLE_DURATION * elapsed_cycles as f64;
-        let sleep_time = cycles_time - start.elapsed().as_secs_f64();
-        if sleep_time > threshold {
-            thread::sleep(Duration::from_secs_f64(sleep_time));
+        let expected = pin.1 + Duration::from_nanos((pin.0 + 1) * 16742706);
+        if Instant::now() < expected {
+            thread::sleep(expected - Instant::now());
+            pin.0 += 1;
+            gameboy.pin = Some(pin);
+        } else {
+            gameboy.pin = None;
         }
     }
     start.elapsed().as_secs_f64()
@@ -317,7 +318,7 @@ mod tests {
                         );
                     }
 
-                    run_frame(&mut gameboy, false, 0.0);
+                    run_frame(&mut gameboy, false);
                 }
                 tx_finish.send(idx).unwrap();
             });

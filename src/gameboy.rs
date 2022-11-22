@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::instruction::Command::*;
-use crate::instruction_fetcher::InstructionFetcher;
+use crate::instruction_fetcher::Fetcher;
 use crate::interrupt::IE_ADDRESS;
 use crate::interrupt::IF_ADDRESS;
 use crate::mmu::MemoryManagementUnit;
@@ -9,16 +9,19 @@ use crate::register::RegisterId::*;
 use crate::register::WordRegister::{ProgramCounter, StackPointer};
 use crate::register::{ByteRegister, Register, RegisterId, WordRegister};
 use std::cmp::max;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::instruction::InstructionOperand::{OpByte, OpHL, OpRegister};
-use crate::instruction::{Command, InstructionOperand};
+use crate::instruction::Operand::{OpByte, OpHL, OpRegister};
+use crate::instruction::{Command, Operand};
 use crate::interrupt::InterruptId;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 
 #[derive(Serialize, Deserialize)]
 pub struct Gameboy {
+    #[serde(skip)]
+    pub pin: Option<(u64, Instant)>,
     pub reg: Register,
     pub ei_counter: i8,
     pub ime: bool,
@@ -31,6 +34,7 @@ pub struct Gameboy {
 impl Gameboy {
     pub fn new(mem: MemoryManagementUnit) -> Self {
         Self {
+            pin: Some((0, Instant::now())),
             halt_bug: false,
             reg: Register::new(mem.boot_rom.is_some()),
             mmu: mem,
@@ -63,7 +67,7 @@ impl Gameboy {
             return interrupt_cycles;
         }
 
-        let instruction = InstructionFetcher::fetch_instruction(
+        let instruction = Fetcher::fetch(
             self.halt_bug,
             self.reg.pc.value(),
             &self.reg,
@@ -94,7 +98,7 @@ impl Gameboy {
         }
     }
 
-    fn get_op(&mut self, op: InstructionOperand) -> u8 {
+    fn get_op(&mut self, op: Operand) -> u8 {
         match op {
             OpByte(n) => n,
             OpRegister(id) => self[id].value,
@@ -120,8 +124,8 @@ impl Gameboy {
 
     fn trigger_interrupt(&mut self, interrupt_id: InterruptId) -> bool {
         if self.mmu.interrupt_handler.triggered(interrupt_id) {
-            self.micro_cycle();
-            self.micro_cycle();
+            self.machine_cycle();
+            self.machine_cycle();
             self.ime = false;
             self.mmu.interrupt_handler.unset(interrupt_id);
             let [lo, hi] = self.reg.pc.value().to_le_bytes();
@@ -143,7 +147,7 @@ impl Gameboy {
         match command {
             JrCcI8(cc, _) | JpCcU16(cc, _) | RetCc(cc) | CallCcU16(cc, _) => {
                 if self.reg.cc_flag(cc) {
-                    self.micro_cycle();
+                    self.machine_cycle();
                 }
             }
             _ => {}
@@ -417,7 +421,7 @@ impl Gameboy {
                 self[A].value = self.mmu.read(hl);
             }
             CallU16(n) => {
-                self.micro_cycle();
+                self.machine_cycle();
                 let [lo, hi] = self.reg.pc.value().to_le_bytes();
                 self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
                 self.mmu.write(self.reg.sp, hi);
@@ -463,7 +467,7 @@ impl Gameboy {
                 let c = (a & 0x00FF) + (b & 0x00FF) > 0x00FF;
                 self.reg.set_flags(false, false, h, c);
                 if let AddSpI8(_) = command {
-                    self.micro_cycle()
+                    self.machine_cycle()
                 }
                 self.set_word_register_with_micro_cycle(
                     a.wrapping_add(b),
@@ -502,7 +506,7 @@ impl Gameboy {
                 _ => panic!(),
             },
             PushAf => {
-                self.micro_cycle();
+                self.machine_cycle();
                 self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
                 self.mmu.write(self.reg.sp, self[A]);
                 self.set_word_register(self.reg.sp.value().wrapping_sub(1), self.reg.sp);
@@ -510,7 +514,7 @@ impl Gameboy {
             }
             PushR16(reg) => {
                 self.mmu.corrupt_oam(self.reg.sp);
-                self.micro_cycle();
+                self.machine_cycle();
                 match reg {
                     WordRegister::Double(
                         ByteRegister { value: _, id: high },
@@ -571,7 +575,7 @@ impl Gameboy {
                 } else {
                     branch_taken = false
                 }
-                self.micro_cycle();
+                self.machine_cycle();
             }
 
             JpCcU16(cc, n) => {
@@ -608,8 +612,8 @@ impl Gameboy {
         command.cycles(branch_taken)
     }
 
-    fn micro_cycle(&mut self) {
-        self.mmu.cycle();
+    fn machine_cycle(&mut self) {
+        self.mmu.cycle(4);
     }
 
     fn set_pc(&mut self, value: u16, trigger_cycle: bool) {
@@ -618,7 +622,7 @@ impl Gameboy {
         }
         self.reg.pc = ProgramCounter(value);
         if trigger_cycle {
-            self.micro_cycle()
+            self.machine_cycle()
         }
     }
 
@@ -628,7 +632,7 @@ impl Gameboy {
 
     fn set_word_register_with_micro_cycle(&mut self, value: u16, reg: WordRegister) {
         self.reg
-            .set_word_register_with_callback(value, reg, |mem| mem.cycle(), &mut self.mmu);
+            .set_word_register_with_callback(value, reg, |mmu| mmu.cycle(4), &mut self.mmu);
     }
 }
 

@@ -117,7 +117,7 @@ impl MemoryManagementUnit {
 
         if self.boot_rom.is_some() && translated_address < 0x100 {
             let value = self.boot_rom.as_ref().unwrap()[translated_address];
-            self.cycle();
+            self.cycle(4);
             return value;
         }
 
@@ -133,7 +133,7 @@ impl MemoryManagementUnit {
         };
 
         let value = self.internal_read(translated_address);
-        self.cycle();
+        self.cycle(4);
         value
     }
 
@@ -150,7 +150,7 @@ impl MemoryManagementUnit {
 
         if translated_address == 0xFF50 && self.boot_rom.is_some() && value.into() == 1 {
             self.boot_rom = None;
-            self.cycle();
+            self.cycle(4);
             return;
         }
 
@@ -165,7 +165,7 @@ impl MemoryManagementUnit {
         };
 
         self.internal_write(translated_address, value.into());
-        self.cycle();
+        self.cycle(4);
     }
 
     fn internal_ram_read(&self, address: usize) -> u8 {
@@ -209,10 +209,10 @@ impl MemoryManagementUnit {
         }
     }
 
-    pub fn cycle(&mut self) {
+    pub fn cycle(&mut self, ticks: usize) {
         self.cycles += 1;
         self.dma_transfer();
-        self.machine_cycle();
+        self.machine_cycle(ticks);
     }
 
     pub fn dma_transfer(&mut self) {
@@ -251,8 +251,8 @@ impl MemoryManagementUnit {
         }
     }
 
-    fn machine_cycle(&mut self) {
-        match self.ppu.machine_cycle() {
+    fn machine_cycle(&mut self, ticks: usize) {
+        match self.ppu.machine_cycle(ticks) {
             (true, true) => {
                 self.update_screen();
                 self.interrupt_handler.set(VBlank);
@@ -266,7 +266,7 @@ impl MemoryManagementUnit {
             (false, false) => (),
         };
 
-        if self.timer.machine_cycle() {
+        if self.timer.machine_cycle(ticks as u16) {
             self.interrupt_handler.set(Timing)
         };
 
