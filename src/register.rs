@@ -184,8 +184,8 @@ impl FlagRegister {
     pub fn value(&self) -> u8 {
         let arr = [self.c, self.h, self.n, self.z];
         let mut output = 0;
-        for i in 0..arr.len() {
-            output += u8::from(arr[i]) << (i + 4) as u8;
+        for (i, &flag) in arr.iter().enumerate() {
+            output += u8::from(flag) << (i + 4) as u8;
         }
         output
     }

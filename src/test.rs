@@ -25,12 +25,12 @@ mod tests {
             .map(|entry| entry.unwrap())
             .filter(|entry| {
                 let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-                return if !rom.ends_with(".gb") {
+                if !rom.ends_with(".gb") {
                     println!("Skipping non ROM file: {rom}");
-                    return false;
+                    false
                 } else {
                     true
-                };
+                }
             })
             .collect();
 
