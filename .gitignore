@@ -1,3 +1,6 @@
+**/*.DS_Store
+**/*.sav
+**/*.sav.json
 /target
 /.idea
 *.iml

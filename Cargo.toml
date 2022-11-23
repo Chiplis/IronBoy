@@ -9,6 +9,10 @@ edition = "2021"
 [dependencies]
 minifb = "0.23.0"
 clap = { version = "4.0.18", features = ["derive"] }
+pausable_clock = "1.0.1"
+serde = { version = "1.0.147", features = ["derive"] }
+typetag = "0.2.3"
+serde_json = "1.0.88"
 
 [dev-dependencies]
 image = "0.24.4"

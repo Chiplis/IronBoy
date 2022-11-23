@@ -1,10 +1,12 @@
-use crate::memory_map::MemoryMap;
+use crate::mmu::MemoryManagementUnit;
 use crate::register::RegisterId::{A, B, C, D, E, H, L};
 use crate::register::WordRegister::StackPointer;
 use std::ops::{Index, IndexMut};
 use WordRegister::{AccFlag, Double, ProgramCounter};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum RegisterId {
     A,
     B,
@@ -15,18 +17,52 @@ pub enum RegisterId {
     L,
 }
 
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Register {
-    registers: [ByteRegister; 7],
+    registers: Vec<ByteRegister>,
     pub flags: FlagRegister,
     pub sp: WordRegister,
     pub pc: WordRegister,
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct ByteRegister {
+    pub value: u8,
+    pub id: RegisterId,
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct FlagRegister {
+    pub z: bool,
+    pub n: bool,
+    pub h: bool,
+    pub c: bool,
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub enum WordRegister {
+    Double(ByteRegister, ByteRegister),
+    AccFlag(ByteRegister, FlagRegister),
+    StackPointer(u16),
+    ProgramCounter(u16),
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct Bit(pub u8);
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ConditionCode {
+    Z,
+    NZ,
+    C,
+    NC,
 }
 
 impl Register {
     pub fn new(boot_rom: bool) -> Self {
         if !boot_rom {
             Self {
-                registers: [
+                registers: vec![
                     ByteRegister { value: 0x01, id: A },
                     ByteRegister { value: 0x00, id: B },
                     ByteRegister { value: 0x13, id: C },
@@ -46,7 +82,7 @@ impl Register {
             }
         } else {
             Self {
-                registers: [
+                registers: vec![
                     ByteRegister { value: 0x0, id: A },
                     ByteRegister { value: 0x0, id: B },
                     ByteRegister { value: 0x0, id: C },
@@ -80,7 +116,12 @@ impl Register {
         Double(self[H], self[L])
     }
 
-    pub fn set_word_register(&mut self, value: u16, reg: WordRegister, mem: &mut MemoryMap) {
+    pub fn set_word_register(
+        &mut self,
+        value: u16,
+        reg: WordRegister,
+        mem: &mut MemoryManagementUnit,
+    ) {
         self.set_word_register_with_callback(value, reg, |_mem| (), mem);
     }
 
@@ -88,8 +129,8 @@ impl Register {
         &mut self,
         value: u16,
         reg: WordRegister,
-        callback: fn(&mut MemoryMap),
-        mem: &mut MemoryMap,
+        callback: fn(&mut MemoryManagementUnit),
+        mem: &mut MemoryManagementUnit,
     ) {
         let [lo, hi] = value.to_le_bytes();
         match reg {
@@ -139,20 +180,6 @@ impl Register {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ByteRegister {
-    pub value: u8,
-    pub id: RegisterId,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FlagRegister {
-    pub z: bool,
-    pub n: bool,
-    pub h: bool,
-    pub c: bool,
-}
-
 impl FlagRegister {
     pub fn value(&self) -> u8 {
         let arr = [self.c, self.h, self.n, self.z];
@@ -171,14 +198,6 @@ impl FlagRegister {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum WordRegister {
-    Double(ByteRegister, ByteRegister),
-    AccFlag(ByteRegister, FlagRegister),
-    StackPointer(u16),
-    ProgramCounter(u16),
-}
-
 impl WordRegister {
     pub fn value(self) -> u16 {
         match self {
@@ -193,17 +212,6 @@ impl WordRegister {
             StackPointer(n) | ProgramCounter(n) => n,
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Bit(pub u8);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ConditionCode {
-    Z,
-    NZ,
-    C,
-    NC,
 }
 
 impl Index<RegisterId> for Register {

@@ -1,3 +1,8 @@
+use crate::mmu::MemoryArea;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Timer {
     tima: u8,
     tma: u8,
@@ -7,55 +12,8 @@ pub struct Timer {
     interrupt_served: bool,
 }
 
-impl Timer {
-    const DIVIDER: usize = 0xFF04;
-    const TIMA: usize = 0xFF05;
-    const TMA: usize = 0xFF06;
-    const TAC: usize = 0xFF07;
-
-    pub fn new(boot_rom: bool) -> Self {
-        Self {
-            tima: 0,
-            tma: 0,
-            tac: 0,
-            ticks: if boot_rom { 0x00 } else { 0xABCC },
-            interrupt: false,
-            interrupt_served: false,
-        }
-    }
-
-    pub fn machine_cycle(&mut self) -> bool {
-        self.interrupt_served = false;
-
-        let interrupt = self.interrupt;
-
-        if interrupt {
-            self.tima = self.tma;
-            self.interrupt_served = true;
-        }
-
-        self.interrupt = false;
-
-        let old_ticks = self.ticks;
-        self.ticks = self.ticks.wrapping_add(4);
-        self.tima_increase(old_ticks);
-
-        interrupt
-    }
-
-    fn tima_increase(&mut self, old_ticks: u16) {
-        if self.timer_enabled() && self.timer_increase(old_ticks) {
-            let (new_tima, overflow) = self.tima.overflowing_add(1);
-            self.tima = new_tima;
-            self.interrupt = overflow;
-        }
-    }
-
-    fn timer_increase(&self, old_timer: u16) -> bool {
-        old_timer & self.frequency() != 0 && self.ticks & self.frequency() == 0
-    }
-
-    pub fn read(&self, address: usize) -> Option<u8> {
+impl MemoryArea for Timer {
+    fn read(&self, address: usize) -> Option<u8> {
         match address {
             Timer::DIVIDER => Some(self.ticks.to_le_bytes()[1]),
             Timer::TIMA => Some(self.tima),
@@ -65,7 +23,7 @@ impl Timer {
         }
     }
 
-    pub fn write(&mut self, address: usize, value: u8) -> bool {
+    fn write(&mut self, address: usize, value: u8) -> bool {
         match address {
             Timer::DIVIDER => {
                 let old_ticks = self.ticks;
@@ -88,6 +46,55 @@ impl Timer {
             _ => return false,
         };
         true
+    }
+}
+
+impl Timer {
+    const DIVIDER: usize = 0xFF04;
+    const TIMA: usize = 0xFF05;
+    const TMA: usize = 0xFF06;
+    const TAC: usize = 0xFF07;
+
+    pub fn new(boot_rom: bool) -> Self {
+        Self {
+            tima: 0,
+            tma: 0,
+            tac: 0,
+            ticks: if boot_rom { 0x00 } else { 0xABCC },
+            interrupt: false,
+            interrupt_served: false,
+        }
+    }
+
+    pub fn machine_cycle(&mut self, ticks: u16) -> bool {
+        self.interrupt_served = false;
+
+        let interrupt = self.interrupt;
+
+        if interrupt {
+            self.tima = self.tma;
+            self.interrupt_served = true;
+        }
+
+        self.interrupt = false;
+
+        let old_ticks = self.ticks;
+        self.ticks = self.ticks.wrapping_add(ticks);
+        self.tima_increase(old_ticks);
+
+        interrupt
+    }
+
+    fn tima_increase(&mut self, old_ticks: u16) {
+        if self.timer_enabled() && self.timer_increase(old_ticks) {
+            let (new_tima, overflow) = self.tima.overflowing_add(1);
+            self.tima = new_tima;
+            self.interrupt = overflow;
+        }
+    }
+
+    fn timer_increase(&self, old_timer: u16) -> bool {
+        old_timer & self.frequency() != 0 && self.ticks & self.frequency() == 0
     }
 
     fn timer_enabled(&self) -> bool {
