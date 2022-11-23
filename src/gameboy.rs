@@ -653,7 +653,7 @@ impl IndexMut<RegisterId> for Gameboy {
 fn calc_with_carry<T: Copy>(operands: Vec<T>, op: fn(T, T) -> (T, bool)) -> (T, bool) {
     let mut c = false;
     let mut acc = operands[0];
-    for x in operands[1..].iter() {
+    for x in &operands[1..] {
         if !c {
             let res = op(acc, *x);
             acc = res.0;

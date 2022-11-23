@@ -40,7 +40,7 @@ impl Fetcher {
         let operand_idx = ((opcode & 0x0F) % 8) as usize;
         let register_idx = (max(0x40, opcode) as usize - 0x40) / 8;
 
-        let pc_offset = if halt_bug { 0 } else { 1 };
+        let pc_offset = u16::from(!halt_bug);
         let pc = [pc, pc + pc_offset, pc + pc_offset + 1];
 
         Instruction(

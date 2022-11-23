@@ -36,6 +36,12 @@ mod renderer;
 mod serial;
 mod timer;
 
+#[cfg(test)]
+mod test;
+
+const WIDTH: usize = 160;
+const HEIGHT: usize = 144;
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -79,7 +85,7 @@ fn main() {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
         let rom = read(rom_path).expect("Unable to read ROM file");
         let cartridge = Cartridge::new(&rom);
-        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, &args.rom_file);
+        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, Path::new(&args.rom_file));
         Gameboy::new(mem)
     } else {
         let save_file = &mut vec![];
@@ -98,8 +104,8 @@ fn main() {
         gameboy.mmu.renderer.set_window(
             Window::new(
                 &args.rom_file,
-                160,
-                144,
+                WIDTH,
+                HEIGHT,
                 WindowOptions {
                     borderless: false,
                     transparency: false,
@@ -202,142 +208,4 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool) -> Duration {
         }
     }
     start.elapsed()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs::{read, read_dir, DirEntry};
-    use std::{env, panic};
-
-    use std::io::Error;
-
-    use crate::cartridge::Cartridge;
-    use crate::{run_frame, Gameboy, MemoryManagementUnit};
-    use image::io::Reader;
-    use image::RgbaImage;
-    use std::path::Path;
-    use std::sync::mpsc::channel;
-    use std::thread;
-    use std::time::Duration;
-
-    #[test]
-    fn test_roms() -> Result<(), Error> {
-        let (test_status_tx, test_status_rv) = channel();
-        let _args: Vec<String> = env::args().collect();
-
-        panic::set_hook(Box::new(|_info| std::process::exit(1)));
-
-        let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
-        let all_tests: Vec<DirEntry> = all_tests
-            .map(|entry| entry.unwrap())
-            .filter(|entry| {
-                let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-                let latest_img_path =
-                    rom.replace("test_rom", "test_latest").replace('\\', "/") + ".png";
-
-                let _latest_image = Path::new(&latest_img_path);
-
-                if !rom.ends_with(".gb") {
-                    println!("Skipping non ROM file: {rom}");
-                    return false;
-                }
-                let _rom_vec = read(&rom).unwrap();
-
-                true
-            })
-            .collect();
-
-        let total = all_tests.len();
-        for (idx, entry) in all_tests.into_iter().enumerate() {
-            let tx_finish = test_status_tx.clone();
-            thread::spawn(move || {
-                const TEST_DURATION: u8 = 30;
-                let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-                println!("Testing {}", rom);
-                let rom_vec = read(&rom).unwrap();
-                let cartridge = Cartridge::new(&rom_vec);
-
-                let mem = MemoryManagementUnit::new(rom_vec, cartridge, None, &rom);
-                let mut gameboy = Gameboy::new(mem);
-                let mut tests_counter = 0;
-                let r = rom.clone();
-                let (tx, rx) = channel();
-
-                thread::spawn(move || {
-                    for i in 0..TEST_DURATION {
-                        thread::sleep(Duration::from_secs(1));
-                        println!("Saving screenshot #{i} for {r}");
-                        if let Err(e) = tx.send(r.clone()) {
-                            panic!("Panicked with {e} while saving screenshot #{i} for {r}")
-                        };
-                    }
-                });
-                'inner: loop {
-                    if rx.try_recv().is_ok() {
-                        tests_counter += 1;
-                        if tests_counter >= TEST_DURATION - 1 {
-                            break 'inner;
-                        }
-
-                        let map_pixel = |pixel: &u32| {
-                            let pixels = pixel.to_be_bytes();
-                            let a = pixels[0];
-                            let r = pixels[1];
-                            let g = pixels[2];
-                            let b = pixels[3];
-                            [r, g, b, a]
-                        };
-                        let pixels = gameboy
-                            .mmu
-                            .ppu
-                            .screen
-                            .iter()
-                            .flat_map(map_pixel)
-                            .collect::<Vec<u8>>();
-
-                        let screenshot_path = rom.split('/').collect::<Vec<&str>>();
-                        let img_name = *screenshot_path.last().unwrap();
-                        let screenshot_path = screenshot_path[0..screenshot_path.len() - 2]
-                            .join("/")
-                            + "/test_output/"
-                            + img_name
-                            + ".png";
-                        RgbaImage::from_raw(160, 144, pixels)
-                            .unwrap()
-                            .save(Path::new(&screenshot_path))
-                            .unwrap();
-                        let screenshot = Reader::open(screenshot_path.clone())
-                            .unwrap()
-                            .decode()
-                            .unwrap();
-                        let _screenshot = screenshot.as_bytes();
-                        let _ok_image =
-                            Reader::open(screenshot_path.clone().replace("test_output", "test_ok"));
-                        let _latest_image = Reader::open(
-                            screenshot_path
-                                .clone()
-                                .replace("test_output", "test_latest"),
-                        );
-                    }
-
-                    run_frame(&mut gameboy, false);
-                }
-                tx_finish.send(idx).unwrap();
-            });
-        }
-        let mut count = 0;
-        while count != total {
-            match test_status_rv.recv() {
-                Ok(_) => {
-                    println!("Increased counter {count}/{total}");
-                    count += 1
-                }
-                Err(e) => println!("Error receiving: {e}"),
-            }
-            if count == total {
-                return Ok(());
-            }
-        }
-        Err(Error::last_os_error())
-    }
 }

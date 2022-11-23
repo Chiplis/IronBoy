@@ -67,17 +67,10 @@ impl Joypad {
 
     fn map_buttons(buttons: [Key; 4], window: &Window) -> u8 {
         let mut sum: u8 = 0;
-        if window.is_key_down(buttons[0]) {
-            sum += 1
-        }
-        if window.is_key_down(buttons[1]) {
-            sum += 2
-        }
-        if window.is_key_down(buttons[2]) {
-            sum += 4
-        }
-        if window.is_key_down(buttons[3]) {
-            sum += 8
+        for i in 0..buttons.len() {
+            if window.is_key_down(buttons[i]) {
+                sum += 2u8.pow(i as u32);
+            }
         }
         !sum & 0x0F
     }

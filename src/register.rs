@@ -182,12 +182,12 @@ impl Register {
 
 impl FlagRegister {
     pub fn value(&self) -> u8 {
-        [self.c, self.h, self.n, self.z]
-            .iter()
-            .map(|&f| i32::from(f))
-            .enumerate()
-            .map(|(i, n)| (n << (i + 4)) as u8)
-            .sum()
+        let arr = [self.c, self.h, self.n, self.z];
+        let mut output = 0;
+        for i in 0..arr.len() {
+            output += u8::from(arr[i]) << (i + 4) as u8;
+        }
+        output
     }
 
     pub fn set(&mut self, v: u8) {
