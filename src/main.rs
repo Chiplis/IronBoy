@@ -35,10 +35,10 @@ mod register;
 mod renderer;
 mod serial;
 mod timer;
+
 #[cfg(test)]
 mod test;
 
-const FREQUENCY: u32 = 4194304;
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
 
@@ -85,7 +85,7 @@ fn main() {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
         let rom = read(rom_path).expect("Unable to read ROM file");
         let cartridge = Cartridge::new(&rom);
-        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, &args.rom_file);
+        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, &Path::new(&args.rom_file));
         Gameboy::new(mem)
     } else {
         let save_file = &mut vec![];
@@ -104,8 +104,8 @@ fn main() {
         gameboy.mmu.renderer.set_window(
             Window::new(
                 &args.rom_file,
-                160,
-                144,
+                WIDTH,
+                HEIGHT,
                 WindowOptions {
                     borderless: false,
                     transparency: false,

@@ -1,3 +1,4 @@
+use crate::{HEIGHT, WIDTH};
 use crate::cartridge::Cartridge;
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
@@ -6,6 +7,7 @@ use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
 use std::any::{Any, TypeId};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -54,7 +56,7 @@ impl MemoryManagementUnit {
         rom: Vec<u8>,
         cartridge: Cartridge,
         boot_rom: Option<String>,
-        rom_path: &String,
+        rom_path: &Path,
     ) -> MemoryManagementUnit {
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
         let mem = MemoryManagementUnit {
@@ -74,7 +76,7 @@ impl MemoryManagementUnit {
         MemoryManagementUnit::init_memory(mem)
     }
 
-    fn load_mbc(cartridge: Cartridge, rom: Vec<u8>, rom_path: &String) -> Box<dyn MemoryBankController> {
+    fn load_mbc(cartridge: Cartridge, rom: Vec<u8>, rom_path: &Path) -> Box<dyn MemoryBankController> {
         match cartridge.mbc {
             0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
             0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
@@ -82,7 +84,7 @@ impl MemoryManagementUnit {
             _ => {
                 println!(
                     "MBC ID {} not implemented, defaulting to MBC0 - {}",
-                    cartridge.mbc, rom_path
+                    cartridge.mbc, rom_path.to_str().unwrap()
                 );
                 Box::new(MBC0::new(rom, vec![0; 32 * 1024]))
             }
@@ -221,7 +223,7 @@ impl MemoryManagementUnit {
         self.ppu.dma_block_oam = true;
 
         // 8 cycles delay + 160 machine cycles
-        if elapsed < 8 + 160 * 4 {
+        if elapsed < 8 + WIDTH * 4 {
             return;
         }
 
@@ -237,7 +239,7 @@ impl MemoryManagementUnit {
         } as usize
             * 0x100;
 
-        for (index, address) in (start..start + 160).enumerate() {
+        for (index, address) in (start..start + WIDTH).enumerate() {
             self.ppu.oam[index] = match address {
                 0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000],
                 _ => self.internal_read(address),
@@ -276,7 +278,7 @@ impl MemoryManagementUnit {
     fn update_screen(&mut self) {
         if let Some(window) = self.renderer.window().as_mut() {
             window
-                .update_with_buffer(self.ppu.screen.as_slice(), 160, 144)
+                .update_with_buffer(self.ppu.screen.as_slice(), WIDTH, HEIGHT)
                 .unwrap()
         }
     }

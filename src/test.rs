@@ -1,24 +1,28 @@
-use std::fs::{read, read_dir, DirEntry};
-use std::{env, io};
-
+use std::env;
+use std::ffi::OsStr;
+use std::time::Duration;
+use std::thread;
+use std::sync::mpsc::channel;
+use std::path::PathBuf;
+use std::panic;
 use std::io::Error;
-
-use crate::{run_frame, Gameboy, MemoryMap, WIDTH, HEIGHT};
+use std::fs::{read, read_dir, DirEntry};
 use image::io::Reader;
 use image::RgbaImage;
-use std::path::Path;
-use std::sync::mpsc::channel;
-use std::thread;
-use std::time::Duration;
-use std::path::PathBuf;
+
+use crate::HEIGHT;
+use crate::WIDTH;
+use crate::{ run_frame, Gameboy, cartridge::Cartridge, mmu::MemoryManagementUnit };
+
+#[inline]
+fn cwd() -> PathBuf { env::current_dir().unwrap() }
 
 #[test]
-fn test_roms() -> Result<(), io::Error> {
+fn test_roms() -> Result<(), Error> {
     let (test_status_tx, test_status_rv) = channel();
-    let args: Vec<String> = env::args().collect();
+    let _args: Vec<String> = env::args().collect();
 
-    let skip_known = args.contains(&"skip-known".to_owned());
-    let skip_same = args.contains(&"skip-same".to_owned());
+    panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
     let test_rom_dir = cwd().join("test_rom");
 
@@ -26,52 +30,49 @@ fn test_roms() -> Result<(), io::Error> {
         .map(|entry| entry.unwrap())
         .filter(|entry| {
             let rom_path = entry.path();
-            let rom_name = rom_path.file_name().unwrap().to_str().unwrap();
+            let rom_name = rom_path.file_stem().unwrap().to_str().unwrap();
+            let rom_filename = rom_path.file_name().unwrap().to_str().unwrap();
 
-            let latest_img_path = rom_path
+            let _latest_img_path = rom_path
                 .join(format!("../../test_latest/{rom_name}.png"));
 
-            if skip_known && latest_img_path.exists() {
-                println!("Skipping already tested ROM: {rom_name}");
+            if rom_path.extension() != Some(&OsStr::new("gb")) {
+                println!("Skipping non ROM file: {rom_filename}");
                 return false;
             }
-
-            if rom_path.extension().unwrap_or_default().to_str().unwrap().to_lowercase() != "gb" {
-                println!("Skipping non ROM file: {rom_name}");
-                return false;
+            
+            if read(&rom_path).is_ok() {
+                true
+            } else {
+                println!("Failed reading ROM file: {rom_filename}");
+                false
             }
-
-            let rom_size = rom_path.metadata().unwrap().len();
-            if rom_size > 32768 {
-                println!("Still need to implement MBC for larger ROM's: {rom_name}");
-                return false;
-            }
-
-            true
         })
         .collect();
+
     let total = all_tests.len();
     for (idx, entry) in all_tests.into_iter().enumerate() {
         let tx_finish = test_status_tx.clone();
         thread::spawn(move || {
             const TEST_DURATION: u8 = 30;
             let rom = entry.path();
-
+            println!("Testing {}", rom.file_name().unwrap().to_str().unwrap());
             let rom_vec = read(&rom).unwrap();
-            let mem = MemoryMap::new(&rom_vec, &rom.to_str().unwrap(), true, None);
-            let mut gameboy = Gameboy::new(mem);
-            println!("Beginning test loop");
-            let mut tests_counter = 0;
+            let cartridge = Cartridge::new(&rom_vec);
 
-            let r = rom.to_string_lossy().to_string();
-            let (tx, rx) = std::sync::mpsc::channel();
+            let mem = MemoryManagementUnit::new(rom_vec, cartridge, None, &rom);
+            let mut gameboy = Gameboy::new(mem);
+            let mut tests_counter = 0;
+            let r = rom.clone();
+            let rom_name = r.file_name().unwrap().to_str().unwrap().to_owned();
+            let (tx, rx) = channel();
 
             thread::spawn(move || {
                 for i in 0..TEST_DURATION {
                     thread::sleep(Duration::from_secs(1));
-                    println!("Saving screenshot #{i} for {r}");
+                    println!("Saving screenshot #{i} for {rom_name}");
                     if let Err(e) = tx.send(r.clone()) {
-                        println!("Panicked with {e} while saving screenshot #{i} for {r}")
+                        panic!("Panicked with {e} while saving screenshot #{i} for {rom_name}")
                     };
                 }
             });
@@ -91,9 +92,9 @@ fn test_roms() -> Result<(), io::Error> {
                         [r, g, b, a]
                     };
                     let pixels = gameboy
-                        .mem
+                        .mmu
                         .ppu
-                        .pixels
+                        .screen
                         .iter()
                         .flat_map(map_pixel)
                         .collect::<Vec<u8>>();
@@ -103,39 +104,21 @@ fn test_roms() -> Result<(), io::Error> {
                     let screenshot_ok_path = rom.join(&format!("../../test_ok/{rom_name}.png"));
                     let screenshot_latest_path = rom.join(&format!("../../test_latest/{rom_name}.png"));
 
-                    let screenshot = image::load_from_memory(&pixels).unwrap();
-                    let screenshot = screenshot.as_bytes();
-
                     RgbaImage::from_raw(WIDTH as u32, HEIGHT as u32, pixels)
                         .unwrap()
-                        .save(Path::new(&screenshot_output_path))
+                        .save(&screenshot_output_path)
                         .unwrap();
-
-                    let ok_image =
-                        Reader::open(screenshot_ok_path);
-                    let latest_image = Reader::open(screenshot_latest_path);
-                    if ok_image.is_ok()
-                        && ok_image.unwrap().decode().unwrap().as_bytes() == screenshot
-                    {
-                        println!(
-                            "Ending {} test because result was confirmed as OK",
-                            rom_name,
-                        );
-                        break 'inner;
-                    }
-                    if skip_same
-                        && latest_image.is_ok()
-                        && latest_image.unwrap().decode().unwrap().as_bytes() == screenshot
-                    {
-                        println!(
-                            "Ending {} test because result was same as previously saved one",
-                            rom_name,
-                        );
-                        break 'inner;
-                    }
+                    let screenshot = Reader::open(&screenshot_output_path)
+                        .unwrap()
+                        .decode()
+                        .unwrap();
+                    let _screenshot = screenshot.as_bytes();
+                    let _ok_image =
+                        Reader::open(&screenshot_ok_path);
+                    let _latest_image = Reader::open(&screenshot_latest_path);
                 }
 
-                run_frame(&mut gameboy, false, 0.0);
+                run_frame(&mut gameboy, false);
             }
             tx_finish.send(idx).unwrap();
         });
@@ -144,8 +127,8 @@ fn test_roms() -> Result<(), io::Error> {
     while count != total {
         match test_status_rv.recv() {
             Ok(_) => {
+                count += 1;
                 println!("Increased counter {count}/{total}");
-                count += 1
             }
             Err(e) => println!("Error receiving: {e}"),
         }
@@ -155,72 +138,3 @@ fn test_roms() -> Result<(), io::Error> {
     }
     Err(Error::last_os_error())
 }
-
-#[test]
-fn test_regressions() -> Result<(), io::Error> {
-    let mut regressions = vec![];
-    for entry in read_dir(cwd().join("test_latest"))?.map(|entry| entry.unwrap()) {
-        let path = entry.path();
-        let img_name = path.file_name().unwrap().to_str().unwrap();
-        let img_stem = path.file_stem().unwrap().to_str().unwrap();
-
-        match check_regression(img_name) {
-            Some(true) => regressions.push(img_stem.to_owned()),
-            Some(false) => (),
-            None => (),
-        }
-    }
-
-    if !regressions.is_empty() {
-        panic!("\nRegressions found:\n{}", regressions.join("\n"));
-    }
-
-    Ok(())
-}
-
-#[test]
-fn test_differences() -> Result<(), io::Error> {
-    let mut differences = vec![];
-    for entry in read_dir(cwd().join(Path::new("test_latest")))? {
-        if entry.is_err() { continue }
-
-        let path = entry.unwrap().path();
-        let img_name = path.file_name().unwrap().to_str().unwrap();
-        let img_stem = path.file_stem().unwrap().to_str().unwrap();
-
-        match check_regression(img_name) {
-            // are different
-            Some(true) => differences.push(img_stem.to_owned()),
-            // are equal
-            Some(false) => (),
-            // unable to read / missing file
-            None => differences.push(format!("MISSING: {}", img_stem)),
-        }
-    }
-    if !differences.is_empty() {
-        print!("Differences found:\n{}", differences.join("\n"));
-    }
-    Ok(())
-}
-
-fn check_regression(file_name: &str) -> Option<bool> {
-    let images = (
-        Reader::open(cwd().join(format!("test_output/{file_name}")))
-            .map(|i| i.decode()),
-        Reader::open(cwd().join(format!("test_latest/{file_name}")))
-            .map(|i| i.decode()),
-    );
-
-    if let (Ok(Ok(ok_image)), Ok(Ok(latest_image))) = images {
-        if ok_image.as_bytes() != latest_image.as_bytes() {
-            Some(true)
-        } else {
-            Some(false)
-        }
-    } else {
-        None
-    }
-}
-
-#[inline]
-fn cwd() -> PathBuf { std::env::current_dir().unwrap() }
