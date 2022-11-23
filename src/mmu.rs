@@ -59,7 +59,7 @@ impl MemoryManagementUnit {
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
         let mem = MemoryManagementUnit {
             renderer: Renderer::new(),
-            high_ram: vec![0; 2 * 1024 * 1024],
+            high_ram: vec![0; 0x10000 - 0xFEA0],
             dma: 0xFF,
             joypad: Joypad::new(),
             ppu: PixelProcessingUnit::new(),
@@ -166,7 +166,7 @@ impl MemoryManagementUnit {
         match address as u16 {
             0xC000..=0xDFFF => self.work_ram[address - 0xC000],
             0xE000..=0xFDFF => self.work_ram[address - 0x2000 - 0xC000],
-            0xFEA0..=0xFFFF => self.high_ram[address],
+            0xFEA0..=0xFFFF => self.high_ram[address - 0xFEA0],
             _ => panic!("Unhandled address for read: {}", address),
         }
     }
@@ -175,7 +175,7 @@ impl MemoryManagementUnit {
         match address as u16 {
             0xC000..=0xDFFF => self.work_ram[address - 0xC000] = value,
             0xE000..=0xFDFF => self.work_ram[address - 0x2000 - 0xC000] = value,
-            0xFEA0..=0xFFFF => self.high_ram[address] = value,
+            0xFEA0..=0xFFFF => self.high_ram[address - 0xFEA0] = value,
             _ => panic!("Unhandled address for write: {}", address),
         }
     }

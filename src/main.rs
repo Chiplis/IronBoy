@@ -225,7 +225,7 @@ mod tests {
         let (test_status_tx, test_status_rv) = channel();
         let _args: Vec<String> = env::args().collect();
 
-        // panic::set_hook(Box::new(|_info| std::process::exit(1)));
+        panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
         let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
         let all_tests: Vec<DirEntry> = all_tests
