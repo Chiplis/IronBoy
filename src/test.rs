@@ -36,7 +36,7 @@ fn test_roms() -> Result<(), Error> {
             let _latest_img_path = rom_path
                 .join(format!("../../test_latest/{rom_name}.png"));
 
-            if rom_path.extension() != Some(&OsStr::new("gb")) {
+            if rom_path.extension() != Some(OsStr::new("gb")) {
                 println!("Skipping non ROM file: {rom_filename}");
                 return false;
             }

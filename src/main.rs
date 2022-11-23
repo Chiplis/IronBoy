@@ -85,7 +85,7 @@ fn main() {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
         let rom = read(rom_path).expect("Unable to read ROM file");
         let cartridge = Cartridge::new(&rom);
-        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, &Path::new(&args.rom_file));
+        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, Path::new(&args.rom_file));
         Gameboy::new(mem)
     } else {
         let save_file = &mut vec![];
