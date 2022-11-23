@@ -56,43 +56,37 @@ impl MemoryManagementUnit {
         boot_rom: Option<String>,
         rom_path: &String,
     ) -> MemoryManagementUnit {
-        let ppu = PixelProcessingUnit::new();
-        let joypad = Joypad::new();
-        let interrupt_handler = InterruptHandler::new();
-        let timer = Timer::new(boot_rom.is_some());
-        let memory = vec![0; 0xE000 - 0xC000];
-        let micro_ops = 0;
-
-        let serial = LinkCable::new();
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
-
         let mem = MemoryManagementUnit {
             renderer: Renderer::new(),
             high_ram: vec![0; 2 * 1024 * 1024],
             dma: 0xFF,
-            joypad,
-            ppu,
-            interrupt_handler,
-            timer,
-            work_ram: memory,
-            cycles: micro_ops,
-            serial,
+            joypad: Joypad::new(),
+            ppu: PixelProcessingUnit::new(),
+            interrupt_handler: InterruptHandler::new(),
+            timer: Timer::new(boot.is_some()),
+            work_ram: vec![0; 0xE000 - 0xC000],
+            cycles: 0,
+            serial: LinkCable::new(),
             boot_rom: boot,
-            mbc: match cartridge.mbc {
-                0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
-                0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
-                0x0F..=0x13 => Box::new(MBC3::new(cartridge, rom)),
-                _ => {
-                    println!(
-                        "MBC ID {} not implemented, defaulting to MBC0 - {}",
-                        cartridge.mbc, rom_path
-                    );
-                    Box::new(MBC0::new(rom, vec![0; 32 * 1024]))
-                }
-            },
+            mbc: Self::load_mbc(cartridge, rom, rom_path),
         };
-
         MemoryManagementUnit::init_memory(mem)
+    }
+
+    fn load_mbc(cartridge: Cartridge, rom: Vec<u8>, rom_path: &String) -> Box<dyn MemoryBankController> {
+        match cartridge.mbc {
+            0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
+            0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
+            0x0F..=0x13 => Box::new(MBC3::new(cartridge, rom)),
+            _ => {
+                println!(
+                    "MBC ID {} not implemented, defaulting to MBC0 - {}",
+                    cartridge.mbc, rom_path
+                );
+                Box::new(MBC0::new(rom, vec![0; 32 * 1024]))
+            }
+        }
     }
 
     fn in_oam(&self, address: usize) -> bool {
