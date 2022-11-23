@@ -7,7 +7,6 @@ mod tests {
 
     use crate::cartridge::Cartridge;
     use crate::{run_frame, Gameboy, MemoryManagementUnit};
-    use image::io::Reader;
     use image::RgbaImage;
     use std::path::Path;
     use std::sync::mpsc::channel;
@@ -69,11 +68,7 @@ mod tests {
 
                         let map_pixel = |pixel: &u32| {
                             let pixels = pixel.to_be_bytes();
-                            let a = pixels[0];
-                            let r = pixels[1];
-                            let g = pixels[2];
-                            let b = pixels[3];
-                            [r, g, b, a]
+                            [pixels[1], pixels[2], pixels[3], pixels[0]]
                         };
                         let pixels = gameboy
                             .mmu
@@ -81,15 +76,9 @@ mod tests {
                             .screen
                             .iter()
                             .flat_map(map_pixel)
-                            .collect::<Vec<u8>>();
+                            .collect();
 
-                        let screenshot_path = rom.split('/').collect::<Vec<&str>>();
-                        let img_name = *screenshot_path.last().unwrap();
-                        let screenshot_path = screenshot_path[0..screenshot_path.len() - 2]
-                            .join("/")
-                            + "/test_output/"
-                            + img_name
-                            + ".png";
+                        let screenshot_path = rom.replace("test_rom", "test_output") + ".png";
                         RgbaImage::from_raw(160, 144, pixels)
                             .unwrap()
                             .save(Path::new(&screenshot_path))
