@@ -161,7 +161,10 @@ fn main() {
                 slowest_frame,
                 gameboy.mmu.renderer.slowest
             );
-            remove_file(Path::new("feboy.tmp")).unwrap();
+            let tmp = Path::new("feboy.tmp");
+            if tmp.exists() {
+                remove_file(tmp).unwrap();
+            }
             std::process::exit(0);
         }
 
