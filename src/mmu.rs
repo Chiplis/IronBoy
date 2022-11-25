@@ -1,4 +1,3 @@
-use crate::{HEIGHT, WIDTH};
 use crate::cartridge::Cartridge;
 use crate::interrupt::InterruptHandler;
 use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
@@ -6,7 +5,9 @@ use crate::joypad::Joypad;
 use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
+use crate::WIDTH;
 use std::any::{Any, TypeId};
+
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -41,7 +42,7 @@ pub struct MemoryManagementUnit {
     pub ppu: PixelProcessingUnit,
     serial: LinkCable,
     timer: Timer,
-    joypad: Joypad,
+    pub(crate) joypad: Joypad,
     pub cycles: u16,
     pub dma: u8,
 }
@@ -76,7 +77,11 @@ impl MemoryManagementUnit {
         MemoryManagementUnit::init_memory(mem)
     }
 
-    fn load_mbc(cartridge: Cartridge, rom: Vec<u8>, rom_path: &Path) -> Box<dyn MemoryBankController> {
+    fn load_mbc(
+        cartridge: Cartridge,
+        rom: Vec<u8>,
+        rom_path: &Path,
+    ) -> Box<dyn MemoryBankController> {
         match cartridge.mbc {
             0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
             0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
@@ -84,7 +89,8 @@ impl MemoryManagementUnit {
             _ => {
                 println!(
                     "MBC ID {} not implemented, defaulting to MBC0 - {}",
-                    cartridge.mbc, rom_path.to_str().unwrap()
+                    cartridge.mbc,
+                    rom_path.to_str().unwrap()
                 );
                 Box::new(MBC0::new(rom, vec![0; 32 * 1024]))
             }
@@ -241,7 +247,7 @@ impl MemoryManagementUnit {
 
         for (index, address) in (start..start + WIDTH).enumerate() {
             self.ppu.oam[index] = match address {
-                0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000],
+                0x8000..=0x9FFF => self.ppu.vram[address - 0x8000],
                 _ => self.internal_read(address),
             };
         }
@@ -250,12 +256,12 @@ impl MemoryManagementUnit {
     fn machine_cycle(&mut self, ticks: usize) {
         match self.ppu.machine_cycle(ticks) {
             (true, true) => {
-                self.update_screen();
+                self.renderer.render(&self.ppu.screen);
                 self.interrupt_handler.set(VBlank);
                 self.interrupt_handler.set(Stat);
             }
             (true, false) => {
-                self.update_screen();
+                self.renderer.render(&self.ppu.screen);
                 self.interrupt_handler.set(VBlank)
             }
             (false, true) => self.interrupt_handler.set(Stat),
@@ -270,16 +276,8 @@ impl MemoryManagementUnit {
             self.interrupt_handler.set(Serial)
         };
 
-        if self.joypad.machine_cycle(self.renderer.window()) {
+        if self.joypad.machine_cycle() {
             self.interrupt_handler.set(Input)
-        }
-    }
-
-    fn update_screen(&mut self) {
-        if let Some(window) = self.renderer.window().as_mut() {
-            window
-                .update_with_buffer(self.ppu.screen.as_slice(), WIDTH, HEIGHT)
-                .unwrap()
         }
     }
 

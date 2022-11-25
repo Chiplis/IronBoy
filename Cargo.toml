@@ -7,7 +7,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-minifb = "0.23.0"
+winit = "0.27.5"
+winit_input_helper = "0.13.0"
+pixels = "0.10.0"
 clap = { version = "4.0.18", features = ["derive"] }
 pausable_clock = "1.0.1"
 serde = { version = "1.0.147", features = ["derive"] }

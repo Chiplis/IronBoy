@@ -47,7 +47,7 @@ impl Fetcher {
             opcode,
             match opcode {
                 0xCB => {
-                    let cb_opcode = ram.read(pc[1]) as u8;
+                    let cb_opcode = ram.read(pc[1]);
 
                     let bit: usize =
                         ((cb_opcode as usize % 0x40) >> 4) * 2 + usize::from(cb_opcode & 0x0F > 7);

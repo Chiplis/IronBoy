@@ -67,12 +67,8 @@ impl Gameboy {
             return interrupt_cycles;
         }
 
-        let instruction = Fetcher::fetch(
-            self.halt_bug,
-            self.reg.pc.value(),
-            &self.reg,
-            &mut self.mmu,
-        );
+        let instruction =
+            Fetcher::fetch(self.halt_bug, self.reg.pc.value(), &self.reg, &mut self.mmu);
         let (_, command) = (instruction.0, instruction.1);
 
         self.set_pc(self.reg.pc.value() + command.size() as u16, false);
@@ -462,7 +458,7 @@ impl Gameboy {
             }
             AddSpI8(n) | LdHlSpI8(n) => {
                 let a = self.reg.sp.value();
-                let b = n as i8 as i16 as u16;
+                let b = n as i16 as u16;
                 let h = (a & 0x000F) + (b & 0x000F) > 0x000F;
                 let c = (a & 0x00FF) + (b & 0x00FF) > 0x00FF;
                 self.reg.set_flags(false, false, h, c);

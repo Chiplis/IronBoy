@@ -7,7 +7,6 @@ use gameboy::Gameboy;
 use crate::mmu::MemoryManagementUnit;
 use std::time::{Duration, Instant};
 
-use minifb::Key::{Escape, F, S};
 use std::fs::{read, File};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -16,8 +15,14 @@ use crate::cartridge::Cartridge;
 use crate::register::Register;
 
 use clap::Parser;
-use minifb::{KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
-use KeyRepeat::No;
+use pixels::wgpu::PresentMode;
+use pixels::{PixelsBuilder, SurfaceTexture};
+use winit::dpi::LogicalSize;
+use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z};
+use winit::event_loop::EventLoop;
+use winit::window::Fullscreen::Borderless;
+use winit::window::WindowBuilder;
+use winit_input_helper::WinitInputHelper;
 
 mod cartridge;
 mod gameboy;
@@ -48,10 +53,6 @@ struct Args {
     /// GameBoy ROM file to input
     rom_file: String,
 
-    /// Runs the emulator without a backing window, used during test execution
-    #[clap(long, default_value = "false")]
-    headless: bool,
-
     /// Boot title screen even when opening save file
     #[clap(long, default_value = "false")]
     cold_boot: bool,
@@ -72,24 +73,16 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let mut sleep = !args.fast;
-    let rom_path = Path::new(&args.rom_file);
-    if !rom_path.exists() {
-        panic!("The input ROM path doesn't exist")
-    }
-    if !rom_path.is_file() {
-        panic!("The input ROM isn't a file")
-    }
-
-    let rom_path = rom_path.to_str().unwrap();
+    let rom_path = args.rom_file;
 
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
-        let rom = read(rom_path).expect("Unable to read ROM file");
+        let rom = read(rom_path.clone()).expect("Unable to read ROM file");
         let cartridge = Cartridge::new(&rom);
-        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, Path::new(&args.rom_file));
+        let mem = MemoryManagementUnit::new(rom, cartridge, args.boot_rom, Path::new(&rom_path));
         Gameboy::new(mem)
     } else {
         let save_file = &mut vec![];
-        File::open(rom_path)
+        File::open(rom_path.clone())
             .unwrap()
             .read_to_end(save_file)
             .unwrap();
@@ -100,61 +93,83 @@ fn main() {
         gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())
     }
 
-    if !args.headless {
-        gameboy.mmu.renderer.set_window(
-            Window::new(
-                &args.rom_file,
-                WIDTH,
-                HEIGHT,
-                WindowOptions {
-                    borderless: false,
-                    transparency: false,
-                    title: true,
-                    resize: true,
-                    scale: Scale::X1,
-                    scale_mode: ScaleMode::Stretch,
-                    topmost: false,
-                    none: false,
-                },
-            )
-            .unwrap(),
-        )
-    }
+    let event_loop = EventLoop::new();
+
+    let mut input = WinitInputHelper::new();
+    let window = WindowBuilder::new()
+        .with_title(rom_path.clone())
+        .with_inner_size(LogicalSize::new(WIDTH as u32, HEIGHT as u32))
+        .with_min_inner_size(LogicalSize::new(WIDTH as u32, HEIGHT as u32))
+        .with_resizable(true)
+        .with_visible(true)
+        .with_fullscreen(Some(Borderless(None)))
+        .build(&event_loop)
+        .unwrap();
+    let (width, height) = (WIDTH as u32, HEIGHT as u32);
+    let pixels = PixelsBuilder::new(width, height, SurfaceTexture::new(width, height, &window))
+        .present_mode(PresentMode::AutoNoVsync)
+        .build()
+        .unwrap();
+
+    gameboy.mmu.renderer.set_pixels(pixels);
 
     gameboy.mmu.mbc.start();
 
     let mut frames: usize = 0;
     let start = Instant::now();
     let mut slowest_frame = Duration::from_nanos(0);
-    loop {
+
+    event_loop.run(move |event, _target, _control_flow| {
+        let gameboy = &mut gameboy;
+
         frames += 1;
-        let current_frame = run_frame(&mut gameboy, sleep);
+        let current_frame = run_frame(gameboy, sleep);
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
 
-        let window = gameboy.mmu.renderer.window().as_ref();
+        if !input.update(&event) {
+            return;
+        };
 
-        if window.map_or(false, |w| w.is_key_pressed(Escape, No)) {
+        if let Some(size) = input.window_resized() {
+            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() { p.resize_surface(size.width, size.height) }
+        }
+
+
+        gameboy.mmu.joypad.held_action = [Z, C, Back, Return]
+            .iter()
+            .filter(|&&b| input.key_held(b)).copied()
+            .collect();
+
+        gameboy.mmu.joypad.held_direction = [Up, Down, Left, Right]
+            .iter()
+            .filter(|&&b| input.key_held(b)).copied()
+            .collect();
+
+        if input.key_pressed(C) {}
+
+        if input.key_pressed(Escape) {
             if args.save_on_exit {
-                save_state(rom_path, &mut gameboy, ".esc.sav.json");
+                save_state(rom_path.clone(), gameboy, ".esc.sav.json");
             }
-            break;
-        } else if window.map_or(false, |w| w.is_key_pressed(S, No)) {
-            save_state(rom_path, &mut gameboy, ".sav.json");
-        } else if window.map_or(false, |w| w.is_key_pressed(F, No)) {
+            println!(
+                "Finished running at {} FPS average, slowest frame took {:?}. Slowest render frame took {:?}.",
+                frames as f64 / start.elapsed().as_secs_f64(),
+                slowest_frame,
+                gameboy.mmu.renderer.slowest
+            );
+            std::process::exit(0);
+        } else if input.key_pressed(S) {
+            save_state(rom_path.clone(), gameboy, ".sav.json");
+        } else if input.key_pressed(F) {
             sleep = !sleep;
             println!("Changed fast mode to {}", !sleep);
         }
-    }
-    println!(
-        "Finished running at {} FPS average, slowest frame took {:?} seconds to render",
-        frames as f64 / start.elapsed().as_secs_f64(),
-        slowest_frame
-    );
+    });
 }
 
-fn save_state(rom_path: &str, gameboy: &mut Gameboy, append: &str) {
+fn save_state(rom_path: String, gameboy: &mut Gameboy, append: &str) {
     println!("Saving state...");
     let append = if !rom_path.ends_with(append) {
         append
@@ -198,14 +213,18 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool) -> Duration {
         }
         gameboy.mmu.cycles = 0;
     }
-    if sleep {
-        let expected = pin.1 + Duration::from_nanos(pin.0 * NANOS_PER_FRAME);
-        if Instant::now() < expected {
-            thread::sleep(expected - Instant::now());
-            gameboy.pin = Some(pin);
-        } else {
-            gameboy.pin = None;
-        }
+
+    if !sleep {
+        return start.elapsed()
     }
+
+    let expected = pin.1 + Duration::from_nanos(pin.0 * NANOS_PER_FRAME);
+    if Instant::now() < expected {
+        thread::sleep(expected - Instant::now());
+        gameboy.pin = Some(pin);
+    } else {
+        gameboy.pin = None;
+    }
+
     start.elapsed()
 }

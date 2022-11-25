@@ -1,4 +1,7 @@
-use crate::{mmu::{MemoryArea, OamCorruptionCause}, HEIGHT, WIDTH};
+use crate::{
+    mmu::{MemoryArea, OamCorruptionCause},
+    HEIGHT, WIDTH,
+};
 use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 
 use serde::{Deserialize, Serialize};
@@ -8,6 +11,10 @@ use OamSearchPhase::*;
 use PixelTransferPhase::*;
 use PpuState::*;
 use VerticalBlankPhase::*;
+
+fn init_screen() -> [u8; 0x5A00 * 4] {
+    [0; 0x5A00 * 4]
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct PixelProcessingUnit {
@@ -32,7 +39,8 @@ pub struct PixelProcessingUnit {
 
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
-    pub screen: Vec<u32>,
+    #[serde(skip, default = "init_screen")]
+    pub screen: [u8; 0x5A00 * 4],
     /// sprites that will be rendered in the next mode 3 scanline
     pub sprite_buffer: Vec<Sprite>,
     /// the length of the `sprite_buffer`
@@ -304,8 +312,8 @@ impl MemoryArea for PixelProcessingUnit {
         match address {
             0x8000..=0x9FFF if self.vram_write_block => (),
             0xFE00..=0xFE9F if self.oam_write_block => (),
-            0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
+            0x8000..=0x9FFF => self.vram[address - 0x8000] = value,
+            0xFE00..=0xFE9F => self.oam[address - 0xFE00] = value,
             0xFF46 => self.start_dma(value),
             0xFF40 => {
                 if value & 0x80 != self.lcdc & 0x80 {
@@ -357,7 +365,7 @@ impl PixelProcessingUnit {
             oam_write_block: false,
             vram_read_block: false,
             vram_write_block: false,
-            screen: vec![0; 0x5A00],
+            screen: [0; 0x5A00 * 4],
             sprite_buffer: vec![Sprite::default(); 10],
             sprite_buffer_len: 0,
             wyc: 0,
@@ -898,7 +906,7 @@ impl PixelProcessingUnit {
     }
 
     fn handle_oam_corruption(&mut self) {
-        let row = (self.ticks - self.oam_start_clock_count) as usize / 4;
+        let row = (self.ticks - self.oam_start_clock_count) / 4;
 
         if self.stat & 0b11 != 2 {
             return self.oam_corruption = None;
@@ -1128,15 +1136,17 @@ impl PixelProcessingUnit {
                     color = (palette >> (scolor * 2)) & 0b11;
                 }
             }
-            debug_assert!(color < 4);
-            self.screen[i] = match color {
+            let Color { a, r, g, b } = match color {
                 0 => WHITE,
                 1 => LIGHT_GRAY,
                 2 => DARK_GRAY,
                 3 => BLACK,
                 _ => unreachable!(),
-            }
-            .into();
+            };
+            self.screen[i * 4] = r;
+            self.screen[(i * 4) + 1] = g;
+            self.screen[(i * 4) + 2] = b;
+            self.screen[(i * 4) + 3] = a;
             self.screen_x += 1;
             self.scanline_x += 1;
         }

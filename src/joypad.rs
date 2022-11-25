@@ -1,9 +1,9 @@
 use crate::joypad::SelectedButtons::{Action, Direction};
 use crate::mmu::MemoryArea;
-use minifb::{Key, Window};
-use Key::*;
 
 use serde::{Deserialize, Serialize};
+use winit::event::VirtualKeyCode;
+use winit::event::VirtualKeyCode::*;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum SelectedButtons {
@@ -11,11 +11,15 @@ pub enum SelectedButtons {
     Direction = 0x20,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Joypad {
     selected_buttons: SelectedButtons,
     action_buttons: u8,
     direction_buttons: u8,
+    #[serde(skip)]
+    pub(crate) held_action: Vec<VirtualKeyCode>,
+    #[serde(skip)]
+    pub(crate) held_direction: Vec<VirtualKeyCode>,
 }
 
 impl MemoryArea for Joypad {
@@ -48,29 +52,27 @@ impl Joypad {
             action_buttons: 0x0F,
             direction_buttons: 0x0F,
             selected_buttons: Action,
+            held_direction: vec![],
+            held_action: vec![],
         }
     }
 
-    pub fn machine_cycle(&mut self, window: &Option<Window>) -> bool {
-        let window = match window {
-            None => return false,
-            Some(window) => window,
-        };
-
+    pub fn machine_cycle(&mut self) -> bool {
         let previous_buttons = self.buttons();
 
-        self.action_buttons = Self::map_buttons([Z, C, Backspace, Enter], window);
-        self.direction_buttons = Self::map_buttons([Right, Left, Up, Down], window);
+        self.action_buttons = Self::map_buttons([Z, C, Back, Return], &self.held_action);
+        self.direction_buttons = Self::map_buttons([Right, Left, Up, Down], &self.held_direction);
 
         self.buttons() != previous_buttons
     }
 
-    fn map_buttons(buttons: [Key; 4], window: &Window) -> u8 {
+    fn map_buttons(buttons: [VirtualKeyCode; 4], held: &[VirtualKeyCode]) -> u8 {
         !buttons
             .iter()
             .enumerate()
-            .map(|(i, &button)| u8::from(window.is_key_down(button)) * 2u8.pow(i as u32))
-            .sum::<u8>() & 0x0F
+            .map(|(i, button)| u8::from(held.contains(button)) * 2u8.pow(i as u32))
+            .sum::<u8>()
+            & 0x0F
     }
 
     fn buttons(&self) -> u8 {

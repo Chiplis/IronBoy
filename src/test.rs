@@ -66,17 +66,7 @@ mod tests {
                             break 'inner;
                         }
 
-                        let map_pixel = |pixel: &u32| {
-                            let pixels = pixel.to_be_bytes();
-                            [pixels[1], pixels[2], pixels[3], pixels[0]]
-                        };
-                        let pixels = gameboy
-                            .mmu
-                            .ppu
-                            .screen
-                            .iter()
-                            .flat_map(map_pixel)
-                            .collect();
+                        let pixels = gameboy.mmu.ppu.screen.to_vec();
 
                         let screenshot_path = rom.replace("test_rom", "test_output") + ".png";
                         RgbaImage::from_raw(160, 144, pixels)
