@@ -7,7 +7,7 @@ use gameboy::Gameboy;
 use crate::mmu::MemoryManagementUnit;
 use std::time::{Duration, Instant};
 
-use std::fs::{read, File};
+use std::fs::{read, File, write, remove_file};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -136,7 +136,6 @@ fn main() {
             if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() { p.resize_surface(size.width, size.height) }
         }
 
-
         gameboy.mmu.joypad.held_action = [Z, C, Back, Return]
             .iter()
             .filter(|&&b| input.key_held(b)).copied()
@@ -147,7 +146,10 @@ fn main() {
             .filter(|&&b| input.key_held(b)).copied()
             .collect();
 
-        if input.key_pressed(C) {}
+        if frames % 600 == 0 {
+            // Save temporary dummy file to prevent throttling on Apple Silicon
+            write("feboy.tmp", vec![0; 0xFFFF]).unwrap();
+        }
 
         if input.key_pressed(Escape) {
             if args.save_on_exit {
@@ -159,10 +161,15 @@ fn main() {
                 slowest_frame,
                 gameboy.mmu.renderer.slowest
             );
+            remove_file(Path::new("feboy.tmp")).unwrap();
             std::process::exit(0);
-        } else if input.key_pressed(S) {
+        }
+
+        if input.key_pressed(S) {
             save_state(rom_path.clone(), gameboy, ".sav.json");
-        } else if input.key_pressed(F) {
+        }
+
+        if input.key_pressed(F) {
             sleep = !sleep;
             println!("Changed fast mode to {}", !sleep);
         }

@@ -31,7 +31,7 @@ impl Renderer {
             frame.copy_from_slice(screen);
             pixels.render().unwrap();
             let duration = Instant::now() - now;
-            println!("Render took {:?}", duration);
+            // println!("Render took {:?}", duration);
             self.slowest = max(self.slowest, duration);
         }
     }
