@@ -75,7 +75,7 @@ mod tests {
                             .unwrap();
                     }
 
-                    run_frame(&mut gameboy, false);
+                    run_frame(&mut gameboy, false, None);
                 }
                 tx_finish.send(idx).unwrap();
             });
