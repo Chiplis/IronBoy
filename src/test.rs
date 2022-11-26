@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::fs::{read, read_dir};
-use std::env;
+use std::{env, panic};
 use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
@@ -14,13 +14,10 @@ use crate::{run_frame, Gameboy, MemoryManagementUnit, WIDTH, HEIGHT};
 #[test]
 fn test_roms() -> Result<(), Error> {
     let (test_status_tx, test_status_rv) = channel();
-    // let _args: Vec<String> = env::args().collect();
 
-    // panic::set_hook(Box::new(|_info| std::process::exit(1)));
+    panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
-    let cwd = env::current_dir().unwrap();
-
-    let all_tests = read_dir(cwd.join("test_rom"))?;
+    let all_tests = read_dir("test_rom")?;
     let all_tests: Vec<PathBuf> = all_tests
         .filter_map(|entry| {
             let output = match entry {
@@ -51,7 +48,7 @@ fn test_roms() -> Result<(), Error> {
     let total = all_tests.len();
     for (idx, rom) in all_tests.into_iter().enumerate() {
         let rom_filename = osstr_to_str(rom.file_name());
-        let rom_output_png = cwd.join(format!("test_output/{}.png", rom_filename));
+        let rom_output_png = format!("test_output/{}.png", rom_filename);
 
         let tx_finish = test_status_tx.clone();
         thread::spawn(move || {
@@ -87,9 +84,9 @@ fn test_roms() -> Result<(), Error> {
         match test_status_rv.recv() {
             Ok(_) => {
                 count += 1;
-                println!("Increased counter {count}/{total}");
+                println!("Finished test {count}/{total}");
             }
-            Err(e) => println!("Error receiving: {e}"),
+            Err(e) => eprintln!("Error executing test: {e}"),
         }
         if count == total {
             return Ok(());
