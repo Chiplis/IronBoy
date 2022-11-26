@@ -86,7 +86,13 @@ fn main() {
     run_event_loop(event_loop, gameboy, !args.fast, args.save_on_exit, rom_path);
 }
 
-fn run_event_loop(event_loop: EventLoop<()>, mut gameboy: Gameboy, mut sleep: bool, save_on_exit: bool, rom_path: String) {
+fn run_event_loop(
+    event_loop: EventLoop<()>,
+    mut gameboy: Gameboy,
+    mut sleep: bool,
+    save_on_exit: bool,
+    rom_path: String,
+) {
     let mut input = WinitInputHelper::new();
 
     let mut frames = 0.0;
@@ -160,24 +166,30 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
                 gameboy.mmu.cycle(4)
             }
         }
+
         gameboy.mmu.cycles = 0;
+
         let input = match input {
-            Some(input) =>input,
+            Some(input) => input,
             None => continue,
         };
 
         if let Some(size) = input.window_resized() {
-            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() { p.resize_surface(size.width, size.height) }
+            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
+                p.resize_surface(size.width, size.height)
+            }
         }
 
         gameboy.mmu.joypad.held_action = [Z, C, Back, Return]
             .iter()
-            .filter(|&&b| input.key_held(b)).copied()
+            .filter(|&&b| input.key_held(b))
+            .copied()
             .collect();
 
         gameboy.mmu.joypad.held_direction = [Up, Down, Left, Right]
             .iter()
-            .filter(|&&b| input.key_held(b)).copied()
+            .filter(|&&b| input.key_held(b))
+            .copied()
             .collect();
     }
 
@@ -186,12 +198,12 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
     }
 
     let expected = pin.1 + Duration::from_nanos(pin.0 * NANOS_PER_FRAME);
-    if Instant::now() < expected {
+    gameboy.pin = if Instant::now() < expected {
         thread::sleep(expected - Instant::now());
-        gameboy.pin = Some(pin);
+        Some(pin)
     } else {
-        gameboy.pin = None;
-    }
+        None
+    };
 
     start.elapsed()
 }
@@ -213,7 +225,14 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, append: &str) {
     println!("Savefile {}{} successfully generated.", rom_path, append);
 }
 
-fn exit_emulator(save: bool, frames: f64, rom_path: String, start: Instant, slowest_frame: Duration, gameboy: &mut Gameboy) {
+fn exit_emulator(
+    save: bool,
+    frames: f64,
+    rom_path: String,
+    start: Instant,
+    slowest_frame: Duration,
+    gameboy: &mut Gameboy,
+) {
     if save {
         save_state(rom_path.clone(), gameboy, ".esc.sav.json");
     }
@@ -230,7 +249,12 @@ fn exit_emulator(save: bool, frames: f64, rom_path: String, start: Instant, slow
     }
 }
 
-fn load_gameboy(pixels: Pixels, rom_path: String, cold_boot: bool, boot_rom: Option<String>) -> Gameboy {
+fn load_gameboy(
+    pixels: Pixels,
+    rom_path: String,
+    cold_boot: bool,
+    boot_rom: Option<String>,
+) -> Gameboy {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
         let rom = read(rom_path.clone()).expect("Unable to read ROM file");
         let cartridge = Cartridge::new(&rom);
