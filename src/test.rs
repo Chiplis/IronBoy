@@ -1,98 +1,107 @@
-#[cfg(test)]
-mod tests {
-    use std::fs::{read, read_dir, DirEntry};
-    use std::{env, panic};
+use std::ffi::OsStr;
+use std::fs::{read, read_dir};
+use std::env;
+use std::io::Error;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
+use std::thread;
 
-    use std::io::Error;
+use image::RgbaImage;
 
-    use crate::cartridge::Cartridge;
-    use crate::{run_frame, Gameboy, MemoryManagementUnit};
-    use image::RgbaImage;
-    use std::path::Path;
-    use std::sync::mpsc::channel;
-    use std::thread;
-    use std::time::Duration;
+use crate::cartridge::Cartridge;
+use crate::{run_frame, Gameboy, MemoryManagementUnit, WIDTH, HEIGHT};
 
-    #[test]
-    fn test_roms() -> Result<(), Error> {
-        let (test_status_tx, test_status_rv) = channel();
-        let _args: Vec<String> = env::args().collect();
+#[test]
+fn test_roms() -> Result<(), Error> {
+    let (test_status_tx, test_status_rv) = channel();
+    // let _args: Vec<String> = env::args().collect();
 
-        // panic::set_hook(Box::new(|_info| std::process::exit(1)));
+    // panic::set_hook(Box::new(|_info| std::process::exit(1)));
 
-        let all_tests = read_dir(env::current_dir().unwrap().join(Path::new("test_rom")))?;
-        let all_tests: Vec<DirEntry> = all_tests
-            .map(|entry| entry.unwrap())
-            .filter(|entry| {
-                let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-                if !rom.ends_with(".gb") {
-                    println!("Skipping non ROM file: {rom}");
-                    false
-                } else {
-                    true
-                }
-            })
-            .collect();
+    let cwd = env::current_dir().unwrap();
 
-        let total = all_tests.len();
-        for (idx, entry) in all_tests.into_iter().enumerate() {
-            let tx_finish = test_status_tx.clone();
-            thread::spawn(move || {
-                const TEST_DURATION: u8 = 30;
-                let rom = String::from(entry.path().to_str().unwrap()).replace('\\', "/");
-                println!("Testing {}", rom);
-                let rom_vec = read(&rom).unwrap();
-                let cartridge = Cartridge::new(&rom_vec);
-
-                let mem = MemoryManagementUnit::new(rom_vec, cartridge, None, Path::new(&rom));
-                let mut gameboy = Gameboy::new(mem);
-                let mut tests_counter = 0;
-                let r = rom.clone();
-                let (tx, rx) = channel();
-
-                thread::spawn(move || {
-                    for i in 0..TEST_DURATION {
-                        thread::sleep(Duration::from_secs(1));
-                        println!("Saving screenshot #{i} for {r}");
-                        if let Err(e) = tx.send(r.clone()) {
-                            panic!("Panicked with {e} while saving screenshot #{i} for {r}")
-                        };
-                    }
-                });
-                'inner: loop {
-                    if rx.try_recv().is_ok() {
-                        tests_counter += 1;
-                        if tests_counter >= TEST_DURATION - 1 {
-                            break 'inner;
+    let all_tests = read_dir(cwd.join("test_rom"))?;
+    let all_tests: Vec<PathBuf> = all_tests
+        .filter_map(|entry| {
+            let output = match entry {
+                Ok(entry) => match entry.metadata().map(|entry| entry.is_file()) {
+                    Ok(true) => {
+                        let path = entry.path();
+                        match path.extension() {
+                            Some(ext) if ext.to_ascii_lowercase() == "gb" => Ok(path),
+                            Some(_) => Err(path),
+                            None => Err(path),
                         }
-
-                        let pixels = gameboy.mmu.ppu.screen.to_vec();
-
-                        let screenshot_path = rom.replace("test_rom", "test_output") + ".png";
-                        RgbaImage::from_raw(160, 144, pixels)
-                            .unwrap()
-                            .save(Path::new(&screenshot_path))
-                            .unwrap();
-                    }
-
-                    run_frame(&mut gameboy, false, None);
+                    },
+                    Ok(false) => Err(entry.path()),
+                    Err(_) => Err(entry.path()),
+                },
+                Err(_) => Err(PathBuf::new()),
+            };
+            match output {
+                Ok(path) => Some(path),
+                Err(path) => {
+                    println!("Skipping non ROM file: {}", osstr_to_str(path.file_name()));
+                    None
                 }
-                tx_finish.send(idx).unwrap();
-            });
-        }
-        let mut count = 0;
-        while count != total {
-            match test_status_rv.recv() {
-                Ok(_) => {
-                    println!("Increased counter {count}/{total}");
-                    count += 1
-                }
-                Err(e) => println!("Error receiving: {e}"),
             }
-            if count == total {
-                return Ok(());
+        })
+        .collect();
+
+    let total = all_tests.len();
+    for (idx, rom) in all_tests.into_iter().enumerate() {
+        let rom_filename = osstr_to_str(rom.file_name());
+        let rom_output_png = cwd.join(format!("test_output/{}.png", rom_filename));
+        // let rom_ok = cwd.join(format!("test_ok/{}.png", rom_filename));
+
+        let tx_finish = test_status_tx.clone();
+        thread::spawn(move || {
+            const TEST_DURATION: usize = 900; // in frames
+            // just input the amount that makes everything run correctly
+            // with 900 all test run flawlessly except 2 of them ("11-op" and "oam_bug") (increasing the time didn't help)
+
+            println!("Testing {}", rom_filename);
+            let rom_vec = read(rom.clone()).unwrap();
+            let cartridge = Cartridge::new(&rom_vec);
+
+            let mem = MemoryManagementUnit::new(rom_vec, cartridge, None, Path::new(&rom));
+            let mut gameboy = Gameboy::new(mem);
+
+            for _frame in 0..TEST_DURATION {
+                run_frame(&mut gameboy, false, None);
             }
-        }
-        Err(Error::last_os_error())
+
+            println!("Saving screenshot for {rom_filename}");
+
+            RgbaImage::from_raw(
+                WIDTH as u32,
+                HEIGHT as u32,
+                gameboy.mmu.ppu.screen.to_vec()
+            )
+                .unwrap()
+                .save(Path::new(&rom_output_png))
+                .unwrap();
+
+            tx_finish.send(idx).unwrap();
+        });
     }
+    let mut count = 0;
+    while count < total {
+        match test_status_rv.recv() {
+            Ok(_) => {
+                count += 1;
+                println!("Increased counter {count}/{total}");
+            }
+            Err(e) => println!("Error receiving: {e}"),
+        }
+        if count == total {
+            return Ok(());
+        }
+    }
+    Err(Error::last_os_error())
+}
+
+#[inline]
+fn osstr_to_str(item: Option<&OsStr>) -> String {
+    item.unwrap().to_str().unwrap().to_string()
 }
