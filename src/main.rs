@@ -119,7 +119,7 @@ fn main() {
     let start = Instant::now();
     let mut slowest_frame = Duration::from_nanos(0);
 
-    event_loop.run(move |event, _target, _control_flow| {
+    event_loop.run(move |event, _target, control_flow| {
         let gameboy = &mut gameboy;
 
         frames += 1;
@@ -165,7 +165,7 @@ fn main() {
             if tmp.exists() {
                 remove_file(tmp).unwrap();
             }
-            std::process::exit(0);
+            control_flow.set_exit();
         }
 
         if input.key_pressed(S) {
