@@ -52,13 +52,10 @@ fn test_roms() -> Result<(), Error> {
     for (idx, rom) in all_tests.into_iter().enumerate() {
         let rom_filename = osstr_to_str(rom.file_name());
         let rom_output_png = cwd.join(format!("test_output/{}.png", rom_filename));
-        // let rom_ok = cwd.join(format!("test_ok/{}.png", rom_filename));
 
         let tx_finish = test_status_tx.clone();
         thread::spawn(move || {
-            const TEST_DURATION: usize = 900; // in frames
-            // just input the amount that makes everything run correctly
-            // with 900 all test run flawlessly except 2 of them ("11-op" and "oam_bug") (increasing the time didn't help)
+            const TEST_DURATION: usize = 1200; // in frames
 
             println!("Testing {}", rom_filename);
             let rom_vec = read(rom.clone()).unwrap();
