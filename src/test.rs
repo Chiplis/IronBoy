@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::fs::{read, read_dir};
-use std::{env, panic};
 use std::io::Error;
+use std::panic;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 use std::thread;
@@ -9,7 +9,7 @@ use std::thread;
 use image::RgbaImage;
 
 use crate::cartridge::Cartridge;
-use crate::{run_frame, Gameboy, MemoryManagementUnit, WIDTH, HEIGHT};
+use crate::{run_frame, Gameboy, MemoryManagementUnit, HEIGHT, WIDTH};
 
 #[test]
 fn test_roms() -> Result<(), Error> {
@@ -29,7 +29,7 @@ fn test_roms() -> Result<(), Error> {
                             Some(_) => Err(path),
                             None => Err(path),
                         }
-                    },
+                    }
                     Ok(false) => Err(entry.path()),
                     Err(_) => Err(entry.path()),
                 },
@@ -67,11 +67,7 @@ fn test_roms() -> Result<(), Error> {
 
             println!("Saving screenshot for {rom_filename}");
 
-            RgbaImage::from_raw(
-                WIDTH as u32,
-                HEIGHT as u32,
-                gameboy.mmu.ppu.screen.to_vec()
-            )
+            RgbaImage::from_raw(WIDTH as u32, HEIGHT as u32, gameboy.mmu.ppu.screen.to_vec())
                 .unwrap()
                 .save(Path::new(&rom_output_png))
                 .unwrap();
