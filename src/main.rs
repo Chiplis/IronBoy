@@ -101,24 +101,31 @@ fn run_event_loop(
     let mut focus = (Instant::now(), false);
 
     event_loop.run(move |event, _target, control_flow| {
+
         let gameboy = &mut gameboy;
         let update = input.update(&event);
         frames += 1.0;
         let current_frame = run_frame(gameboy, sleep, Some(&input));
+
         if slowest_frame < current_frame {
             slowest_frame = current_frame
         }
 
         if focus.1 && Instant::now() > focus.0 {
-            println!("Save temporary dummy file to prevent throttling on Apple Silicon after focus change.");
+            // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
             write(
                 rom_path.clone() + ".tmp",
                 rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect::<Vec<u8>>()).unwrap();
             focus.1 = false;
         }
 
+        if let Some(size) = input.window_resized() {
+            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
+                p.resize_surface(size.width, size.height)
+            }
+        }
+
         if let Event::WindowEvent { event: Focused(true), .. } = event {
-            println!("{:?}", event);
             if !sleep {
                 focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
             }
@@ -129,7 +136,13 @@ fn run_event_loop(
         };
 
         if input.key_released(Escape) {
-            exit_emulator(save_on_exit, frames, rom_path.clone(), start, slowest_frame, gameboy);
+            exit_emulator(save_on_exit, rom_path.clone(), gameboy);
+            println!(
+                "Finished running at {} FPS average.\nSlowest frame took {:?}.\nSlowest render frame took {:?}.",
+                frames / start.elapsed().as_secs_f64(),
+                slowest_frame,
+                gameboy.mmu.renderer.slowest
+            );
             control_flow.set_exit();
         }
 
@@ -152,6 +165,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
     } else {
         (1, Instant::now())
     };
+
     while elapsed_cycles < CYCLES_PER_FRAME {
         let previously_halted = gameboy.halted;
         let cycles = gameboy.cycle() as u16;
@@ -168,30 +182,19 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
         }
 
         gameboy.mmu.cycles = 0;
-
-        let input = match input {
-            Some(input) => input,
-            None => continue,
-        };
-
-        if let Some(size) = input.window_resized() {
-            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
-                p.resize_surface(size.width, size.height)
-            }
-        }
-
-        gameboy.mmu.joypad.held_action = [Z, C, Back, Return]
-            .iter()
-            .filter(|&&b| input.key_held(b))
-            .copied()
-            .collect();
-
-        gameboy.mmu.joypad.held_direction = [Up, Down, Left, Right]
-            .iter()
-            .filter(|&&b| input.key_held(b))
-            .copied()
-            .collect();
     }
+
+    gameboy.mmu.joypad.held_action = [Z, C, Back, Return]
+        .iter()
+        .filter(|&&b| input.map_or(false, |i| i.key_held(b)))
+        .copied()
+        .collect();
+
+    gameboy.mmu.joypad.held_direction = [Up, Down, Left, Right]
+        .iter()
+        .filter(|&&b| input.map_or(false, |i| i.key_held(b)))
+        .copied()
+        .collect();
 
     if !sleep {
         return start.elapsed();
@@ -227,21 +230,12 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, append: &str) {
 
 fn exit_emulator(
     save: bool,
-    frames: f64,
     rom_path: String,
-    start: Instant,
-    slowest_frame: Duration,
     gameboy: &mut Gameboy,
 ) {
     if save {
         save_state(rom_path.clone(), gameboy, ".esc.sav.json");
     }
-    println!(
-        "Finished running at {} FPS average, slowest frame took {:?}. Slowest render frame took {:?}.",
-        frames / start.elapsed().as_secs_f64(),
-        slowest_frame,
-        gameboy.mmu.renderer.slowest
-    );
     let tmp = rom_path + ".tmp";
     let tmp = Path::new(&tmp);
     if tmp.exists() {
