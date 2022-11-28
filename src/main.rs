@@ -181,8 +181,9 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
     let map_held = |buttons: [VirtualKeyCode; 4]| -> Vec<VirtualKeyCode> {
         buttons
             .iter()
-            .filter(|&&b| if let Some(input) = input { input.key_held(b) } else { false })
-            .copied().collect()
+            .filter(|&&b| input.map_or(false, |input| input.key_held(b)))
+            .copied()
+            .collect()
     };
 
     gameboy.mmu.joypad.held_action = map_held([Z, C, Back, Return]);
@@ -220,11 +221,7 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, append: &str) {
     println!("Savefile {}{} successfully generated.", rom_path, append);
 }
 
-fn exit_emulator(
-    save: bool,
-    rom_path: String,
-    gameboy: &mut Gameboy,
-) {
+fn exit_emulator(save: bool, rom_path: String, gameboy: &mut Gameboy) {
     if save {
         save_state(rom_path.clone(), gameboy, ".esc.sav.json");
     }
