@@ -21,7 +21,7 @@ use rand::distributions::Uniform;
 use rand::Rng;
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z};
-use winit::event::{Event, WindowEvent};
+use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::Fullscreen::Borderless;
 use winit::window::{Window, WindowBuilder};
@@ -173,28 +173,20 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
         let mem_cycles = cycles - gameboy.mmu.cycles;
         if mem_cycles != 0 && !previously_halted && !gameboy.halted {
             panic!("Cycle count after considering reads/writes: mem_cycles {} | cycles: {} | micro_ops: {}", mem_cycles, cycles, gameboy.mmu.cycles)
-        } else if mem_cycles == 1 {
-            gameboy.mmu.cycle(4)
-        } else {
-            for _ in 0..mem_cycles {
-                gameboy.mmu.cycle(4)
-            }
         }
-
+        (0..mem_cycles).for_each(|_| gameboy.mmu.cycle(4));
         gameboy.mmu.cycles = 0;
     }
 
-    gameboy.mmu.joypad.held_action = [Z, C, Back, Return]
-        .iter()
-        .filter(|&&b| input.map_or(false, |i| i.key_held(b)))
-        .copied()
-        .collect();
+    let map_held = |buttons: [VirtualKeyCode; 4]| -> Vec<VirtualKeyCode> {
+        buttons
+            .iter()
+            .filter(|&&b| if let Some(input) = input { input.key_held(b) } else { false })
+            .copied().collect()
+    };
 
-    gameboy.mmu.joypad.held_direction = [Up, Down, Left, Right]
-        .iter()
-        .filter(|&&b| input.map_or(false, |i| i.key_held(b)))
-        .copied()
-        .collect();
+    gameboy.mmu.joypad.held_action = map_held([Z, C, Back, Return]);
+    gameboy.mmu.joypad.held_direction = map_held([Up, Down, Left, Right]);
 
     if !sleep {
         return start.elapsed();
