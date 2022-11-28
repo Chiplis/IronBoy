@@ -98,7 +98,7 @@ fn run_event_loop(
     let mut frames = 0.0;
     let start = Instant::now();
     let mut slowest_frame = Duration::from_nanos(0);
-    let mut focus = (Instant::now(), false);
+    let mut focus = (Instant::now(), true);
 
     event_loop.run(move |event, _target, control_flow| {
 
