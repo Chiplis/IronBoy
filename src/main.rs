@@ -101,22 +101,13 @@ fn run_event_loop(
     let mut focus = (Instant::now(), true);
 
     event_loop.run(move |event, _target, control_flow| {
-
         let gameboy = &mut gameboy;
-        let update = input.update(&event);
+        input.update(&event);
         frames += 1.0;
         let current_frame = run_frame(gameboy, sleep, Some(&input));
 
         if slowest_frame < current_frame {
             slowest_frame = current_frame
-        }
-
-        if focus.1 && Instant::now() > focus.0 {
-            // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
-            write(
-                rom_path.clone() + ".tmp",
-                rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect::<Vec<u8>>()).unwrap();
-            focus.1 = false;
         }
 
         if let Some(size) = input.window_resized() {
@@ -125,15 +116,18 @@ fn run_event_loop(
             }
         }
 
+        if focus.1 && Instant::now() > focus.0 {
+            // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
+            let dummy_data: Vec<u8> = rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect();
+            write(rom_path.clone() + ".tmp", dummy_data).unwrap();
+            focus.1 = false;
+        }
+
         if let Event::WindowEvent { event: Focused(true), .. } = event {
             if !sleep {
                 focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
             }
         }
-
-        if !update {
-            return;
-        };
 
         if input.key_released(Escape) {
             exit_emulator(save_on_exit, rom_path.clone(), gameboy);
