@@ -22,6 +22,9 @@ use std::fs::read;
 
 use crate::serial::LinkCable;
 
+use std::sync::Arc;
+use crate::apu::AudioProcessingUnit;
+
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum OamCorruptionCause {
     IncDec,
@@ -45,6 +48,7 @@ pub struct MemoryManagementUnit {
     pub(crate) joypad: Joypad,
     pub cycles: u16,
     pub dma: u8,
+    pub apu: Arc<AudioProcessingUnit>,
 }
 
 pub trait MemoryArea {
@@ -73,6 +77,7 @@ impl MemoryManagementUnit {
             serial: LinkCable::new(),
             boot_rom: boot,
             mbc: Self::load_mbc(cartridge, rom, rom_path),
+            apu: AudioProcessingUnit::new(),
         };
         MemoryManagementUnit::init_memory(mem)
     }
@@ -166,7 +171,13 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        self.internal_write(translated_address, value.into());
+        if translated_address > 0xFF10 && translated_address < 0xFF3F {
+            self.apu.write_register(translated_address, value.into());
+        }
+        else {
+            self.internal_write(translated_address, value.into());
+        }
+
         self.cycle(4);
     }
 

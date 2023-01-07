@@ -44,6 +44,7 @@ mod register;
 mod renderer;
 mod serial;
 mod timer;
+mod apu;
 
 #[cfg(test)]
 mod test;
