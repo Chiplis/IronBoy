@@ -6,11 +6,12 @@ mod oscillators {
         frequency: u16,
         sample_rate: u32,
         position: u32,
+        duty: u8,
     }
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: 1917, sample_rate: sample_rate, position: 0}
+            SquareWaveGenerator {frequency: 1917, sample_rate: sample_rate, position: 0, duty: 2}
         }
 
         pub fn write_reg(&mut self, reg: usize, val: u8) {
@@ -48,18 +49,56 @@ mod oscillators {
         }
 
         fn set_frequency(&mut self, new_frequency: u16) {
-            self.frequency = new_frequency;
-            self.position = 0;
+            if self.frequency != new_frequency {
+                self.frequency = new_frequency;
+                self.position = 0;
+            }
+        }
+
+        fn set_duty(&mut self, new_duty: u8) {
+            if(self.duty != new_duty) {
+                self.duty = new_duty;
+                self.position = 0;
+            }
         }
 
         pub fn generate_sample(&mut self) -> f32 {
-            let period = 1.0 / (131072 / (2048 - self.frequency as u32)) as f32;
+            let period = 1.0 / (131072.0 / (2048 - self.frequency as u32) as f32);
             let period_samples = (period * self.sample_rate as f32) as u32 * 2;
 
             let mut output_sample = 1.0;
 
-            if self.position < period_samples / 2 {
-                output_sample = -1.0
+            match self.duty {
+                //12.5%
+                0 => {
+                    if self.position < period_samples / 8 {
+                        output_sample = -1.0;
+                    }
+                }
+
+                //25%
+                1 => {
+                    if self.position < period_samples / 4 {
+                        output_sample = -1.0;
+                    }
+                }
+
+                //50%
+                2 => {
+                    if self.position < period_samples / 2 {
+                        output_sample = -1.0;
+                    }
+                }
+
+                //75%
+                3 => {
+                    if self.position >= period_samples / 4 {
+                        output_sample = -1.0;
+                    }
+                }
+                _ => {
+
+                }
             }
 
             self.position += 1;
@@ -190,7 +229,9 @@ impl AudioProcessingState {
             Ok(mut osc) => {
                 mixed_sample = osc.generate_sample();
             }
-            Err(_error) => {}
+            Err(_error) => {
+                println!("Missed the sample");
+            }
         }
 
         //println!("{}", mixed_sample);
