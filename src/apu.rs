@@ -10,7 +10,7 @@ mod oscillators {
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: 1000, sample_rate: sample_rate, position: 0}
+            SquareWaveGenerator {frequency: 1917, sample_rate: sample_rate, position: 0}
         }
 
         pub fn write_reg(&mut self, reg: usize, val: u8) {
@@ -31,8 +31,6 @@ mod oscillators {
                 3 => {
                     let new_frequency = (val as u16 & 0xFF) | (self.frequency & 0xFF00);
                     self.set_frequency(new_frequency);
-
-                    //println!("Frequency 1 set to: {}", 131072 / (2048 - self.frequency as u32));
                 }
 
                 //Frequency 3 most significant bits
@@ -41,8 +39,6 @@ mod oscillators {
                     let new_frequency = (msb & 0xFF00) | (self.frequency & 0xFF);
 
                     self.set_frequency(new_frequency);
-
-                    //println!("Frequency 2 set to: {}", 131072 / (2048 - self.frequency as u32));
                 }
 
                 _ => {
@@ -57,17 +53,18 @@ mod oscillators {
         }
 
         pub fn generate_sample(&mut self) -> f32 {
-            let period = self.sample_rate / (131072 / (2048 - self.frequency as u32));
+            let period = 1.0 / (131072 / (2048 - self.frequency as u32)) as f32;
+            let period_samples = (period * self.sample_rate as f32) as u32 * 2;
 
             let mut output_sample = 1.0;
 
-            if self.position < period / 2 {
-                output_sample = 0.0
+            if self.position < period_samples / 2 {
+                output_sample = -1.0
             }
 
             self.position += 1;
 
-            if self.position == period {
+            if self.position == period_samples {
                 self.position = 0;
             }
 
