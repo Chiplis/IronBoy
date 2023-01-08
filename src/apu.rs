@@ -20,8 +20,10 @@ mod oscillators {
 
                 }
 
+                //Duty
                 1 => {
-
+                    let new_duty = val >> 6;
+                    self.set_duty(new_duty);
                 }
 
                 2 => {
