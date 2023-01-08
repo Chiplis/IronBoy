@@ -1,7 +1,4 @@
 mod oscillators {
-    use std::sync::atomic::AtomicU32;
-    use std::sync::atomic::Ordering;
-
     use serde::{Serialize, Deserialize};
 
     #[derive(Serialize, Deserialize)]
@@ -12,27 +9,27 @@ mod oscillators {
     }
 
     impl SquareWaveGenerator {
-        pub const fn new(sample_rate: u32) -> SquareWaveGenerator
-        {
+        pub fn new(sample_rate: u32) -> SquareWaveGenerator {
             SquareWaveGenerator {frequency: 1000, sample_rate: sample_rate, position: 0}
         }
 
-        pub fn generate_sample(&mut self) -> f32
-        {
+        pub fn set_frequency(&mut self, new_frequency: u32) {
+            self.frequency = new_frequency;
+            self.position = 0;
+        }
+
+        pub fn generate_sample(&mut self) -> f32 {
             let period = self.sample_rate / self.frequency;
 
             let mut output_sample = 1.0;
 
-            let current_position = self.position;
-
-            if self.position < period / 2{
+            if self.position < period / 2 {
                 output_sample = 0.0
             }
 
             self.position += 1;
 
-            if(self.position == period)
-            {
+            if self.position == period {
                 self.position = 0;
             }
 
@@ -47,17 +44,13 @@ use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, S
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct AudioProcessingUnit {
+struct AudioProcessingState {
     sample_rate: u32,
-
-    //These are mutexes to satisfy 
     osc_1: Mutex<oscillators::SquareWaveGenerator>,
 }
 
-//type AudioProcessingUnitRef = Arc<RefCell<AudioProcessingUnit>>;
-
-impl AudioProcessingUnit {
-    pub fn new() -> Arc<AudioProcessingUnit> {
+impl AudioProcessingState {
+    pub fn new() -> (Arc<AudioProcessingState>, cpal::Stream) {
         //Setup audio interfacing
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
@@ -72,15 +65,15 @@ impl AudioProcessingUnit {
         let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
         let config = supported_configs_range.next().expect("No available configs").with_max_sample_rate();
 
-        let processor = Arc::new(AudioProcessingUnit{sample_rate: config.sample_rate().0, osc_1: Mutex::new(oscillators::SquareWaveGenerator::new(config.sample_rate().0))});
+        let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, osc_1: Mutex::new(oscillators::SquareWaveGenerator::new(config.sample_rate().0))});
 
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
 
         let stream = match config.sample_format() {
-            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [f32], info: &OutputCallbackInfo| audio_callback_ref.clone().audio_block_f32(audio, info), move |stream_error| audio_error_ref.clone().audio_error(stream_error)),
-            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [i16], info: &OutputCallbackInfo| audio_callback_ref.clone().audio_block_i16(audio, info), move |stream_error| audio_error_ref.clone().audio_error(stream_error)),                
-            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [u16], info: &OutputCallbackInfo| audio_callback_ref.clone().audio_block_u16(audio, info), move |stream_error| audio_error_ref.clone().audio_error(stream_error))
+            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [f32], info: &OutputCallbackInfo| audio_callback_ref.audio_block_f32(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),
+            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [i16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_i16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),                
+            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [u16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_u16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error))
         };
 
         match stream {
@@ -88,7 +81,7 @@ impl AudioProcessingUnit {
             Err(_) => println!("Stream Failed")
         }
 
-        processor
+        (processor, stream.unwrap())
     }
 
     pub fn write_register(&self, address: usize, value: u8) {
@@ -98,19 +91,21 @@ impl AudioProcessingUnit {
             let osc = rel_address / 5;
             let reg = rel_address % 5;
 
+            //self.osc_1.lock().unwrap().set_frequency(500);
+
             //println!("Osc: {}, Reg: {}", osc, reg);
         }   
     }
 
     fn audio_block_f32(&self, audio: &mut [f32], _info: &OutputCallbackInfo) {
-        println!("Audio");
+        println!("audio");
+
         for sample in audio.iter_mut() {
             *sample = self.generate_sample();
         }
     }
     
     fn audio_block_i16(&self, audio: &mut [i16], _info: &OutputCallbackInfo) {
-        println!("Audio");
         for sample in audio.iter_mut() {
             let f32_sample = self.generate_sample();
             *sample = (f32_sample * i16::MAX as f32) as i16;
@@ -118,7 +113,6 @@ impl AudioProcessingUnit {
     }
     
     fn audio_block_u16(&self, audio: &mut [u16], _info: &OutputCallbackInfo) {
-        println!("Audio");
         for sample in audio.iter_mut() {
             let f32_sample = self.generate_sample();
             *sample = ((f32_sample + 1.0) * i16::MAX as f32) as u16;
@@ -130,8 +124,37 @@ impl AudioProcessingUnit {
     }
 
     fn generate_sample(&self) -> f32 {
-        self.osc_1.lock().unwrap().generate_sample()
+        let mut mixed_sample = 0.0;
 
-        //self.osc_1.generate_sample()
+        match self.osc_1.try_lock() {
+            Ok(mut osc) => {
+                mixed_sample = osc.generate_sample();
+            }
+            Err(_error) => {}
+        }
+
+        println!("{}", mixed_sample);
+
+        return mixed_sample;
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AudioProcessingUnit {
+    state: Arc<AudioProcessingState>,
+
+    #[serde(skip)]
+    stream: Option<cpal::Stream>,
+}
+
+impl AudioProcessingUnit {
+    pub fn new() -> AudioProcessingUnit {
+        let temp = AudioProcessingState::new();
+
+        AudioProcessingUnit { state: temp.0, stream: Some(temp.1) }
+    }
+
+    pub fn write_register(&self, address: usize, value: u8) {
+        self.state.write_register(address, value);
     }
 }

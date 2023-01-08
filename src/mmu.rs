@@ -48,7 +48,7 @@ pub struct MemoryManagementUnit {
     pub(crate) joypad: Joypad,
     pub cycles: u16,
     pub dma: u8,
-    pub apu: Arc<AudioProcessingUnit>,
+    pub apu: AudioProcessingUnit,
 }
 
 pub trait MemoryArea {
@@ -79,6 +79,7 @@ impl MemoryManagementUnit {
             mbc: Self::load_mbc(cartridge, rom, rom_path),
             apu: AudioProcessingUnit::new(),
         };
+        
         MemoryManagementUnit::init_memory(mem)
     }
 
