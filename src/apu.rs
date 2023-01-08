@@ -3,7 +3,7 @@ mod oscillators {
 
     #[derive(Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
-        frequency: u32,
+        frequency: u16,
         sample_rate: u32,
         position: u32,
     }
@@ -13,13 +13,51 @@ mod oscillators {
             SquareWaveGenerator {frequency: 1000, sample_rate: sample_rate, position: 0}
         }
 
-        pub fn set_frequency(&mut self, new_frequency: u32) {
+        pub fn write_reg(&mut self, reg: usize, val: u8) {
+            match reg {
+                0 => {
+
+                }
+
+                1 => {
+
+                }
+
+                2 => {
+
+                }
+
+                //Frequency 8 least significant bits
+                3 => {
+                    let new_frequency = (val as u16 & 0xFF) | (self.frequency & 0xFF00);
+                    self.set_frequency(new_frequency);
+
+                    //println!("Frequency 1 set to: {}", 131072 / (2048 - self.frequency as u32));
+                }
+
+                //Frequency 3 most significant bits
+                4 => {
+                    let msb = ((val as u16 & 0x7) << 8) | 0xFF;
+                    let new_frequency = (msb & 0xFF00) | (self.frequency & 0xFF);
+
+                    self.set_frequency(new_frequency);
+
+                    //println!("Frequency 2 set to: {}", 131072 / (2048 - self.frequency as u32));
+                }
+
+                _ => {
+                    println!("Osc 1: Unrecognised register");
+                }
+            }
+        }
+
+        fn set_frequency(&mut self, new_frequency: u16) {
             self.frequency = new_frequency;
             self.position = 0;
         }
 
         pub fn generate_sample(&mut self) -> f32 {
-            let period = self.sample_rate / self.frequency;
+            let period = self.sample_rate / (131072 / (2048 - self.frequency as u32));
 
             let mut output_sample = 1.0;
 
@@ -91,14 +129,39 @@ impl AudioProcessingState {
             let osc = rel_address / 5;
             let reg = rel_address % 5;
 
-            //self.osc_1.lock().unwrap().set_frequency(500);
+            match osc {
+                0 => {
+                    match self.osc_1.lock() {
+                        Ok(mut osc) => {
+                            osc.write_reg(reg, value);
+                        }
+                        Err(error) => {
+                            println!("Unable to acquire oscillator lock");
+                        }
+                    }
+                }
 
-            //println!("Osc: {}, Reg: {}", osc, reg);
+                1 => {
+
+                }
+
+                2 => {
+
+                }
+
+                3 => {
+
+                }
+                _ => {
+                    println!("Unrecognised oscillator number");
+                }
+            }
+
         }   
     }
 
     fn audio_block_f32(&self, audio: &mut [f32], _info: &OutputCallbackInfo) {
-        println!("audio");
+        //println!("audio");
 
         for sample in audio.iter_mut() {
             *sample = self.generate_sample();
@@ -133,7 +196,7 @@ impl AudioProcessingState {
             Err(_error) => {}
         }
 
-        println!("{}", mixed_sample);
+        //println!("{}", mixed_sample);
 
         return mixed_sample;
     }
