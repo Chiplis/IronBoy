@@ -143,7 +143,6 @@ struct Color {
 pub enum PixelTransferPhase {
     TurnOnPixelTransfer,
     TurnOnDelay,
-    FinishTurnOn,
     StartTransfer,
     ClearQueue,
     WindowActivationCheck,
@@ -151,7 +150,6 @@ pub enum PixelTransferPhase {
     SpriteHandling,
     SpriteFetching,
     BackgroundFetching,
-    FirstSpritePenaltyCheck,
     FirstSpritePenalty,
     FirstPixelFetching,
     SecondPixelFetching,
@@ -167,7 +165,7 @@ pub enum HorizontalBlankPhase {
     StartHBlank,
     StartHBlankDelay,
     ClockLine,
-    BlockOam,
+    BlockOamWrite,
     ElapsedTickCalculation,
     ReachWindow,
     IncreaseLine,
@@ -515,10 +513,10 @@ impl PixelProcessingUnit {
                 self.line_start_ticks = self.next_ticks - 8;
                 self.wyc = 0xff;
 
-                (76, HorizontalBlank(BlockOam))
+                (76, HorizontalBlank(BlockOamWrite))
             }
             // 77
-            HorizontalBlank(BlockOam) => {
+            HorizontalBlank(BlockOamWrite) => {
                 self.oam_write_block = true;
 
                 (2, PixelTransfer(TurnOnPixelTransfer))
@@ -526,7 +524,6 @@ impl PixelProcessingUnit {
             // 79
             PixelTransfer(TurnOnPixelTransfer) => {
                 self.oam_read_block = true;
-                self.oam_write_block = true;
                 self.vram_read_block = true;
                 self.vram_write_block = true;
 
@@ -536,9 +533,7 @@ impl PixelProcessingUnit {
                 (2, PixelTransfer(TurnOnDelay))
             }
             // 81
-            PixelTransfer(TurnOnDelay) => (3, PixelTransfer(FinishTurnOn)),
-            // 84
-            PixelTransfer(FinishTurnOn) => (0, PixelTransfer(ClearQueue)),
+            PixelTransfer(TurnOnDelay) => (3, PixelTransfer(ClearQueue)),
 
             HorizontalBlank(StartLine) => {
                 self.line_start_ticks = self.next_ticks;
@@ -702,22 +697,21 @@ impl PixelProcessingUnit {
                     self.tick_pixel_fetcher(self.ly);
                     (1, PixelTransfer(BackgroundFetching))
                 } else {
-                    (0, PixelTransfer(FirstSpritePenaltyCheck))
+                    (0, PixelTransfer(FirstSpritePenalty))
                 }
             }
-            PixelTransfer(FirstSpritePenaltyCheck) => {
+            PixelTransfer(FirstSpritePenalty) => {
                 // TODO: handle extra penalty sprite at 0
+                let mut penalty = 0;
                 if self.sprite_at_0_penalty != 0
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx == 0
                 {
-                    let penalty = self.sprite_at_0_penalty as usize;
+                    penalty = self.sprite_at_0_penalty as usize;
                     self.sprite_at_0_penalty = 0;
-                    return (penalty, PixelTransfer(FirstSpritePenalty));
                 }
 
-                (0, PixelTransfer(FirstPixelFetching))
+                (penalty, PixelTransfer(FirstPixelFetching))
             }
-            PixelTransfer(FirstSpritePenalty) => (0, PixelTransfer(FirstPixelFetching)),
             PixelTransfer(FirstPixelFetching) => {
                 self.tick_pixel_fetcher(self.ly);
 
@@ -753,23 +747,16 @@ impl PixelProcessingUnit {
                 (1, PixelTransfer(SpritePushing))
             }
             PixelTransfer(SpritePushing) => {
-                let sprite = self.sprite_buffer[self.sprite_buffer_len as usize - 1];
-                let flip_x = sprite.flags & 0x20 != 0;
-                let tile_low = if flip_x {
-                    self.sprite_tile_data_low.reverse_bits()
-                } else {
-                    self.sprite_tile_data_low
-                };
-                let tile_height = if flip_x {
-                    self.sprite_tile_data_high.reverse_bits()
-                } else {
-                    self.sprite_tile_data_high
-                };
+                let flags = self.sprite_buffer[self.sprite_buffer_len as usize - 1].flags;
+
+                let [tile_low, tile_high] = [self.sprite_tile_data_low, self.sprite_tile_data_high]
+                    .map(|t| if flags & 0x20 != 0 { t.reverse_bits() } else { t });
+
                 self.sprite_fifo.push_sprite(
                     tile_low,
-                    tile_height,
-                    sprite.flags & 0x10 != 0,
-                    sprite.flags & 0x80 != 0,
+                    tile_high,
+                    flags & 0x10 != 0,
+                    flags & 0x80 != 0,
                 );
                 self.sprite_buffer_len -= 1;
 
