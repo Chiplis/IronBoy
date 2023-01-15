@@ -1,29 +1,44 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
+    use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock};
 
     #[derive(Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
-        frequency: u16,
+        frequency: AtomicU16,
         sample_rate: u32,
-        position: u32,
-        duty: u8,
+        position: RwLock<u32>,
+        duty: AtomicU8,
+        enabled: AtomicBool,
+        length_counter: AtomicU32,
     }
+
+    /*Square Wave Generator Thread and Real-Time Safety
+    Position must change whenever frequency or duty change and this must happen at the exact time of that change.
+    Using a mutex round this object means that the generate sample function cannot run when frequency or duty are simply being read.
+    The combination of frequency and duty being atomic and position being under a read/write lock allows this to happen.
+    If frequency or duty want to be read they can be because they are atomic. 
+    However if they want to be changed the position write lock must be used. This stops the generate sample function running at the same time.
+    To maintain this, frequency and duty must only ever be changed using the set_freq or set_duty functions. If they are changed in other places the safety cannot be guaranteed
+    */
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: 1917, sample_rate: sample_rate, position: 0, duty: 2}
+            SquareWaveGenerator {frequency: AtomicU16::new(1917), sample_rate: sample_rate, position: RwLock::new(0), duty: AtomicU8::new(2), enabled: AtomicBool::new(false), length_counter: AtomicU32::new(0)}
         }
 
-        pub fn write_reg(&mut self, reg: usize, val: u8) {
+        pub fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
 
                 }
 
-                //Duty
+                //Duty and length
                 1 => {
                     let new_duty = val >> 6;
                     self.set_duty(new_duty);
+
+                    let new_length = (self.sample_rate / 256) * 64 - (val & 0x3F) as u32;
+                    self.length_counter.store(new_length, Ordering::Relaxed);
                 }
 
                 2 => {
@@ -32,16 +47,25 @@ mod oscillators {
 
                 //Frequency 8 least significant bits
                 3 => {
-                    let new_frequency = (val as u16 & 0xFF) | (self.frequency & 0xFF00);
+
+                    //No need to worry about safety since this thread is the only one which will ever change frequency
+                    let new_frequency = (val as u16 & 0xFF) | (self.frequency.load(Ordering::Relaxed) & 0xFF00);
                     self.set_frequency(new_frequency);
                 }
 
-                //Frequency 3 most significant bits
+                //Frequency 3 most significant bits and Trigger
                 4 => {
-                    let msb = ((val as u16 & 0x7) << 8) | 0xFF;
-                    let new_frequency = (msb & 0xFF00) | (self.frequency & 0xFF);
 
+                    //No need to worry about safety since this thread is the only one which will ever change frequency
+                    let msb = ((val as u16 & 0x7) << 8) | 0xFF;
+                    let new_frequency = (msb & 0xFF00) | (self.frequency.load(Ordering::Relaxed) & 0xFF);
                     self.set_frequency(new_frequency);
+
+                    let trigger = val & 0x80;
+                    if trigger > 0 {
+                        println!("Trigger");
+                        self.enabled.store(true, Ordering::Relaxed);
+                    }
                 }
 
                 _ => {
@@ -50,63 +74,98 @@ mod oscillators {
             }
         }
 
-        fn set_frequency(&mut self, new_frequency: u16) {
-            if self.frequency != new_frequency {
-                self.frequency = new_frequency;
-                self.position = 0;
+        fn set_frequency(&self, new_frequency: u16) {
+            if self.frequency.load(Ordering::Relaxed) != new_frequency {
+                match self.position.write() {
+                    Ok(mut position) => {
+                        self.frequency.store(new_frequency, Ordering::Relaxed);
+                        *position = 0;
+                    }
+                    Err(error) => {
+                        println!("Could not obtain position write lock");
+                    }
+                }
             }
         }
 
-        fn set_duty(&mut self, new_duty: u8) {
-            if(self.duty != new_duty) {
-                self.duty = new_duty;
-                self.position = 0;
+        fn set_duty(&self, new_duty: u8) {
+            if(self.duty.load(Ordering::Relaxed) != new_duty) {
+                match self.position.write() {
+                    Ok(mut position) => {
+                        self.duty.store(new_duty, Ordering::Relaxed);
+                        *position = 0;
+                    }
+                    Err(error) => {
+                        println!("Could not obtain position write lock");
+                    }
+                }
             }
         }
 
-        pub fn generate_sample(&mut self) -> f32 {
-            let period = 1.0 / (131072.0 / (2048 - self.frequency as u32) as f32);
-            let period_samples = (period * self.sample_rate as f32) as u32 * 2;
+        pub fn generate_sample(&self) -> f32 {
 
-            let mut output_sample = 1.0;
+            let mut output_sample = 0.0;
 
-            match self.duty {
-                //12.5%
-                0 => {
-                    if self.position < period_samples / 8 {
-                        output_sample = -1.0;
+            if !self.enabled.load(Ordering::Relaxed) || self.length_counter.load(Ordering::Relaxed) <= 0 {
+                return output_sample;
+            }
+
+            match self.position.try_write() {
+                Ok(mut position) => {
+                    //Can now be assured frequency and duty will not change during this buffer
+
+                    let period = 1.0 / (131072.0 / (2048 - self.frequency.load(Ordering::Relaxed) as u32) as f32);
+                    let period_samples = (period * self.sample_rate as f32) as u32 * 2;
+
+                    match self.duty.load(Ordering::Relaxed) {
+                        //12.5%
+                        0 => {
+                            if *position < period_samples / 8 {
+                                output_sample = -1.0;
+                            }
+                        }
+
+                        //25%
+                        1 => {
+                            if *position < period_samples / 4 {
+                                output_sample = -1.0;
+                            }
+                        }
+
+                        //50%
+                        2 => {
+                            if *position < period_samples / 2 {
+                                output_sample = -1.0;
+                            }
+                        }
+
+                        //75%
+                        3 => {
+                            if *position >= period_samples / 4 {
+                                output_sample = -1.0;
+                            }
+                        }
+                        _ => {
+
+                        }
+                    }
+
+                    *position += 1;
+
+                    if *position == period_samples {
+                        *position = 0;
                     }
                 }
-
-                //25%
-                1 => {
-                    if self.position < period_samples / 4 {
-                        output_sample = -1.0;
-                    }
-                }
-
-                //50%
-                2 => {
-                    if self.position < period_samples / 2 {
-                        output_sample = -1.0;
-                    }
-                }
-
-                //75%
-                3 => {
-                    if self.position >= period_samples / 4 {
-                        output_sample = -1.0;
-                    }
-                }
-                _ => {
-
+                Err(error) => {
+                    println!("Osc 1: Missed Buffer");
                 }
             }
 
-            self.position += 1;
+            //Decrement the length counter
+            self.length_counter.store(self.length_counter.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
-            if self.position == period_samples {
-                self.position = 0;
+            if self.length_counter.load(Ordering::Relaxed) <= 0 {
+                self.enabled.store(false, Ordering::Relaxed);
             }
 
             output_sample
@@ -114,7 +173,7 @@ mod oscillators {
     }
 }
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
 use serde::{Serialize, Deserialize};
@@ -122,7 +181,8 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize)]
 struct AudioProcessingState {
     sample_rate: u32,
-    osc_1: Mutex<oscillators::SquareWaveGenerator>,
+    osc_1: oscillators::SquareWaveGenerator,
+    osc_2: oscillators::SquareWaveGenerator,
 }
 
 impl AudioProcessingState {
@@ -141,7 +201,7 @@ impl AudioProcessingState {
         let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
         let config = supported_configs_range.next().expect("No available configs").with_max_sample_rate();
 
-        let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, osc_1: Mutex::new(oscillators::SquareWaveGenerator::new(config.sample_rate().0))});
+        let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0), osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0)});
 
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
@@ -169,18 +229,11 @@ impl AudioProcessingState {
 
             match osc {
                 0 => {
-                    match self.osc_1.lock() {
-                        Ok(mut osc) => {
-                            osc.write_reg(reg, value);
-                        }
-                        Err(error) => {
-                            println!("Unable to acquire oscillator lock");
-                        }
-                    }
+                    self.osc_1.write_reg(reg, value);
                 }
 
                 1 => {
-
+                    self.osc_2.write_reg(reg, value);
                 }
 
                 2 => {
@@ -225,16 +278,7 @@ impl AudioProcessingState {
     }
 
     fn generate_sample(&self) -> f32 {
-        let mut mixed_sample = 0.0;
-
-        match self.osc_1.try_lock() {
-            Ok(mut osc) => {
-                mixed_sample = osc.generate_sample();
-            }
-            Err(_error) => {
-                println!("Missed the sample");
-            }
-        }
+        let mixed_sample = self.osc_1.generate_sample() + self.osc_2.generate_sample();
 
         //println!("{}", mixed_sample);
 
