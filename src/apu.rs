@@ -1,6 +1,88 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
-    use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock};
+    use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex};
+
+    #[derive(Serialize, Deserialize)]
+    struct VolumeEnvelopeParams {
+        add_mode: bool,
+        period: u32,
+        current_level: u8,
+        sample_counter: u32,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct VolumeEnvelope {
+        sample_rate: u32,
+        params: Mutex<VolumeEnvelopeParams>,
+        last_val: AtomicU8, 
+    }
+
+    impl VolumeEnvelope {
+        pub fn new(sample_rate: u32) -> VolumeEnvelope {
+            VolumeEnvelope {sample_rate: sample_rate,
+                            params: Mutex::new(VolumeEnvelopeParams{
+                                add_mode: false, 
+                                period: 0, 
+                                current_level: 0,
+                                sample_counter: 0,}
+                            ),
+                            last_val: AtomicU8::new(0),}
+        }
+
+        pub fn write_settings(&self, val: u8) {
+            let starting_vol = val >> 4;
+            let add_mode = ((val & 0x08) >> 3) > 0;
+            let period = (self.sample_rate / 64) * ((val & 0x07) as u32);
+
+            //Get the lock for all items
+            match self.params.lock() {
+                Ok(mut params) => {
+                    params.current_level = starting_vol;
+                    params.add_mode = add_mode;
+                    params.period = period;
+                    params.sample_counter = 0;
+                }
+                Err(error) => {
+                    println!("Could not obtain envelope data lock");
+                }
+            }
+        }
+
+        pub fn generate_sample(&self) -> f32 {
+            match self.params.lock() {
+                Ok(mut params) => {
+                    self.last_val.store(params.current_level, Ordering::Relaxed);
+                    let output_sample = params.current_level as f32 / 15.0;
+
+                    //Apply envelope
+                    if params.period > 0 {
+
+                        //Check if level change is needed
+                        if params.period == params.sample_counter {
+                            if params.add_mode && params.current_level < 15 {
+                                params.current_level +=  1;
+                            }
+                            else if !params.add_mode && params.current_level > 0 {
+                                params.current_level -= 1;
+                            }
+
+                            params.sample_counter = 0;
+                        }
+                        else {
+                            params.sample_counter += 1;
+                        }
+                    }
+
+                    return output_sample;
+                }
+
+                Err(error) => {
+                    println!("missed vol env sample");
+                    return self.last_val.load(Ordering::Relaxed) as f32 / 15.0;
+                }
+            }
+        }
+    }
 
     #[derive(Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
@@ -11,6 +93,7 @@ mod oscillators {
         enabled: AtomicBool,
         last_set_length: AtomicU32,
         length_counter: AtomicU32,
+        env: VolumeEnvelope,
     }
 
     /*Square Wave Generator Thread and Real-Time Safety
@@ -24,7 +107,7 @@ mod oscillators {
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: AtomicU16::new(1917), sample_rate: sample_rate, position: RwLock::new(0), duty: AtomicU8::new(2), enabled: AtomicBool::new(false), last_set_length: AtomicU32::new(0), length_counter: AtomicU32::new(0)}
+            SquareWaveGenerator {frequency: AtomicU16::new(1917), sample_rate: sample_rate, position: RwLock::new(0), duty: AtomicU8::new(2), enabled: AtomicBool::new(false), last_set_length: AtomicU32::new(0), length_counter: AtomicU32::new(0), env: VolumeEnvelope::new(sample_rate),}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -42,8 +125,9 @@ mod oscillators {
                     self.last_set_length.store(new_length, Ordering::Relaxed);
                 }
 
+                //Volume envelope
                 2 => {
-
+                    self.env.write_settings(val);
                 }
 
                 //Frequency 8 least significant bits
@@ -105,6 +189,7 @@ mod oscillators {
 
         pub fn generate_sample(&self) -> f32 {
 
+            let mut envelope_sample = self.env.generate_sample();
             let mut output_sample = 0.0;
 
             if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 {
@@ -178,7 +263,7 @@ mod oscillators {
                 self.enabled.store(false, Ordering::Relaxed);
             }
 
-            output_sample
+            output_sample * envelope_sample
         }
     }
 }
