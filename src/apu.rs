@@ -9,6 +9,7 @@ mod oscillators {
         position: RwLock<u32>,
         duty: AtomicU8,
         enabled: AtomicBool,
+        last_set_length: AtomicU32,
         length_counter: AtomicU32,
     }
 
@@ -23,7 +24,7 @@ mod oscillators {
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: AtomicU16::new(1917), sample_rate: sample_rate, position: RwLock::new(0), duty: AtomicU8::new(2), enabled: AtomicBool::new(false), length_counter: AtomicU32::new(0)}
+            SquareWaveGenerator {frequency: AtomicU16::new(1917), sample_rate: sample_rate, position: RwLock::new(0), duty: AtomicU8::new(2), enabled: AtomicBool::new(false), last_set_length: AtomicU32::new(0), length_counter: AtomicU32::new(0)}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -38,7 +39,7 @@ mod oscillators {
                     self.set_duty(new_duty);
 
                     let new_length = (self.sample_rate / 256) * 64 - (val & 0x3F) as u32;
-                    self.length_counter.store(new_length, Ordering::Relaxed);
+                    self.last_set_length.store(new_length, Ordering::Relaxed);
                 }
 
                 2 => {
@@ -65,6 +66,7 @@ mod oscillators {
                     if trigger > 0 {
                         println!("Trigger");
                         self.enabled.store(true, Ordering::Relaxed);
+                        self.length_counter.store(self.last_set_length.load(Ordering::Relaxed), Ordering::Relaxed);
                     }
                 }
 
@@ -106,7 +108,7 @@ mod oscillators {
 
             let mut output_sample = 0.0;
 
-            if !self.enabled.load(Ordering::Relaxed) || self.length_counter.load(Ordering::Relaxed) <= 0 {
+            if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 {
                 return output_sample;
             }
 
@@ -161,8 +163,17 @@ mod oscillators {
                 }
             }
 
-            //Decrement the length counter
-            self.length_counter.store(self.length_counter.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+            //Decrement the length counter making sure no underflow happens if length changed during that
+            let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
+                Some(val) => {
+                    val
+                }
+                None => {
+                    0
+                }
+            };
+
+            self.length_counter.store(new_length, Ordering::Relaxed);
 
             if self.length_counter.load(Ordering::Relaxed) <= 0 {
                 self.enabled.store(false, Ordering::Relaxed);
