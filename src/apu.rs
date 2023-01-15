@@ -64,7 +64,6 @@ mod oscillators {
 
                     let trigger = val & 0x80;
                     if trigger > 0 {
-                        println!("Trigger");
                         self.enabled.store(true, Ordering::Relaxed);
                         self.length_counter.store(self.last_set_length.load(Ordering::Relaxed), Ordering::Relaxed);
                     }
@@ -184,7 +183,7 @@ mod oscillators {
     }
 }
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
 use serde::{Serialize, Deserialize};
@@ -194,6 +193,18 @@ struct AudioProcessingState {
     sample_rate: u32,
     osc_1: oscillators::SquareWaveGenerator,
     osc_2: oscillators::SquareWaveGenerator,
+
+    left_osc_1_enable: AtomicBool,
+    left_osc_2_enable: AtomicBool,
+    left_osc_3_enable: AtomicBool,
+    left_osc_4_enable: AtomicBool,
+    right_osc_1_enable: AtomicBool,
+    right_osc_2_enable: AtomicBool,
+    right_osc_3_enable: AtomicBool,
+    right_osc_4_enable: AtomicBool,
+
+    left_master_vol: AtomicU8,
+    right_master_vol: AtomicU8,
 }
 
 impl AudioProcessingState {
@@ -212,7 +223,20 @@ impl AudioProcessingState {
         let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
         let config = supported_configs_range.next().expect("No available configs").with_max_sample_rate();
 
-        let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0), osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0)});
+        let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
+                                                                                       osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0), 
+                                                                                       osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0),
+                                                                                       left_osc_1_enable: AtomicBool::new(false),
+                                                                                       left_osc_2_enable: AtomicBool::new(false),
+                                                                                       left_osc_3_enable: AtomicBool::new(false),
+                                                                                       left_osc_4_enable: AtomicBool::new(false),
+                                                                                       right_osc_1_enable: AtomicBool::new(false),
+                                                                                       right_osc_2_enable: AtomicBool::new(false),
+                                                                                       right_osc_3_enable: AtomicBool::new(false),
+                                                                                       right_osc_4_enable: AtomicBool::new(false),
+                                                                                       left_master_vol: AtomicU8::new(0),
+                                                                                       right_master_vol: AtomicU8::new(0),
+                                                                                       });
 
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
@@ -258,8 +282,38 @@ impl AudioProcessingState {
                     println!("Unrecognised oscillator number");
                 }
             }
+        }  
+        else {
+            match address {
+                0xFF24 => {
+                    let left_vol = (value & 0x70) >> 4;
+                    let right_vol = value & 0x07;
 
-        }   
+                    self.left_master_vol.store(left_vol, Ordering::Relaxed);
+                    self.right_master_vol.store(right_vol, Ordering::Relaxed);
+                }
+
+                0xFF25 => {
+                    self.left_osc_4_enable.store((value >> 7) > 0, Ordering::Relaxed);
+                    self.left_osc_3_enable.store(((value & 0x40) >> 6) > 0, Ordering::Relaxed);
+                    self.left_osc_2_enable.store(((value & 0x20) >> 5) > 0, Ordering::Relaxed);
+                    self.left_osc_1_enable.store(((value & 0x10) >> 4) > 0, Ordering::Relaxed);
+
+                    self.right_osc_4_enable.store(((value & 0x08) >> 3) > 0, Ordering::Relaxed);
+                    self.right_osc_3_enable.store(((value & 0x04) >> 2) > 0, Ordering::Relaxed);
+                    self.right_osc_2_enable.store(((value & 0x02) >> 1) > 0, Ordering::Relaxed);
+                    self.right_osc_1_enable.store((value & 0x01) > 0, Ordering::Relaxed);
+                }
+
+                0xFF26 => {
+
+                }
+
+                _ => {
+                    //println!("Audio: Unrecognised address: {}", address);
+                }
+            }
+        } 
     }
 
     fn audio_block_f32(&self, audio: &mut [f32], _info: &OutputCallbackInfo) {
@@ -289,9 +343,20 @@ impl AudioProcessingState {
     }
 
     fn generate_sample(&self) -> f32 {
-        let mixed_sample = self.osc_1.generate_sample() + self.osc_2.generate_sample();
+        let mut mixed_sample = 0.0;
 
-        //println!("{}", mixed_sample);
+        //Only doing left channel at the moment
+        let osc_1_sample = self.osc_1.generate_sample();
+        if self.left_osc_1_enable.load(Ordering::Relaxed) {
+            mixed_sample += osc_1_sample;
+        }
+
+        let osc_2_sample = self.osc_2.generate_sample();
+        if self.left_osc_2_enable.load(Ordering::Relaxed) {
+            mixed_sample += osc_2_sample;
+        }
+
+        mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
 
         return mixed_sample;
     }
