@@ -286,6 +286,7 @@ mod oscillators {
         enabled: AtomicBool, 
         last_set_length: AtomicU32, 
         length_counter: AtomicU32,
+        volume_code: AtomicU8,
     }
 
     impl WaveTable {
@@ -300,7 +301,8 @@ mod oscillators {
                         samples_at_position: AtomicU32::new(0),
                         enabled: AtomicBool::new(false), 
                         last_set_length: AtomicU32::new(0), 
-                        length_counter: AtomicU32::new(0),}
+                        length_counter: AtomicU32::new(0),
+                        volume_code: AtomicU8::new(0),}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -312,8 +314,9 @@ mod oscillators {
                     let new_length = (self.sample_rate / 256) * 64 - val as u32;
                     self.last_set_length.store(new_length, Ordering::Relaxed);
                 }
-                2 => {
 
+                2 => {
+                    self.volume_code.store((val & 60) >> 5, Ordering::Relaxed);
                 }
 
                 //Frequency 8 least significant bits
@@ -385,8 +388,30 @@ mod oscillators {
                 self.samples_at_position.store(self.samples_at_position.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
             }
 
-            //println!("{}", self.sound_data[current_position as usize].load(Ordering::Relaxed));
-            //println!("{}, {}", change_time_samples, );
+            let volume = match self.volume_code.load(Ordering::Relaxed) {
+                0 => {
+                    0.0
+                }
+
+                1 => {
+                    1.0
+                }
+
+                2 => {
+                    0.5
+                }
+
+                3 => {
+                    0.25
+                }
+
+                _ => {
+                    println!("Wave table: unexpected volume code");
+                    1.0
+                }
+            };
+
+            output_sample *= volume;
 
             //Decrement the length counter making sure no underflow happens if length changed during that
             let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
@@ -714,12 +739,12 @@ impl AudioProcessingState {
         //Only doing left channel at the moment
         let osc_1_sample = self.osc_1.generate_sample();
         if self.left_osc_1_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_1_sample;
+            //mixed_sample += osc_1_sample;
         }
 
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_2_sample;
+            //mixed_sample += osc_2_sample;
         }
 
         let osc_3_sample = self.osc_3.generate_sample();
@@ -729,7 +754,7 @@ impl AudioProcessingState {
 
         let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_4_sample;
+            //mixed_sample += osc_4_sample;
         }
 
         mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
