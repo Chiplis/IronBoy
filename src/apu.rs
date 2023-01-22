@@ -1,5 +1,6 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
+    use winit::event::ElementState;
     use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex};
 
     #[derive(Serialize, Deserialize)]
@@ -107,7 +108,14 @@ mod oscillators {
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: AtomicU16::new(1917), sample_rate: sample_rate, position: RwLock::new(0), duty: AtomicU8::new(2), enabled: AtomicBool::new(false), last_set_length: AtomicU32::new(0), length_counter: AtomicU32::new(0), env: VolumeEnvelope::new(sample_rate),}
+            SquareWaveGenerator {frequency: AtomicU16::new(1917), 
+                                 sample_rate: sample_rate, 
+                                 position: RwLock::new(0), 
+                                 duty: AtomicU8::new(2), 
+                                 enabled: AtomicBool::new(false), 
+                                 last_set_length: AtomicU32::new(0), 
+                                 length_counter: AtomicU32::new(0), 
+                                 env: VolumeEnvelope::new(sample_rate),}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -154,7 +162,7 @@ mod oscillators {
                 }
 
                 _ => {
-                    println!("Osc 1: Unrecognised register");
+                    println!("Square Wave Osc: Unrecognised register");
                 }
             }
         }
@@ -266,6 +274,150 @@ mod oscillators {
             output_sample * envelope_sample
         }
     }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct WaveTable {
+
+    }
+
+    impl WaveTable {
+        pub fn write_reg(&self, reg: usize, val: u8) {
+
+        }
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct NoiseGenerator {
+        sample_rate: u32,
+        env: VolumeEnvelope,
+        change_time_samples: AtomicU32,
+        sample_counter: AtomicU32,
+        LFSR: Mutex<[bool; 15]>,
+        width: AtomicBool,
+        enabled: AtomicBool,
+        last_set_length: AtomicU32,
+        length_counter: AtomicU32,
+    }
+
+    impl NoiseGenerator {
+        pub fn new(sample_rate: u32) -> NoiseGenerator {
+            NoiseGenerator { sample_rate: sample_rate,
+                             env: VolumeEnvelope::new(sample_rate),
+                             change_time_samples: AtomicU32::new(sample_rate),
+                             sample_counter: AtomicU32::new(0),
+                             LFSR: Mutex::new([true; 15]),
+                             width: AtomicBool::new(false),
+                             enabled: AtomicBool::new(false), 
+                             last_set_length: AtomicU32::new(0), 
+                             length_counter: AtomicU32::new(0),  }
+        }
+
+        pub fn write_reg(&self, reg: usize, val: u8) {
+            match reg {
+                0 => {
+                    
+                }
+
+                1 => {
+                    let new_length = (self.sample_rate / 256) * 64 - (val & 0x3F) as u32;
+                    self.last_set_length.store(new_length, Ordering::Relaxed);
+                }
+
+                2 => {
+                    self.env.write_settings(val);
+                }
+
+                3 => {
+                    let clock_shift = val >> 4;
+                    let width = (val & 0x08) >> 3;
+                    let divisor_code = val & 0x07;
+
+                    let divisor = if divisor_code == 0 {
+                        8
+                    }
+                    else {
+                        divisor_code * 16
+                    };
+
+                    let period = divisor << clock_shift;
+
+                    let time_in_samples = self.sample_rate as f32 / period as f32;
+
+                    self.change_time_samples.store(time_in_samples as u32, Ordering::Relaxed);
+                    self.width.store(width != 0, Ordering::Relaxed);
+                }
+
+                4 => {
+                    let trigger = val & 0x80;
+                    if trigger > 0 {
+                        self.enabled.store(true, Ordering::Relaxed);
+                        self.length_counter.store(self.last_set_length.load(Ordering::Relaxed), Ordering::Relaxed);
+                    }
+                }
+
+                _ => {
+                    println!("Noise Osc: Unrecognised register");
+                }
+            }
+        }
+
+        pub fn generate_sample(&self) -> f32 {
+            let env_sample = self.env.generate_sample();
+            let mut output_sample = 0.0;
+
+            if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 {
+                return output_sample;
+            }
+
+            match self.LFSR.lock() {
+                Ok(mut LFSR) => {
+                    if self.sample_counter.load(Ordering::Relaxed) >= self.change_time_samples.load(Ordering::Relaxed) {
+                        let new_val = LFSR[0] != LFSR[1];
+                        LFSR.rotate_left(1);
+
+                        let write_pos = if self.width.load(Ordering::Relaxed) {
+                            6
+                        }
+                        else {
+                            14
+                        };
+
+                        LFSR[write_pos] = new_val;
+                    }
+        
+                    output_sample = if LFSR[0] == true {
+                        1.0
+                    }
+                    else {
+                        0.0
+                    };
+                },
+                Err(error) => {
+                    println!("Could not obtain LFSR ref");
+                }
+            }
+            
+            self.sample_counter.store(self.sample_counter.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
+
+            //Decrement the length counter making sure no underflow happens if length changed during that
+            let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
+                Some(val) => {
+                    val
+                }
+                None => {
+                    0
+                }
+            };
+
+            self.length_counter.store(new_length, Ordering::Relaxed);
+
+            if self.length_counter.load(Ordering::Relaxed) <= 0 {
+                self.enabled.store(false, Ordering::Relaxed);
+            }
+
+            env_sample * output_sample
+        }
+    }
 }
 
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
@@ -278,6 +430,7 @@ struct AudioProcessingState {
     sample_rate: u32,
     osc_1: oscillators::SquareWaveGenerator,
     osc_2: oscillators::SquareWaveGenerator,
+    osc_4: oscillators::NoiseGenerator,
 
     left_osc_1_enable: AtomicBool,
     left_osc_2_enable: AtomicBool,
@@ -311,6 +464,7 @@ impl AudioProcessingState {
         let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
                                                                                        osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0), 
                                                                                        osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0),
+                                                                                       osc_4: oscillators::NoiseGenerator::new(config.sample_rate().0),
                                                                                        left_osc_1_enable: AtomicBool::new(false),
                                                                                        left_osc_2_enable: AtomicBool::new(false),
                                                                                        left_osc_3_enable: AtomicBool::new(false),
@@ -361,7 +515,7 @@ impl AudioProcessingState {
                 }
 
                 3 => {
-
+                    self.osc_4.write_reg(reg, value);
                 }
                 _ => {
                     println!("Unrecognised oscillator number");
@@ -439,6 +593,11 @@ impl AudioProcessingState {
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
             mixed_sample += osc_2_sample;
+        }
+
+        let osc_4_sample = self.osc_4.generate_sample();
+        if self.left_osc_4_enable.load(Ordering::Relaxed) {
+            mixed_sample += osc_4_sample;
         }
 
         mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
