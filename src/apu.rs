@@ -1,4 +1,5 @@
 mod oscillators {
+    use rand::seq::index::sample;
     use serde::{Serialize, Deserialize};
     use winit::event::ElementState;
     use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex};
@@ -277,12 +278,133 @@ mod oscillators {
 
     #[derive(Serialize, Deserialize)]
     pub struct WaveTable {
-
+        sample_rate: u32,
+        sound_data: [AtomicU8; 32],
+        frequency: AtomicU16,
+        position_counter: AtomicU32,
+        samples_at_position: AtomicU32,
+        enabled: AtomicBool, 
+        last_set_length: AtomicU32, 
+        length_counter: AtomicU32,
     }
 
     impl WaveTable {
-        pub fn write_reg(&self, reg: usize, val: u8) {
+        pub fn new(sample_rate: u32) -> WaveTable {
 
+            const GENERATOR: AtomicU8 = AtomicU8::new(0);
+
+            WaveTable { sample_rate: sample_rate,
+                        sound_data: [GENERATOR; 32], 
+                        frequency: AtomicU16::new(0),
+                        position_counter: AtomicU32::new(0),
+                        samples_at_position: AtomicU32::new(0),
+                        enabled: AtomicBool::new(false), 
+                        last_set_length: AtomicU32::new(0), 
+                        length_counter: AtomicU32::new(0),}
+        }
+
+        pub fn write_reg(&self, reg: usize, val: u8) {
+            match reg {
+                0 => {
+
+                }
+                1 => {
+                    let new_length = (self.sample_rate / 256) * 64 - val as u32;
+                    self.last_set_length.store(new_length, Ordering::Relaxed);
+                }
+                2 => {
+
+                }
+
+                //Frequency 8 least significant bits
+                3 => {
+
+                    //No need to worry about safety since this thread is the only one which will ever change frequency
+                    let new_frequency = (val as u16 & 0xFF) | (self.frequency.load(Ordering::Relaxed) & 0xFF00);
+                    self.frequency.store(new_frequency, Ordering::Relaxed);
+                }
+
+                //Frequency 3 most significant bits and Trigger
+                4 => {
+
+                    //No need to worry about safety since this thread is the only one which will ever change frequency
+                    let msb = ((val as u16 & 0x7) << 8) | 0xFF;
+                    let new_frequency = (msb & 0xFF00) | (self.frequency.load(Ordering::Relaxed) & 0xFF);
+                    self.frequency.store(new_frequency, Ordering::Relaxed);
+
+                    let trigger = val & 0x80;
+                    if trigger > 0 {
+                        self.enabled.store(true, Ordering::Relaxed);
+                        self.length_counter.store(self.last_set_length.load(Ordering::Relaxed), Ordering::Relaxed);
+                    }
+                }
+
+                _ => {
+
+                }
+            }
+        }
+
+        pub fn write_sound_data(&self, address: usize, val: u8) {
+            let rel_address = address - 0xFF30;
+
+            let start_sample = rel_address * 2;
+
+            self.sound_data[start_sample].store(val >> 4, Ordering::Relaxed);
+            self.sound_data[start_sample + 1].store(val & 0x0F, Ordering::Relaxed);
+
+            //println!("{}, {}", self.sound_data[start_sample].load(Ordering::Relaxed), self.sound_data[start_sample + 1].load(Ordering::Relaxed));
+        }
+
+        pub fn generate_sample(&self) -> f32 {
+            
+            let mut output_sample = 0.0;
+
+            if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 || self.frequency.load(Ordering::Relaxed) <= 0 {
+                return output_sample;
+            }
+
+            let current_position = self.position_counter.load(Ordering::Relaxed);
+
+            output_sample = self.sound_data[current_position as usize].load(Ordering::Relaxed) as f32 / 15.0;
+
+            let change_time_samples = self.sample_rate / self.frequency.load(Ordering::Relaxed) as u32;
+
+            if self.samples_at_position.load(Ordering::Relaxed) >= change_time_samples {
+                let new_position = if current_position == 31 {
+                    0
+                }
+                else {
+                    current_position + 1
+                };
+
+                self.position_counter.store(new_position, Ordering::Relaxed);
+                self.samples_at_position.store(0, Ordering::Relaxed);
+            }
+            else {
+                self.samples_at_position.store(self.samples_at_position.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
+            }
+
+            //println!("{}", self.sound_data[current_position as usize].load(Ordering::Relaxed));
+            //println!("{}, {}", change_time_samples, );
+
+            //Decrement the length counter making sure no underflow happens if length changed during that
+            let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
+                Some(val) => {
+                    val
+                }
+                None => {
+                    0
+                }
+            };
+
+            self.length_counter.store(new_length, Ordering::Relaxed);
+
+            if self.length_counter.load(Ordering::Relaxed) <= 0 {
+                self.enabled.store(false, Ordering::Relaxed);
+            }
+            
+            output_sample
         }
     }
 
@@ -430,6 +552,7 @@ struct AudioProcessingState {
     sample_rate: u32,
     osc_1: oscillators::SquareWaveGenerator,
     osc_2: oscillators::SquareWaveGenerator,
+    osc_3: oscillators::WaveTable,
     osc_4: oscillators::NoiseGenerator,
 
     left_osc_1_enable: AtomicBool,
@@ -464,6 +587,7 @@ impl AudioProcessingState {
         let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
                                                                                        osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0), 
                                                                                        osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0),
+                                                                                       osc_3: oscillators::WaveTable::new(config.sample_rate().0),
                                                                                        osc_4: oscillators::NoiseGenerator::new(config.sample_rate().0),
                                                                                        left_osc_1_enable: AtomicBool::new(false),
                                                                                        left_osc_2_enable: AtomicBool::new(false),
@@ -511,7 +635,7 @@ impl AudioProcessingState {
                 }
 
                 2 => {
-
+                    self.osc_3.write_reg(reg, value);
                 }
 
                 3 => {
@@ -521,6 +645,9 @@ impl AudioProcessingState {
                     println!("Unrecognised oscillator number");
                 }
             }
+        }
+        else if address >= 0xFF30 && address <= 0xFF3F {
+            self.osc_3.write_sound_data(address, value);
         }  
         else {
             match address {
@@ -549,7 +676,7 @@ impl AudioProcessingState {
                 }
 
                 _ => {
-                    //println!("Audio: Unrecognised address: {}", address);
+                    println!("Audio: Unrecognised address: {}", address);
                 }
             }
         } 
@@ -593,6 +720,11 @@ impl AudioProcessingState {
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
             mixed_sample += osc_2_sample;
+        }
+
+        let osc_3_sample = self.osc_3.generate_sample();
+        if self.left_osc_3_enable.load(Ordering::Relaxed) {
+            mixed_sample += osc_3_sample;
         }
 
         let osc_4_sample = self.osc_4.generate_sample();
