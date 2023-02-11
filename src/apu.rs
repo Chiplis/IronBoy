@@ -171,6 +171,10 @@ mod oscillators {
             let period = 1.0 / (131072.0 / (2048 - self.frequency.load(Ordering::Relaxed) as u32) as f32);
             let period_samples = (period * self.sample_rate as f32) as u32 * 2;
 
+            if self.position.load(Ordering::Relaxed) >= period_samples {
+                self.position.store(0, Ordering::Relaxed);
+            }
+
             match self.duty.load(Ordering::Relaxed) {
                 //12.5%
                 0 => {
@@ -204,10 +208,6 @@ mod oscillators {
             }
 
             self.position.store(self.position.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
-
-            if self.position.load(Ordering::Relaxed) == period_samples {
-                self.position.store(0, Ordering::Relaxed);
-            }
 
         //Decrement the length counter making sure no underflow happens if length changed during that
         let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
@@ -692,12 +692,12 @@ impl AudioProcessingState {
         //Only doing left channel at the moment
         let osc_1_sample = self.osc_1.generate_sample();
         if self.left_osc_1_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_1_sample;
+            mixed_sample += osc_1_sample;
         }
 
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_2_sample;
+            mixed_sample += osc_2_sample;
         }
 
         let osc_3_sample = self.osc_3.generate_sample();
@@ -707,7 +707,7 @@ impl AudioProcessingState {
 
         let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_4_sample;
+            mixed_sample += osc_4_sample;
         }
 
         mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
