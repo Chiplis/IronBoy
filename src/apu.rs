@@ -90,30 +90,58 @@ mod oscillators {
     pub struct SquareWaveGenerator {
         frequency: AtomicU16,
         sample_rate: u32,
+        sweep: bool,
         position: AtomicU32,
         duty: AtomicU8,
         enabled: AtomicBool,
         last_set_length: AtomicU32,
         length_counter: AtomicU32,
         env: VolumeEnvelope,
+
+        sweep_time_samples: AtomicU32,
+        sweep_negate: AtomicBool,
+        sweep_shift: AtomicU8,
+        sweep_sample_counter: AtomicU32,
     }
 
     impl SquareWaveGenerator {
-        pub fn new(sample_rate: u32) -> SquareWaveGenerator {
+        pub fn new(sample_rate: u32, sweep: bool) -> SquareWaveGenerator {
             SquareWaveGenerator {frequency: AtomicU16::new(1917), 
                                  sample_rate: sample_rate, 
+                                 sweep: sweep,
                                  position: AtomicU32::new(0), 
                                  duty: AtomicU8::new(2), 
                                  enabled: AtomicBool::new(false), 
                                  last_set_length: AtomicU32::new(0), 
                                  length_counter: AtomicU32::new(0), 
-                                 env: VolumeEnvelope::new(sample_rate),}
+                                 env: VolumeEnvelope::new(sample_rate),
+                                 sweep_time_samples: AtomicU32::new(0),
+                                 sweep_negate: AtomicBool::new(false),
+                                 sweep_shift: AtomicU8::new(0),
+                                 sweep_sample_counter: AtomicU32::new(0),}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
+                    if self.sweep {
+                        let period = (val & 0x70) >> 4;
+                        let negate = (val & 0x08) > 0;
+                        let shift = val & 0x07;
 
+                        let sweep_time_samples: u32 = if period == 0 {
+                            0
+                        }
+                        else
+                        {
+                            (period as f32 / 128 as f32) as u32 * self.sample_rate
+                        };
+
+                        self.sweep_negate.store(negate, Ordering::Relaxed);
+                        self.sweep_shift.store(shift, Ordering::Relaxed);
+                        self.sweep_time_samples.store(sweep_time_samples, Ordering::Relaxed);
+                        self.sweep_sample_counter.store(0, Ordering::Relaxed);
+                    }
                 }
 
                 //Duty and length
@@ -160,7 +188,6 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-
             let mut envelope_sample = self.env.generate_sample();
             let mut output_sample = 0.0;
 
@@ -563,8 +590,8 @@ impl AudioProcessingState {
         let config = supported_configs_range.next().expect("No available configs").with_max_sample_rate();
 
         let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
-                                                                                       osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0), 
-                                                                                       osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0),
+                                                                                       osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0, true), 
+                                                                                       osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0, false),
                                                                                        osc_3: oscillators::WaveTable::new(config.sample_rate().0),
                                                                                        osc_4: oscillators::NoiseGenerator::new(config.sample_rate().0),
                                                                                        left_osc_1_enable: AtomicBool::new(false),
