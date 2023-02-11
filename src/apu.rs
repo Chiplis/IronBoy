@@ -90,7 +90,7 @@ mod oscillators {
     pub struct SquareWaveGenerator {
         frequency: AtomicU16,
         sample_rate: u32,
-        position: RwLock<u32>,
+        position: AtomicU32,
         duty: AtomicU8,
         enabled: AtomicBool,
         last_set_length: AtomicU32,
@@ -111,7 +111,7 @@ mod oscillators {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
             SquareWaveGenerator {frequency: AtomicU16::new(1917), 
                                  sample_rate: sample_rate, 
-                                 position: RwLock::new(0), 
+                                 position: AtomicU32::new(0), 
                                  duty: AtomicU8::new(2), 
                                  enabled: AtomicBool::new(false), 
                                  last_set_length: AtomicU32::new(0), 
@@ -128,7 +128,7 @@ mod oscillators {
                 //Duty and length
                 1 => {
                     let new_duty = val >> 6;
-                    self.set_duty(new_duty);
+                    self.duty.store(new_duty, Ordering::Relaxed);
 
                     let new_length = (self.sample_rate / 256) * 64 - (val & 0x3F) as u32;
                     self.last_set_length.store(new_length, Ordering::Relaxed);
@@ -144,7 +144,7 @@ mod oscillators {
 
                     //No need to worry about safety since this thread is the only one which will ever change frequency
                     let new_frequency = (val as u16 & 0xFF) | (self.frequency.load(Ordering::Relaxed) & 0xFF00);
-                    self.set_frequency(new_frequency);
+                    self.frequency.store(new_frequency, Ordering::Relaxed);
                 }
 
                 //Frequency 3 most significant bits and Trigger
@@ -153,7 +153,7 @@ mod oscillators {
                     //No need to worry about safety since this thread is the only one which will ever change frequency
                     let msb = ((val as u16 & 0x7) << 8) | 0xFF;
                     let new_frequency = (msb & 0xFF00) | (self.frequency.load(Ordering::Relaxed) & 0xFF);
-                    self.set_frequency(new_frequency);
+                    self.frequency.store(new_frequency, Ordering::Relaxed);
 
                     let trigger = val & 0x80;
                     if trigger > 0 {
@@ -168,34 +168,6 @@ mod oscillators {
             }
         }
 
-        fn set_frequency(&self, new_frequency: u16) {
-            if self.frequency.load(Ordering::Relaxed) != new_frequency {
-                match self.position.write() {
-                    Ok(mut position) => {
-                        self.frequency.store(new_frequency, Ordering::Relaxed);
-                        *position = 0;
-                    }
-                    Err(error) => {
-                        println!("Could not obtain position write lock");
-                    }
-                }
-            }
-        }
-
-        fn set_duty(&self, new_duty: u8) {
-            if(self.duty.load(Ordering::Relaxed) != new_duty) {
-                match self.position.write() {
-                    Ok(mut position) => {
-                        self.duty.store(new_duty, Ordering::Relaxed);
-                        *position = 0;
-                    }
-                    Err(error) => {
-                        println!("Could not obtain position write lock");
-                    }
-                }
-            }
-        }
-
         pub fn generate_sample(&self) -> f32 {
 
             let mut envelope_sample = self.env.generate_sample();
@@ -205,76 +177,66 @@ mod oscillators {
                 return output_sample;
             }
 
-            match self.position.try_write() {
-                Ok(mut position) => {
-                    //Can now be assured frequency and duty will not change during this buffer
+            let period = 1.0 / (131072.0 / (2048 - self.frequency.load(Ordering::Relaxed) as u32) as f32);
+            let period_samples = (period * self.sample_rate as f32) as u32 * 2;
 
-                    let period = 1.0 / (131072.0 / (2048 - self.frequency.load(Ordering::Relaxed) as u32) as f32);
-                    let period_samples = (period * self.sample_rate as f32) as u32 * 2;
-
-                    match self.duty.load(Ordering::Relaxed) {
-                        //12.5%
-                        0 => {
-                            if *position < period_samples / 8 {
-                                output_sample = -1.0;
-                            }
-                        }
-
-                        //25%
-                        1 => {
-                            if *position < period_samples / 4 {
-                                output_sample = -1.0;
-                            }
-                        }
-
-                        //50%
-                        2 => {
-                            if *position < period_samples / 2 {
-                                output_sample = -1.0;
-                            }
-                        }
-
-                        //75%
-                        3 => {
-                            if *position >= period_samples / 4 {
-                                output_sample = -1.0;
-                            }
-                        }
-                        _ => {
-
-                        }
-                    }
-
-                    *position += 1;
-
-                    if *position == period_samples {
-                        *position = 0;
+            match self.duty.load(Ordering::Relaxed) {
+                //12.5%
+                0 => {
+                    if self.position.load(Ordering::Relaxed) < period_samples / 8 {
+                        output_sample = -1.0;
                     }
                 }
-                Err(error) => {
-                    println!("Osc 1: Missed Buffer");
+
+                //25%
+                1 => {
+                    if self.position.load(Ordering::Relaxed) < period_samples / 4 {
+                        output_sample = -1.0;
+                    }
                 }
+
+                //50%
+                2 => {
+                    if self.position.load(Ordering::Relaxed) < period_samples / 2 {
+                        output_sample = -1.0;
+                    }
+                }
+
+                //75%
+                3 => {
+                    if self.position.load(Ordering::Relaxed) >= period_samples / 4 {
+                        output_sample = -1.0;
+                    }
+                }
+
+                _ => {}
             }
 
-            //Decrement the length counter making sure no underflow happens if length changed during that
-            let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
-                Some(val) => {
-                    val
-                }
-                None => {
-                    0
-                }
-            };
+            self.position.store(self.position.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
 
-            self.length_counter.store(new_length, Ordering::Relaxed);
-
-            if self.length_counter.load(Ordering::Relaxed) <= 0 {
-                self.enabled.store(false, Ordering::Relaxed);
+            if self.position.load(Ordering::Relaxed) == period_samples {
+                self.position.store(0, Ordering::Relaxed);
             }
 
-            output_sample * envelope_sample
+        //Decrement the length counter making sure no underflow happens if length changed during that
+        let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
+            Some(val) => {
+                val
+            }
+            None => {
+                0
+            }
+        };
+
+        self.length_counter.store(new_length, Ordering::Relaxed);
+
+        if self.length_counter.load(Ordering::Relaxed) <= 0 {
+            self.enabled.store(false, Ordering::Relaxed);
         }
+
+        output_sample * envelope_sample
     }
+}
 
     #[derive(Serialize, Deserialize)]
     pub struct WaveTable {
