@@ -98,15 +98,6 @@ mod oscillators {
         env: VolumeEnvelope,
     }
 
-    /*Square Wave Generator Thread and Real-Time Safety
-    Position must change whenever frequency or duty change and this must happen at the exact time of that change.
-    Using a mutex round this object means that the generate sample function cannot run when frequency or duty are simply being read.
-    The combination of frequency and duty being atomic and position being under a read/write lock allows this to happen.
-    If frequency or duty want to be read they can be because they are atomic. 
-    However if they want to be changed the position write lock must be used. This stops the generate sample function running at the same time.
-    To maintain this, frequency and duty must only ever be changed using the set_freq or set_duty functions. If they are changed in other places the safety cannot be guaranteed
-    */
-
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32) -> SquareWaveGenerator {
             SquareWaveGenerator {frequency: AtomicU16::new(1917), 
