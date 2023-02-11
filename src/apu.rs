@@ -188,7 +188,6 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-            let mut envelope_sample = self.env.generate_sample();
             let mut output_sample = 0.0;
 
             if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 {
@@ -197,6 +196,7 @@ mod oscillators {
 
             let period = 1.0 / (131072.0 / (2048 - self.frequency.load(Ordering::Relaxed) as u32) as f32);
             let period_samples = (period * self.sample_rate as f32) as u32 * 2;
+            let envelope_sample = self.env.generate_sample();
 
             if self.position.load(Ordering::Relaxed) >= period_samples {
                 self.position.store(0, Ordering::Relaxed);
@@ -468,7 +468,7 @@ mod oscillators {
 
                     let period = divisor << clock_shift;
 
-                    let time_in_samples = self.sample_rate as f32 / period as f32;
+                    let time_in_samples = (self.sample_rate as f32 / 512.0) * period as f32;
 
                     self.change_time_samples.store(time_in_samples as u32, Ordering::Relaxed);
                     self.width.store(width != 0, Ordering::Relaxed);
