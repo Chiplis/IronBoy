@@ -466,9 +466,9 @@ mod oscillators {
                         divisor_code * 16
                     };
 
-                    let period = divisor << clock_shift;
+                    let frequency = divisor << clock_shift;
 
-                    let time_in_samples = (self.sample_rate as f32 / 512.0) * period as f32;
+                    let time_in_samples = (self.sample_rate as f32 / 512.0) * frequency as f32;
 
                     self.change_time_samples.store(time_in_samples as u32, Ordering::Relaxed);
                     self.width.store(width != 0, Ordering::Relaxed);
