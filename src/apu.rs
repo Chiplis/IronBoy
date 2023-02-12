@@ -199,7 +199,7 @@ mod oscillators {
             if self.frequency_timer.load(Ordering::Relaxed) <= 0
             {
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
-                let samples_till_next = (self.sample_rate as f32 / (4194304.0 / 4.0)) * cycles_till_next as f32;
+                let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
 
                 self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
                 
@@ -576,6 +576,32 @@ mod oscillators {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct SineGen {
+    sample_rate: u32,
+    phase: std::sync::Mutex<f32>,
+    phase_step: f32,
+}
+
+impl SineGen {
+    fn new(sample_rate: u32) -> SineGen {
+        SineGen { sample_rate: sample_rate, phase: std::sync::Mutex::new(0.0), phase_step: 1000.0 / sample_rate as f32 }
+    }
+
+    fn generate_sample(&self) -> f32 {
+        match self.phase.lock() {
+            Ok(mut phase) => {
+                let sample = (*phase * 2.0 * std::f32::consts::PI).sin();
+                *phase = (*phase + self.phase_step) % 1.0;
+                sample
+            }
+            Err(error) => {
+                0.0
+            }
+        }
+    }
+}
+
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
@@ -584,6 +610,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize)]
 struct AudioProcessingState {
     sample_rate: u32,
+    num_channels: u16,
     osc_1: oscillators::SquareWaveGenerator,
     osc_2: oscillators::SquareWaveGenerator,
     osc_3: oscillators::WaveTable,
@@ -600,6 +627,8 @@ struct AudioProcessingState {
 
     left_master_vol: AtomicU8,
     right_master_vol: AtomicU8,
+
+    test_osc: SineGen,
 }
 
 impl AudioProcessingState {
@@ -619,6 +648,7 @@ impl AudioProcessingState {
         let config = supported_configs_range.next().expect("No available configs").with_max_sample_rate();
 
         let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
+                                                                                       num_channels: config.channels(),
                                                                                        osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0, true), 
                                                                                        osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0, false),
                                                                                        osc_3: oscillators::WaveTable::new(config.sample_rate().0),
@@ -633,6 +663,7 @@ impl AudioProcessingState {
                                                                                        right_osc_4_enable: AtomicBool::new(false),
                                                                                        left_master_vol: AtomicU8::new(0),
                                                                                        right_master_vol: AtomicU8::new(0),
+                                                                                       test_osc: SineGen::new(config.sample_rate().0),
                                                                                        });
 
         let audio_callback_ref = processor.clone();
@@ -716,25 +747,35 @@ impl AudioProcessingState {
         } 
     }
 
-    fn audio_block_f32(&self, audio: &mut [f32], _info: &OutputCallbackInfo) {
-        //println!("audio");
+    fn audio_block_f32(&self, audio: &mut [f32], info: &OutputCallbackInfo) {
+        for chunk in audio.chunks_mut(self.num_channels as usize) {
+            let generated_sample = self.generate_sample();
 
-        for sample in audio.iter_mut() {
-            *sample = self.generate_sample();
+            for sample in chunk.iter_mut() {
+                *sample = generated_sample;
+            }
         }
     }
     
     fn audio_block_i16(&self, audio: &mut [i16], _info: &OutputCallbackInfo) {
-        for sample in audio.iter_mut() {
+        for chunk in audio.chunks_mut(self.num_channels as usize) {
             let f32_sample = self.generate_sample();
-            *sample = (f32_sample * i16::MAX as f32) as i16;
+            let i16_sample = (f32_sample * i16::MAX as f32) as i16;
+
+            for sample in chunk.iter_mut() {
+                *sample = i16_sample;
+            }
         }
     }
     
     fn audio_block_u16(&self, audio: &mut [u16], _info: &OutputCallbackInfo) {
-        for sample in audio.iter_mut() {
+        for chunk in audio.chunks_mut(self.num_channels as usize) {
             let f32_sample = self.generate_sample();
-            *sample = ((f32_sample + 1.0) * i16::MAX as f32) as u16;
+            let u16_sample = ((f32_sample + 1.0) * i16::MAX as f32) as u16;
+
+            for sample in chunk.iter_mut() {
+                *sample = u16_sample;
+            }
         }
     }
     
@@ -748,12 +789,12 @@ impl AudioProcessingState {
         //Only doing left channel at the moment
         let osc_1_sample = self.osc_1.generate_sample();
         if self.left_osc_1_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_1_sample;
+            //mixed_sample += osc_1_sample;
         }
 
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_2_sample;
+            //mixed_sample += osc_2_sample;
         }
 
         let osc_3_sample = self.osc_3.generate_sample();
