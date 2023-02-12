@@ -89,9 +89,10 @@ mod oscillators {
     #[derive(Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
         frequency: AtomicU16,
+        frequency_timer: AtomicU32,
         sample_rate: u32,
         sweep: bool,
-        position: AtomicU32,
+        position: AtomicU8,
         duty: AtomicU8,
         enabled: AtomicBool,
         last_set_length: AtomicU32,
@@ -106,10 +107,11 @@ mod oscillators {
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32, sweep: bool) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: AtomicU16::new(1917), 
+            SquareWaveGenerator {frequency: AtomicU16::new(0), 
+                                 frequency_timer: AtomicU32::new(0),
                                  sample_rate: sample_rate, 
                                  sweep: sweep,
-                                 position: AtomicU32::new(0), 
+                                 position: AtomicU8::new(0),
                                  duty: AtomicU8::new(2), 
                                  enabled: AtomicBool::new(false), 
                                  last_set_length: AtomicU32::new(0), 
@@ -160,7 +162,6 @@ mod oscillators {
 
                 //Frequency 8 least significant bits
                 3 => {
-
                     //No need to worry about safety since this thread is the only one which will ever change frequency
                     let new_frequency = (val as u16 & 0xFF) | (self.frequency.load(Ordering::Relaxed) & 0xFF00);
                     self.frequency.store(new_frequency, Ordering::Relaxed);
@@ -178,6 +179,11 @@ mod oscillators {
                     if trigger > 0 {
                         self.enabled.store(true, Ordering::Relaxed);
                         self.length_counter.store(self.last_set_length.load(Ordering::Relaxed), Ordering::Relaxed);
+
+                        let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
+                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+
+                        self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
                     }
                 }
 
@@ -190,51 +196,74 @@ mod oscillators {
         pub fn generate_sample(&self) -> f32 {
             let mut output_sample = 0.0;
 
+            if self.frequency_timer.load(Ordering::Relaxed) <= 0
+            {
+                let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
+                let samples_till_next = (self.sample_rate as f32 / (4194304.0 / 4.0)) * cycles_till_next as f32;
+
+                self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+                
+                let current_position = self.position.load(Ordering::Relaxed);
+
+                let mut new_position = current_position + 1;
+                if new_position >= 8 {
+                    new_position = 0;
+                }
+
+                self.position.store(new_position, Ordering::Relaxed);
+            }
+
+            self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+
             if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 {
                 return output_sample;
             }
 
-            let period = 1.0 / (131072.0 / (2048 - self.frequency.load(Ordering::Relaxed) as u32) as f32);
-            let period_samples = (period * self.sample_rate as f32) as u32 * 2;
             let envelope_sample = self.env.generate_sample();
-
-            if self.position.load(Ordering::Relaxed) >= period_samples {
-                self.position.store(0, Ordering::Relaxed);
-            }
 
             match self.duty.load(Ordering::Relaxed) {
                 //12.5%
                 0 => {
-                    if self.position.load(Ordering::Relaxed) < period_samples / 8 {
-                        output_sample = -1.0;
+                    if self.position.load(Ordering::Relaxed) == 7 {
+                        output_sample = 1.0;
+                    }
+                    else {
+                        output_sample = 0.0;
                     }
                 }
 
                 //25%
                 1 => {
-                    if self.position.load(Ordering::Relaxed) < period_samples / 4 {
-                        output_sample = -1.0;
+                    if self.position.load(Ordering::Relaxed) >= 6 {
+                        output_sample = 1.0;
+                    }
+                    else {
+                        output_sample = 0.0;
                     }
                 }
 
                 //50%
                 2 => {
-                    if self.position.load(Ordering::Relaxed) < period_samples / 2 {
-                        output_sample = -1.0;
+                    if self.position.load(Ordering::Relaxed) >= 4 {
+                        output_sample = 1.0;
+                    }
+                    else {
+                        output_sample = 0.0;
                     }
                 }
 
                 //75%
                 3 => {
-                    if self.position.load(Ordering::Relaxed) >= period_samples / 4 {
-                        output_sample = -1.0;
+                    if self.position.load(Ordering::Relaxed) >= 6 {
+                        output_sample = 0.0;
+                    }
+                    else {
+                        output_sample = 1.0;
                     }
                 }
 
                 _ => {}
             }
-
-            self.position.store(self.position.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
 
         //Decrement the length counter making sure no underflow happens if length changed during that
         let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
