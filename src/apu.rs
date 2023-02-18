@@ -95,10 +95,9 @@ mod oscillators {
         position: AtomicU8,
         duty: AtomicU8,
         enabled: AtomicBool,
-        last_set_length: AtomicU32,
         length_counter: RwLock<u32>,
+        length_enabled: AtomicBool,
         env: VolumeEnvelope,
-
         sweep_time_samples: AtomicU32,
         sweep_negate: AtomicBool,
         sweep_shift: AtomicU8,
@@ -113,9 +112,9 @@ mod oscillators {
                                  sweep: sweep,
                                  position: AtomicU8::new(0),
                                  duty: AtomicU8::new(2), 
-                                 enabled: AtomicBool::new(false), 
-                                 last_set_length: AtomicU32::new(0), 
+                                 enabled: AtomicBool::new(false),
                                  length_counter: RwLock::new(0), 
+                                 length_enabled: AtomicBool::new(false),
                                  env: VolumeEnvelope::new(sample_rate),
                                  sweep_time_samples: AtomicU32::new(0),
                                  sweep_negate: AtomicBool::new(false),
@@ -151,7 +150,18 @@ mod oscillators {
                     let new_duty = val >> 6;
                     self.duty.store(new_duty, Ordering::Relaxed);
 
-                    self.last_set_length.store((val & 0x3F) as u32, Ordering::Relaxed);
+                    let length_256hz = 64 - (val & 0x3F);
+                    let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
+
+                    //Here we set the length counter making sure nothing can use it while it is set
+                    match self.length_counter.write() {
+                        Ok(mut length_counter) => {
+                            *length_counter = length_samples;
+                        }
+                        Err(error) => {
+                            println!("Could not set square wave length");
+                        }
+                    }
                 }
 
                 //Volume envelope
@@ -174,24 +184,16 @@ mod oscillators {
                     let new_frequency = (msb & 0xFF00) | (self.frequency.load(Ordering::Relaxed) & 0xFF);
                     self.frequency.store(new_frequency, Ordering::Relaxed);
 
+                    self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
+
                     let trigger = val & 0x80;
                     if trigger > 0 {
-                        //Reset length
-                        let last_set_length = self.last_set_length.load(Ordering::Relaxed);
-
-                        let length_256hz = if last_set_length == 0 {
-                            64
-                        }
-                        else {
-                            64 - last_set_length
-                        };
-
-                        let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32) as u32;
-
-                        //Here we set the length counter making sure nothing can use it while it is set
+                        //If length == 0 reset it to 64
                         match self.length_counter.write() {
                             Ok(mut length_counter) => {
-                                *length_counter = length_samples;
+                                if *length_counter == 0 {
+                                    *length_counter = ((self.sample_rate as f32 / 256.0) * 64.0).ceil() as u32;
+                                }
                             }
                             Err(error) => {
                                 println!("Could not set square wave length");
@@ -286,29 +288,31 @@ mod oscillators {
                 _ => {}
             }
 
-            //Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
-            match self.length_counter.try_write() {
-                Ok(mut length_counter) => {
+            if self.length_enabled.load(Ordering::Relaxed) {
+                //Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
+                match self.length_counter.try_write() {
+                    Ok(mut length_counter) => {
 
-                    //Just in case there's an underflow
-                    let new_length = match length_counter.checked_sub(1) {
-                        Some(val) => {
-                            val
+                        //Just in case there's an underflow
+                        let new_length = match length_counter.checked_sub(1) {
+                            Some(val) => {
+                                val
+                            }
+                            None => {
+                                0
+                            }
+                        };
+
+                        *length_counter = new_length;
+
+                        //If we've reached the end of the current length disable the channel
+                        if *length_counter <= 0 {
+                            self.enabled.store(false, Ordering::Relaxed);
                         }
-                        None => {
-                            0
-                        }
-                    };
-
-                    *length_counter = new_length;
-
-                    //If we've reached the end of the current length disable the channel
-                    if *length_counter <= 0 {
-                        self.enabled.store(false, Ordering::Relaxed);
                     }
-                }
-                Err(_error) => {
+                    Err(_error) => {
 
+                    }
                 }
             }
             output_sample * envelope_sample
@@ -839,7 +843,7 @@ impl AudioProcessingState {
 
         mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
 
-        return mixed_sample;
+        return mixed_sample * 0.3;
     }
 }
 
