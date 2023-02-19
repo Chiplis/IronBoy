@@ -562,6 +562,18 @@ mod oscillators {
                             }
                         }
 
+                        //Fill LFSR with 1s
+                        match self.LFSR.lock() {
+                            Ok(mut LFSR) => {
+                                for bit in LFSR.iter_mut() {
+                                    *bit = true;
+                                }
+                            }
+                            Err(error) => {
+                                println!("Could not obtain LFSR Mutex");
+                            }
+                        }
+
                         self.enabled.store(true, Ordering::Relaxed);
                     }
                 }
