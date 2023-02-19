@@ -478,7 +478,9 @@ mod oscillators {
     pub struct NoiseGenerator {
         sample_rate: u32,
         env: VolumeEnvelope,
-        change_time_samples: AtomicU32,
+        divisor : AtomicU8,
+        clock_shift: AtomicU8,
+        frequency_timer: AtomicU32,
         sample_counter: AtomicU32,
         LFSR: Mutex<[bool; 15]>,
         width: AtomicBool,
@@ -491,7 +493,9 @@ mod oscillators {
         pub fn new(sample_rate: u32) -> NoiseGenerator {
             NoiseGenerator { sample_rate: sample_rate,
                              env: VolumeEnvelope::new(sample_rate),
-                             change_time_samples: AtomicU32::new(sample_rate),
+                             divisor: AtomicU8::new(0),
+                             clock_shift: AtomicU8::new(0),
+                             frequency_timer: AtomicU32::new(0),
                              sample_counter: AtomicU32::new(0),
                              LFSR: Mutex::new([true; 15]),
                              width: AtomicBool::new(false),
@@ -537,11 +541,9 @@ mod oscillators {
                         divisor_code * 16
                     };
 
-                    let frequency = divisor << clock_shift;
+                    self.divisor.store(divisor, Ordering::Relaxed);
+                    self.clock_shift.store(clock_shift, Ordering::Relaxed);
 
-                    let time_in_samples = (self.sample_rate as f32 / 512.0) * frequency as f32;
-
-                    self.change_time_samples.store(time_in_samples as u32, Ordering::Relaxed);
                     self.width.store(width != 0, Ordering::Relaxed);
                 }
 
@@ -574,6 +576,11 @@ mod oscillators {
                             }
                         }
 
+                        //Set frequency timer
+                        let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
+                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
+                        self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+
                         self.enabled.store(true, Ordering::Relaxed);
                     }
                 }
@@ -594,7 +601,13 @@ mod oscillators {
 
             match self.LFSR.lock() {
                 Ok(mut LFSR) => {
-                    if self.sample_counter.load(Ordering::Relaxed) >= self.change_time_samples.load(Ordering::Relaxed) {
+                    if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
+                        //Reset frequency timer
+                        let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
+                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
+                        self.frequency_timer.store(samples_till_next.ceil() as u32, Ordering::Relaxed);
+
+                        //Move LFSR on
                         let new_val = LFSR[0] != LFSR[1];
                         LFSR.rotate_left(1);
 
@@ -607,20 +620,21 @@ mod oscillators {
 
                         LFSR[write_pos] = new_val;
                     }
-        
+
+                    self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+
                     output_sample = if LFSR[0] == true {
                         1.0
                     }
                     else {
                         0.0
                     };
-                },
+                }
+                //This should never happen
                 Err(error) => {
-                    println!("Could not obtain LFSR ref");
+                    println!("Could not obtain LFSR lock");
                 }
             }
-            
-            self.sample_counter.store(self.sample_counter.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
 
             if self.length_enabled.load(Ordering::Relaxed) {
                 //Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
@@ -649,7 +663,6 @@ mod oscillators {
                     }
                 }
             }
-
             env_sample * output_sample
         }
     }
