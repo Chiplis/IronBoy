@@ -936,30 +936,36 @@ impl AudioProcessingState {
         let mut mixed_left_sample = 0.0;
         let mut mixed_right_sample = 0.0;
 
-        //Only doing left channel at the moment
         let osc_1_sample = self.osc_1.generate_sample();
-
         if self.left_osc_1_enable.load(Ordering::Relaxed) {
             mixed_left_sample += osc_1_sample;
         }
-
         if self.right_osc_1_enable.load(Ordering::Relaxed) {
             mixed_right_sample += osc_1_sample;
         }
 
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_2_sample;
+            mixed_left_sample += osc_2_sample;
+        }
+        if self.right_osc_2_enable.load(Ordering::Relaxed) {
+            mixed_right_sample += osc_2_sample;
         }
 
         let osc_3_sample = self.osc_3.generate_sample();
         if self.left_osc_3_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_3_sample;
+            mixed_left_sample += osc_3_sample;
+        }
+        if self.right_osc_3_enable.load(Ordering::Relaxed) {
+            mixed_right_sample += osc_3_sample;
         }
 
         let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_4_sample;
+            mixed_left_sample += osc_4_sample;
+        }
+        if self.right_osc_4_enable.load(Ordering::Relaxed) {
+            mixed_right_sample += osc_4_sample;
         }
 
         mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
