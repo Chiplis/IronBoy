@@ -398,8 +398,6 @@ mod oscillators {
 
             self.sound_data[start_sample].store(val >> 4, Ordering::Relaxed);
             self.sound_data[start_sample + 1].store(val & 0x0F, Ordering::Relaxed);
-
-            //println!("{}, {}", self.sound_data[start_sample].load(Ordering::Relaxed), self.sound_data[start_sample + 1].load(Ordering::Relaxed));
         }
 
         pub fn generate_sample(&self) -> f32 {
@@ -485,8 +483,8 @@ mod oscillators {
         LFSR: Mutex<[bool; 15]>,
         width: AtomicBool,
         enabled: AtomicBool,
-        last_set_length: AtomicU32,
-        length_counter: AtomicU32,
+        length_counter: RwLock<u32>,
+        length_enabled: AtomicBool,
     }
 
     impl NoiseGenerator {
@@ -498,8 +496,8 @@ mod oscillators {
                              LFSR: Mutex::new([true; 15]),
                              width: AtomicBool::new(false),
                              enabled: AtomicBool::new(false), 
-                             last_set_length: AtomicU32::new(0), 
-                             length_counter: AtomicU32::new(0),  }
+                             length_counter: RwLock::new(0),
+                             length_enabled: AtomicBool::new(false),}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -509,8 +507,18 @@ mod oscillators {
                 }
 
                 1 => {
-                    let new_length = (self.sample_rate / 256) * 64 - (val & 0x3F) as u32;
-                    self.last_set_length.store(new_length, Ordering::Relaxed);
+                    let length_256hz = 64 - (val & 0x3F);
+                    let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
+
+                    //Here we set the length counter making sure nothing can use it while it is set
+                    match self.length_counter.write() {
+                        Ok(mut length_counter) => {
+                            *length_counter = length_samples;
+                        }
+                        Err(error) => {
+                            println!("Could not set square wave length");
+                        }
+                    }
                 }
 
                 2 => {
@@ -538,10 +546,23 @@ mod oscillators {
                 }
 
                 4 => {
+                    self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
+
                     let trigger = val & 0x80;
                     if trigger > 0 {
+                        //If length == 0 reset it to 64
+                        match self.length_counter.write() {
+                            Ok(mut length_counter) => {
+                                if *length_counter == 0 {
+                                    *length_counter = ((self.sample_rate as f32 / 256.0) * 64.0).ceil() as u32;
+                                }
+                            }
+                            Err(error) => {
+                                println!("Could not set square wave length");
+                            }
+                        }
+
                         self.enabled.store(true, Ordering::Relaxed);
-                        self.length_counter.store(self.last_set_length.load(Ordering::Relaxed), Ordering::Relaxed);
                     }
                 }
 
@@ -555,7 +576,7 @@ mod oscillators {
             let env_sample = self.env.generate_sample();
             let mut output_sample = 0.0;
 
-            if !self.enabled.load(Ordering::Relaxed)  || self.length_counter.load(Ordering::Relaxed) <= 0 {
+            if !self.enabled.load(Ordering::Relaxed) {
                 return output_sample;
             }
 
@@ -589,20 +610,32 @@ mod oscillators {
             
             self.sample_counter.store(self.sample_counter.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
 
-            //Decrement the length counter making sure no underflow happens if length changed during that
-            let new_length = match self.length_counter.load(Ordering::Relaxed).checked_sub(1) {
-                Some(val) => {
-                    val
-                }
-                None => {
-                    0
-                }
-            };
+            if self.length_enabled.load(Ordering::Relaxed) {
+                //Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
+                match self.length_counter.try_write() {
+                    Ok(mut length_counter) => {
 
-            self.length_counter.store(new_length, Ordering::Relaxed);
+                        //Just in case there's an underflow
+                        let new_length = match length_counter.checked_sub(1) {
+                            Some(val) => {
+                                val
+                            }
+                            None => {
+                                0
+                            }
+                        };
 
-            if self.length_counter.load(Ordering::Relaxed) <= 0 {
-                self.enabled.store(false, Ordering::Relaxed);
+                        *length_counter = new_length;
+
+                        //If we've reached the end of the current length disable the channel
+                        if *length_counter <= 0 {
+                            self.enabled.store(false, Ordering::Relaxed);
+                        }
+                    }
+                    Err(_error) => {
+
+                    }
+                }
             }
 
             env_sample * output_sample
@@ -838,7 +871,7 @@ impl AudioProcessingState {
 
         let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            //mixed_sample += osc_4_sample;
+            mixed_sample += osc_4_sample;
         }
 
         mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
