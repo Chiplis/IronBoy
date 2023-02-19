@@ -251,7 +251,7 @@ mod oscillators {
                         output_sample = 1.0;
                     }
                     else {
-                        output_sample = -1.0;
+                        output_sample = 0.0;
                     }
                 }
 
@@ -261,7 +261,7 @@ mod oscillators {
                         output_sample = 1.0;
                     }
                     else {
-                        output_sample = -1.0;
+                        output_sample = 0.0;
                     }
                 }
 
@@ -271,14 +271,14 @@ mod oscillators {
                         output_sample = 1.0;
                     }
                     else {
-                        output_sample = -1.0;
+                        output_sample = 0.0;
                     }
                 }
 
                 //75%
                 3 => {
                     if self.position.load(Ordering::Relaxed) >= 6 {
-                        output_sample = -1.0;
+                        output_sample = 0.0;
                     }
                     else {
                         output_sample = 1.0;
