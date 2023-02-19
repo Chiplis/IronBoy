@@ -592,12 +592,13 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-            let env_sample = self.env.generate_sample();
             let mut output_sample = 0.0;
 
             if !self.enabled.load(Ordering::Relaxed) {
                 return output_sample;
             }
+
+            let env_sample = self.env.generate_sample();
 
             match self.LFSR.lock() {
                 Ok(mut LFSR) => {
