@@ -611,14 +611,11 @@ mod oscillators {
                         let new_val = LFSR[0] != LFSR[1];
                         LFSR.rotate_left(1);
 
-                        let write_pos = if self.width.load(Ordering::Relaxed) {
-                            6
-                        }
-                        else {
-                            14
-                        };
+                        LFSR[14] = new_val;
 
-                        LFSR[write_pos] = new_val;
+                        if self.width.load(Ordering::Relaxed) {
+                            LFSR[6] = new_val;
+                        }
                     }
 
                     self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
