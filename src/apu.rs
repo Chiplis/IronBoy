@@ -200,7 +200,7 @@ mod oscillators {
                             }
                         }
 
-                        //Reset frequency
+                        //Reset frequency timer
                         let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
                         self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
@@ -223,11 +223,10 @@ mod oscillators {
                 return output_sample;
             }
 
-            if self.frequency_timer.load(Ordering::Relaxed) <= 0
-            {
+            if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
+                //Reset frequency timer
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
                 let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
-
                 self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
                 
                 let current_position = self.position.load(Ordering::Relaxed);
@@ -324,8 +323,8 @@ mod oscillators {
         sample_rate: u32,
         sound_data: [AtomicU8; 32],
         frequency: AtomicU16,
-        position_counter: AtomicU32,
-        samples_at_position: AtomicU32,
+        frequency_timer: AtomicU32,
+        position: AtomicU8,
         enabled: AtomicBool,  
         length_counter: RwLock<u32>,
         length_enabled: AtomicBool,
@@ -340,8 +339,8 @@ mod oscillators {
             WaveTable { sample_rate: sample_rate,
                         sound_data: [GENERATOR; 32], 
                         frequency: AtomicU16::new(0),
-                        position_counter: AtomicU32::new(0),
-                        samples_at_position: AtomicU32::new(0),
+                        frequency_timer: AtomicU32::new(0),
+                        position: AtomicU8::new(0),
                         enabled: AtomicBool::new(false),  
                         length_counter: RwLock::new(0),
                         length_enabled: AtomicBool::new(false),
@@ -354,7 +353,7 @@ mod oscillators {
 
                 }
                 1 => {
-                    let length_256hz = 256 - (val & 0x3F) as u32;
+                    let length_256hz = 256 - val as u32;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
 
                     //Here we set the length counter making sure nothing can use it while it is set
@@ -403,6 +402,13 @@ mod oscillators {
                             }
                         }
 
+                        //Reset frequency timer
+                        let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
+                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+                        self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+
+                        self.position.store(0, Ordering::Relaxed);
+
                         self.enabled.store(true, Ordering::Relaxed);
                     }
                 }
@@ -429,13 +435,16 @@ mod oscillators {
                 return output_sample;
             }
 
-            let current_position = self.position_counter.load(Ordering::Relaxed);
+            let mut current_position = self.position.load(Ordering::Relaxed);
 
-            output_sample = self.sound_data[current_position as usize].load(Ordering::Relaxed) as f32 / 15.0;
+            if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
 
-            let change_time_samples = self.sample_rate / self.frequency.load(Ordering::Relaxed) as u32;
-
-            if self.samples_at_position.load(Ordering::Relaxed) >= change_time_samples {
+                //Reset frequency timer
+                let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
+                let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+                self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+                
+                //Move one position forward
                 let new_position = if current_position == 31 {
                     0
                 }
@@ -443,12 +452,13 @@ mod oscillators {
                     current_position + 1
                 };
 
-                self.position_counter.store(new_position, Ordering::Relaxed);
-                self.samples_at_position.store(0, Ordering::Relaxed);
+                self.position.store(new_position, Ordering::Relaxed);
+                current_position = new_position;
             }
-            else {
-                self.samples_at_position.store(self.samples_at_position.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
-            }
+
+            self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+
+            output_sample = self.sound_data[current_position as usize].load(Ordering::Relaxed) as f32 / 15.0;
 
             let volume = match self.volume_code.load(Ordering::Relaxed) {
                 0 => {
