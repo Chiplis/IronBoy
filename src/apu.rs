@@ -54,7 +54,7 @@ mod oscillators {
             match self.params.lock() {
                 Ok(mut params) => {
                     self.last_val.store(params.current_level, Ordering::Relaxed);
-                    let output_sample = params.current_level as f32 / 15.0;
+                    let output_sample = params.current_level as f32 / 7.5 - 1.0;
 
                     //Apply envelope
                     if params.period > 0 {
@@ -421,7 +421,6 @@ mod oscillators {
 
         pub fn write_sound_data(&self, address: usize, val: u8) {
             let rel_address = address - 0xFF30;
-
             let start_sample = rel_address * 2;
 
             self.sound_data[start_sample].store(val >> 4, Ordering::Relaxed);
