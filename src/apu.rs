@@ -58,7 +58,6 @@ mod oscillators {
 
                     //Apply envelope
                     if params.period > 0 {
-
                         //Check if level change is needed
                         if params.period == params.sample_counter {
                             if params.add_mode && params.current_level < 15 {
@@ -314,6 +313,7 @@ mod oscillators {
                     }
                 }
             }
+
             output_sample * envelope_sample
         }
     }
@@ -880,33 +880,49 @@ impl AudioProcessingState {
     }
 
     fn audio_block_f32(&self, audio: &mut [f32], info: &OutputCallbackInfo) {
-        for chunk in audio.chunks_mut(self.num_channels as usize) {
-            let generated_sample = self.generate_sample();
+        let num_samples = audio.len() / self.num_channels as usize;
 
-            for sample in chunk.iter_mut() {
-                *sample = generated_sample;
+        for sample_index in 0..num_samples {
+            let generated_samples = self.generate_samples();
+
+            let first_channel_index = sample_index * self.num_channels as usize;
+
+            audio[first_channel_index] = generated_samples.0;
+
+            if self.num_channels > 0 {
+                audio[first_channel_index + 1] = generated_samples.1;
             }
         }
     }
     
     fn audio_block_i16(&self, audio: &mut [i16], _info: &OutputCallbackInfo) {
-        for chunk in audio.chunks_mut(self.num_channels as usize) {
-            let f32_sample = self.generate_sample();
-            let i16_sample = (f32_sample * i16::MAX as f32) as i16;
+        let num_samples = audio.len() / self.num_channels as usize;
 
-            for sample in chunk.iter_mut() {
-                *sample = i16_sample;
+        for sample_index in 0..num_samples {
+            let f32_samples = self.generate_samples();
+
+            let first_channel_index = sample_index * self.num_channels as usize;
+
+            audio[first_channel_index] = (f32_samples.0 * i16::MAX as f32) as i16;
+
+            if self.num_channels > 0 {
+                audio[first_channel_index + 1] = (f32_samples.1 * i16::MAX as f32) as i16;
             }
         }
     }
     
     fn audio_block_u16(&self, audio: &mut [u16], _info: &OutputCallbackInfo) {
-        for chunk in audio.chunks_mut(self.num_channels as usize) {
-            let f32_sample = self.generate_sample();
-            let u16_sample = ((f32_sample + 1.0) * i16::MAX as f32) as u16;
+        let num_samples = audio.len() / self.num_channels as usize;
 
-            for sample in chunk.iter_mut() {
-                *sample = u16_sample;
+        for sample_index in 0..num_samples {
+            let f32_samples = self.generate_samples();
+
+            let first_channel_index = sample_index * self.num_channels as usize;
+
+            audio[first_channel_index] = ((f32_samples.0 + 1.0) * u16::MAX as f32) as u16;
+
+            if self.num_channels > 0 {
+                audio[first_channel_index + 1] = ((f32_samples.1 + 1.0) * u16::MAX as f32) as u16;
             }
         }
     }
@@ -915,33 +931,41 @@ impl AudioProcessingState {
         println!("Audio Error");
     }
 
-    fn generate_sample(&self) -> f32 {
-        let mut mixed_sample = 0.0;
+    fn generate_samples(&self) -> (f32, f32) {
+
+        let mut mixed_left_sample = 0.0;
+        let mut mixed_right_sample = 0.0;
 
         //Only doing left channel at the moment
         let osc_1_sample = self.osc_1.generate_sample();
+
         if self.left_osc_1_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_1_sample;
+            mixed_left_sample += osc_1_sample;
+        }
+
+        if self.right_osc_1_enable.load(Ordering::Relaxed) {
+            mixed_right_sample += osc_1_sample;
         }
 
         let osc_2_sample = self.osc_2.generate_sample();
         if self.left_osc_2_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_2_sample;
+            //mixed_sample += osc_2_sample;
         }
 
         let osc_3_sample = self.osc_3.generate_sample();
         if self.left_osc_3_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_3_sample;
+            //mixed_sample += osc_3_sample;
         }
 
         let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            mixed_sample += osc_4_sample;
+            //mixed_sample += osc_4_sample;
         }
 
-        mixed_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
+        mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
+        mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
 
-        return mixed_sample * 0.3;
+        return (mixed_left_sample, mixed_right_sample);
     }
 }
 
