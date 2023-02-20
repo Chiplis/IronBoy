@@ -16,7 +16,7 @@ mod oscillators {
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
-        last_val: AtomicU8, 
+        last_val: AtomicU8,
     }
 
     impl VolumeEnvelope {
@@ -50,11 +50,11 @@ mod oscillators {
             }
         }
 
-        pub fn generate_sample(&self) -> f32 {
+        pub fn generate_sample(&self) -> u8 {
             match self.params.lock() {
                 Ok(mut params) => {
                     self.last_val.store(params.current_level, Ordering::Relaxed);
-                    let output_sample = params.current_level as f32 / 7.5 - 1.0;
+                    let output_sample = params.current_level as u8;
 
                     //Apply envelope
                     if params.period > 0 {
@@ -79,7 +79,7 @@ mod oscillators {
 
                 Err(error) => {
                     println!("missed vol env sample");
-                    return self.last_val.load(Ordering::Relaxed) as f32 / 15.0;
+                    return self.last_val.load(Ordering::Relaxed) as u8;
                 }
             }
         }
@@ -166,6 +166,11 @@ mod oscillators {
                 //Volume envelope
                 2 => {
                     self.env.write_settings(val);
+
+                    //Disable channel if no DAC power
+                    if val & 0xF0 == 0 {
+                        self.enabled.store(false, Ordering::Relaxed);
+                    }
                 }
 
                 //Frequency 8 least significant bits
@@ -216,10 +221,8 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-            let mut output_sample = 0.0;
-
             if !self.enabled.load(Ordering::Relaxed) {
-                return output_sample;
+                return 0.0;
             }
 
             if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
@@ -240,46 +243,35 @@ mod oscillators {
 
             self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
+            let mut wave_sample = 0;
             let envelope_sample = self.env.generate_sample();
 
             match self.duty.load(Ordering::Relaxed) {
                 //12.5%
                 0 => {
                     if self.position.load(Ordering::Relaxed) == 7 {
-                        output_sample = 1.0;
-                    }
-                    else {
-                        output_sample = 0.0;
+                        wave_sample = 1;
                     }
                 }
 
                 //25%
                 1 => {
                     if self.position.load(Ordering::Relaxed) >= 6 {
-                        output_sample = 1.0;
-                    }
-                    else {
-                        output_sample = 0.0;
+                        wave_sample = 1;
                     }
                 }
 
                 //50%
                 2 => {
                     if self.position.load(Ordering::Relaxed) >= 4 {
-                        output_sample = 1.0;
-                    }
-                    else {
-                        output_sample = 0.0;
+                        wave_sample = 1;
                     }
                 }
 
                 //75%
                 3 => {
-                    if self.position.load(Ordering::Relaxed) >= 6 {
-                        output_sample = 0.0;
-                    }
-                    else {
-                        output_sample = 1.0;
+                    if self.position.load(Ordering::Relaxed) < 6 {
+                        wave_sample = 1;
                     }
                 }
 
@@ -314,7 +306,14 @@ mod oscillators {
                 }
             }
 
-            output_sample * envelope_sample
+            let dac_input_sample = if wave_sample != 0 {
+                envelope_sample
+            }
+            else {
+                0
+            };
+
+            return dac_input_sample as f32 / 7.5 - 1.0;
         }
     }
 
@@ -350,7 +349,9 @@ mod oscillators {
         pub fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
-
+                    if val == 0 {
+                        self.enabled.store(false, Ordering::Relaxed);
+                    }
                 }
                 1 => {
                     let length_256hz = 256 - val as u32;
@@ -428,10 +429,8 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-            let mut output_sample = 0.0;
-
             if !self.enabled.load(Ordering::Relaxed) {
-                return output_sample;
+                return 0.0;
             }
 
             let mut current_position = self.position.load(Ordering::Relaxed);
@@ -457,32 +456,32 @@ mod oscillators {
 
             self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
-            output_sample = self.sound_data[current_position as usize].load(Ordering::Relaxed) as f32 / 15.0;
+            let mut wave_sample = self.sound_data[current_position as usize].load(Ordering::Relaxed);
 
-            let volume = match self.volume_code.load(Ordering::Relaxed) {
+            let volume_shift = match self.volume_code.load(Ordering::Relaxed) {
                 0 => {
-                    0.0
+                    4
                 }
 
                 1 => {
-                    1.0
+                    0
                 }
 
                 2 => {
-                    0.5
+                    1
                 }
 
                 3 => {
-                    0.25
+                    2
                 }
 
                 _ => {
                     println!("Wave table: unexpected volume code");
-                    1.0
+                    4
                 }
             };
 
-            output_sample *= volume;
+            wave_sample >>= volume_shift;
 
             if self.length_enabled.load(Ordering::Relaxed) {
                 //Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
@@ -512,7 +511,7 @@ mod oscillators {
                 }
             }
             
-            output_sample
+            wave_sample as f32 / 7.5 - 1.0
         }
     }
 
@@ -569,6 +568,11 @@ mod oscillators {
 
                 2 => {
                     self.env.write_settings(val);
+
+                    //Disable channel if no DAC power
+                    if val & 0xF0 == 0 {
+                        self.enabled.store(false, Ordering::Relaxed);
+                    }
                 }
 
                 3 => {
@@ -634,13 +638,12 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-            let mut output_sample = 0.0;
-
             if !self.enabled.load(Ordering::Relaxed) {
-                return output_sample;
+                return 0.0;
             }
 
             let env_sample = self.env.generate_sample();
+            let mut noise_sample = 0;
 
             match self.LFSR.lock() {
                 Ok(mut LFSR) => {
@@ -663,11 +666,11 @@ mod oscillators {
 
                     self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
-                    output_sample = if LFSR[0] == true {
-                        1.0
+                    noise_sample = if LFSR[0] == true {
+                        1
                     }
                     else {
-                        0.0
+                        0
                     };
                 }
                 //This should never happen
@@ -703,7 +706,15 @@ mod oscillators {
                     }
                 }
             }
-            env_sample * output_sample
+            
+            let dac_input_sample = if noise_sample != 0 {
+                env_sample
+            }
+            else {
+                0
+            };
+
+            return dac_input_sample as f32 / 7.5 - 1.0;
         }
     }
 }
@@ -954,10 +965,10 @@ impl AudioProcessingState {
 
         let osc_3_sample = self.osc_3.generate_sample();
         if self.left_osc_3_enable.load(Ordering::Relaxed) {
-            mixed_left_sample += osc_3_sample;
+            //mixed_left_sample += osc_3_sample;
         }
         if self.right_osc_3_enable.load(Ordering::Relaxed) {
-            mixed_right_sample += osc_3_sample;
+            //mixed_right_sample += osc_3_sample;
         }
 
         let osc_4_sample = self.osc_4.generate_sample();
