@@ -97,10 +97,13 @@ mod oscillators {
         length_counter: RwLock<u32>,
         length_enabled: AtomicBool,
         env: VolumeEnvelope,
-        sweep_time_samples: AtomicU32,
+
+        sweep_period: AtomicU8,
+        sweep_timer: AtomicU32,
         sweep_negate: AtomicBool,
         sweep_shift: AtomicU8,
-        sweep_sample_counter: AtomicU32,
+        sweep_enabled: AtomicBool,
+        sweep_frequency: AtomicU16,
     }
 
     impl SquareWaveGenerator {
@@ -115,10 +118,13 @@ mod oscillators {
                                  length_counter: RwLock::new(0), 
                                  length_enabled: AtomicBool::new(false),
                                  env: VolumeEnvelope::new(sample_rate),
-                                 sweep_time_samples: AtomicU32::new(0),
+
+                                 sweep_period: AtomicU8::new(0),
+                                 sweep_timer: AtomicU32::new(0),
                                  sweep_negate: AtomicBool::new(false),
                                  sweep_shift: AtomicU8::new(0),
-                                 sweep_sample_counter: AtomicU32::new(0),}
+                                 sweep_enabled: AtomicBool::new(false),
+                                 sweep_frequency: AtomicU16::new(0),}
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -129,18 +135,9 @@ mod oscillators {
                         let negate = (val & 0x08) > 0;
                         let shift = val & 0x07;
 
-                        let sweep_time_samples: u32 = if period == 0 {
-                            0
-                        }
-                        else
-                        {
-                            (period as f32 / 128 as f32) as u32 * self.sample_rate
-                        };
-
+                        self.sweep_period.store(period, Ordering::Relaxed);
                         self.sweep_negate.store(negate, Ordering::Relaxed);
                         self.sweep_shift.store(shift, Ordering::Relaxed);
-                        self.sweep_time_samples.store(sweep_time_samples, Ordering::Relaxed);
-                        self.sweep_sample_counter.store(0, Ordering::Relaxed);
                     }
                 }
 
@@ -204,6 +201,45 @@ mod oscillators {
                             }
                         }
 
+                        let mut sweep_failed = false;
+
+                        //Sweep data
+                        if self.sweep {
+                            //Copy frequency to shadow register
+                            self.sweep_frequency.store(new_frequency, Ordering::Relaxed);
+
+                            let sweep_period = self.sweep_period.load(Ordering::Relaxed);
+                            let sweep_shift = self.sweep_shift.load(Ordering::Relaxed);
+
+                            //Reload sweep timer
+                            let sweep_num_samples = ((self.sample_rate as f32 / 128.0) * sweep_period as f32) as u32;
+                            self.sweep_timer.store(sweep_num_samples, Ordering::Relaxed);
+
+                            //Set sweep enabled flag
+                            let sweep_enabled = sweep_period != 0 && sweep_shift != 0;
+                            self.sweep_enabled.store(sweep_enabled, Ordering::Relaxed);
+
+                            //Perform frequency and overflow calcs
+                            if sweep_enabled {
+                                let (overflow, new_sweep_freq) = self.calculate_sweep_freq();
+
+                                if overflow {
+                                    self.enabled.store(false, Ordering::Relaxed);
+                                    return;
+                                }
+
+                                self.sweep_frequency.store(new_sweep_freq, Ordering::Relaxed);
+                                self.frequency.store(new_sweep_freq, Ordering::Relaxed);
+
+                                let (overflow_2, _) = self.calculate_sweep_freq();
+
+                                if overflow_2 {
+                                    self.enabled.store(false, Ordering::Relaxed);
+                                    return;
+                                }
+                            }
+                        }
+
                         //Reset frequency timer
                         let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
@@ -242,6 +278,33 @@ mod oscillators {
             }
 
             self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+
+            if self.sweep {
+                if self.sweep_timer.load(Ordering::Relaxed) <= 0 && self.sweep_enabled.load(Ordering::Relaxed) && self.sweep_period.load(Ordering::Relaxed) > 0 {
+                    //Reload sweep timer
+                    let sweep_num_samples = ((self.sample_rate as f32 / 128.0) * self.sweep_period.load(Ordering::Relaxed) as f32) as u32;
+                    self.sweep_timer.store(sweep_num_samples, Ordering::Relaxed);
+
+                    let (overflow, new_sweep_freq) = self.calculate_sweep_freq();
+
+                    if overflow {
+                        self.enabled.store(false, Ordering::Relaxed);
+                        return 0.0;
+                    }
+
+                    self.sweep_frequency.store(new_sweep_freq, Ordering::Relaxed);
+                    self.frequency.store(new_sweep_freq, Ordering::Relaxed);
+
+                    let (overflow_2, _) = self.calculate_sweep_freq();
+
+                    if overflow_2 {
+                        self.enabled.store(false, Ordering::Relaxed);
+                        return 0.0;
+                    }
+                }
+
+                self.sweep_timer.store(self.sweep_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+            }
 
             let mut wave_sample = 0;
             let envelope_sample = self.env.generate_sample();
@@ -315,7 +378,36 @@ mod oscillators {
 
             return dac_input_sample as f32 / 7.5 - 1.0;
         }
+
+        fn calculate_sweep_freq(&self) -> (bool, u16) {
+            let mut offset = (self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed)) as u16;
+
+            let mut new_freq : u32 = 0;
+
+            if self.sweep_negate.load(Ordering::Relaxed) {
+                //Check for underflow
+                new_freq = match self.sweep_frequency.load(Ordering::Relaxed).checked_sub(offset) {
+                    Some(res) => {
+                        res.into()
+                    }
+                    None => {
+                        0
+                    }
+                }
+            }
+            else {
+                new_freq = self.sweep_frequency.load(Ordering::Relaxed) as u32 + offset as u32;
+            }
+
+            //Overflow check
+            if new_freq > 2047 {
+                return (true, new_freq as u16);
+            }
+
+            return (false, new_freq as u16);
+        }
     }
+
 
     #[derive(Serialize, Deserialize)]
     pub struct WaveTable {

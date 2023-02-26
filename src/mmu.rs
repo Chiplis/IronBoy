@@ -172,7 +172,7 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        if translated_address > 0xFF10 && translated_address <= 0xFF3F {
+        if translated_address >= 0xFF10 && translated_address <= 0xFF3F {
             self.apu.write_register(translated_address, value.into());
         }
         else {
