@@ -7,9 +7,9 @@ mod oscillators {
     #[derive(Serialize, Deserialize)]
     struct VolumeEnvelopeParams {
         add_mode: bool,
-        period: u32,
+        period: u8,
         current_level: u8,
-        sample_counter: u32,
+        frequency_timer: u32,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -26,7 +26,7 @@ mod oscillators {
                                 add_mode: false, 
                                 period: 0, 
                                 current_level: 0,
-                                sample_counter: 0,}
+                                frequency_timer: 0,}
                             ),
                             last_val: AtomicU8::new(0),}
         }
@@ -34,7 +34,7 @@ mod oscillators {
         pub fn write_settings(&self, val: u8) {
             let starting_vol = val >> 4;
             let add_mode = ((val & 0x08) >> 3) > 0;
-            let period = (self.sample_rate / 64) * ((val & 0x07) as u32);
+            let period = val & 0x07;
 
             //Get the lock for all items
             match self.params.lock() {
@@ -42,7 +42,7 @@ mod oscillators {
                     params.current_level = starting_vol;
                     params.add_mode = add_mode;
                     params.period = period;
-                    params.sample_counter = 0;
+                    params.frequency_timer = (self.sample_rate / 64) * ((period) as u32);
                 }
                 Err(error) => {
                     println!("Could not obtain envelope data lock");
@@ -59,19 +59,19 @@ mod oscillators {
                     //Apply envelope
                     if params.period > 0 {
                         //Check if level change is needed
-                        if params.period == params.sample_counter {
+                        if params.frequency_timer <= 0 {
+
+                            params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);;
+
                             if params.add_mode && params.current_level < 15 {
                                 params.current_level +=  1;
                             }
                             else if !params.add_mode && params.current_level > 0 {
                                 params.current_level -= 1;
                             }
+                        }
 
-                            params.sample_counter = 0;
-                        }
-                        else {
-                            params.sample_counter += 1;
-                        }
+                        params.frequency_timer -= 1
                     }
 
                     return output_sample;
@@ -370,7 +370,7 @@ mod oscillators {
             }
 
             let dac_input_sample = if wave_sample != 0 {
-                envelope_sample
+                15
             }
             else {
                 0
@@ -863,6 +863,8 @@ struct AudioProcessingState {
     left_master_vol: AtomicU8,
     right_master_vol: AtomicU8,
 
+    power_control: AtomicBool,
+
     test_osc: SineGen,
 }
 
@@ -871,16 +873,19 @@ impl AudioProcessingState {
         //Setup audio interfacing
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
+        let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
+
+        let config = supported_configs_range.find(|c| {
+            c.max_sample_rate() >= cpal::SampleRate(44100)
+        }).expect("Audio device does not support sample rate (44100)").with_sample_rate(cpal::SampleRate(44100));
+
         //Display device name
         match out_dev.name() {
             Ok(name) => {
-                println!("Using {}", name);
+                println!("Using {} at {}Hz with {} channels", name, config.sample_rate().0, config.channels());
             }
             Err(_) => {}
         }
-
-        let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
-        let config = supported_configs_range.next().expect("No available configs").with_max_sample_rate();
 
         let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
                                                                                        num_channels: config.channels(),
@@ -898,6 +903,7 @@ impl AudioProcessingState {
                                                                                        right_osc_4_enable: AtomicBool::new(false),
                                                                                        left_master_vol: AtomicU8::new(0),
                                                                                        right_master_vol: AtomicU8::new(0),
+                                                                                       power_control: AtomicBool::new(false),
                                                                                        test_osc: SineGen::new(config.sample_rate().0),
                                                                                        });
 
@@ -972,7 +978,7 @@ impl AudioProcessingState {
                 }
 
                 0xFF26 => {
-
+                    self.power_control.store((value >> 7) > 0, Ordering::Relaxed);
                 }
 
                 _ => {
@@ -1036,6 +1042,10 @@ impl AudioProcessingState {
 
     fn generate_samples(&self) -> (f32, f32) {
 
+        if !self.power_control.load(Ordering::Relaxed) {
+            return (0.0, 0.0);
+        }
+
         let mut mixed_left_sample = 0.0;
         let mut mixed_right_sample = 0.0;
 
@@ -1057,22 +1067,26 @@ impl AudioProcessingState {
 
         let osc_3_sample = self.osc_3.generate_sample();
         if self.left_osc_3_enable.load(Ordering::Relaxed) {
-            //mixed_left_sample += osc_3_sample;
+           // mixed_left_sample += osc_3_sample;
         }
         if self.right_osc_3_enable.load(Ordering::Relaxed) {
-            //mixed_right_sample += osc_3_sample;
+           // mixed_right_sample += osc_3_sample;
         }
 
-        let osc_4_sample = self.osc_4.generate_sample();
+        //let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            mixed_left_sample += osc_4_sample;
+            //mixed_left_sample += osc_4_sample;
         }
         if self.right_osc_4_enable.load(Ordering::Relaxed) {
-            mixed_right_sample += osc_4_sample;
+            //mixed_right_sample += osc_4_sample;
         }
 
-        mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
-        mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) as f32) / 7.0;
+        mixed_left_sample /= 4.0;
+        mixed_right_sample /= 4.0;
+
+        //These volumes seem to be wrong
+        //mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) + 1) as f32;
+        //mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) + 1) as f32;
 
         return (mixed_left_sample, mixed_right_sample);
     }
