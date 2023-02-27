@@ -2,7 +2,7 @@ mod oscillators {
     use rand::seq::index::sample;
     use serde::{Serialize, Deserialize};
     use winit::event::ElementState;
-    use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex};
+    use std::{sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex}};
 
     #[derive(Serialize, Deserialize)]
     struct VolumeEnvelopeParams {
@@ -89,6 +89,7 @@ mod oscillators {
     pub struct SquareWaveGenerator {
         frequency: AtomicU16,
         frequency_timer: AtomicU32,
+        timer_leftover: RwLock<f32>,
         sample_rate: u32,
         sweep: bool,
         position: AtomicU8,
@@ -110,6 +111,7 @@ mod oscillators {
         pub fn new(sample_rate: u32, sweep: bool) -> SquareWaveGenerator {
             SquareWaveGenerator {frequency: AtomicU16::new(0), 
                                  frequency_timer: AtomicU32::new(0),
+                                 timer_leftover: RwLock::new(0.0),
                                  sample_rate: sample_rate, 
                                  sweep: sweep,
                                  position: AtomicU8::new(0),
@@ -240,10 +242,19 @@ mod oscillators {
                             }
                         }
 
-                        //Reset frequency timer
+                        //Reset frequency timer and timer leftover
                         let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
-                        self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+                        self.frequency_timer.store(samples_till_next.floor() as u32, Ordering::Relaxed);
+
+                        match self.timer_leftover.write() {
+                            Ok(mut timer_leftover) => {
+                                *timer_leftover = samples_till_next - samples_till_next.floor();
+                            }
+                            Err(_) => {
+    
+                            }
+                        }
 
                         //Set enabled
                         self.enabled.store(true, Ordering::Relaxed);
@@ -264,9 +275,25 @@ mod oscillators {
             if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
                 //Reset frequency timer
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
-                let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
-                self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
-                
+                let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+
+                match self.timer_leftover.write() {
+                    Ok(mut timer_leftover) => {
+                        *timer_leftover += samples_till_next - samples_till_next.floor();
+
+                        if(*timer_leftover > 1.0) {
+                            *timer_leftover -= 1.0;
+                            samples_till_next += 1.0;
+                        }
+                    }
+                    Err(_) => {
+                        println!("Could not write to timer leftover");
+                    }
+
+                }
+
+                self.frequency_timer.store(samples_till_next.floor() as u32, Ordering::Relaxed);
+
                 let current_position = self.position.load(Ordering::Relaxed);
 
                 let mut new_position = current_position + 1;
@@ -370,13 +397,13 @@ mod oscillators {
             }
 
             let dac_input_sample = if wave_sample != 0 {
-                15
+                envelope_sample
             }
             else {
                 0
             };
 
-            return dac_input_sample as f32 / 7.5 - 1.0;
+            return dac_input_sample as f32 / 15.0;
         }
 
         fn calculate_sweep_freq(&self) -> (bool, u16) {
@@ -497,7 +524,7 @@ mod oscillators {
 
                         //Reset frequency timer
                         let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
-                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+                        let samples_till_next = ((4194304.0 / 95.0) as f32 / 4194304.0) * cycles_till_next as f32;
                         self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
 
                         self.position.store(0, Ordering::Relaxed);
@@ -806,7 +833,7 @@ mod oscillators {
                 0
             };
 
-            return dac_input_sample as f32 / 7.5 - 1.0;
+            return dac_input_sample as f32 / 15.0;
         }
     }
 }
@@ -1073,7 +1100,7 @@ impl AudioProcessingState {
            // mixed_right_sample += osc_3_sample;
         }
 
-        //let osc_4_sample = self.osc_4.generate_sample();
+        let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
             //mixed_left_sample += osc_4_sample;
         }
