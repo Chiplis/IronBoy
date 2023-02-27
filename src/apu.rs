@@ -444,8 +444,10 @@ mod oscillators {
         sound_data: [AtomicU8; 32],
         frequency: AtomicU16,
         frequency_timer: AtomicU32,
+        timer_leftover: RwLock<f32>,
         position: AtomicU8,
         enabled: AtomicBool,  
+        dac_enabled: AtomicBool,
         length_counter: RwLock<u32>,
         length_enabled: AtomicBool,
         volume_code: AtomicU8,
@@ -460,8 +462,10 @@ mod oscillators {
                         sound_data: [GENERATOR; 32], 
                         frequency: AtomicU16::new(0),
                         frequency_timer: AtomicU32::new(0),
+                        timer_leftover: RwLock::new(0.0),
                         position: AtomicU8::new(0),
-                        enabled: AtomicBool::new(false),  
+                        enabled: AtomicBool::new(false),
+                        dac_enabled: AtomicBool::new(false),
                         length_counter: RwLock::new(0),
                         length_enabled: AtomicBool::new(false),
                         volume_code: AtomicU8::new(0),}
@@ -470,9 +474,7 @@ mod oscillators {
         pub fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
-                    if val == 0 {
-                        self.enabled.store(false, Ordering::Relaxed);
-                    }
+                    self.dac_enabled.store((val >> 7) > 0, Ordering::Relaxed);
                 }
                 1 => {
                     let length_256hz = 256 - val as u32;
@@ -484,7 +486,7 @@ mod oscillators {
                             *length_counter = length_samples;
                         }
                         Err(error) => {
-                            println!("Could not set square wave length");
+                            println!("Could not set wave table length");
                         }
                     }
                 }
@@ -526,8 +528,18 @@ mod oscillators {
 
                         //Reset frequency timer
                         let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
-                        let samples_till_next = ((4194304.0 / 95.0) as f32 / 4194304.0) * cycles_till_next as f32;
+                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
                         self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+
+                        //See square wave for an explanation on timer leftover
+                        match self.timer_leftover.write() {
+                            Ok(mut timer_leftover) => {
+                                *timer_leftover = samples_till_next - samples_till_next.floor();
+                            }
+                            Err(_) => {
+                                println!("Wave table: Could not write to timer leftover")
+                            }
+                        }
 
                         self.position.store(0, Ordering::Relaxed);
 
@@ -550,7 +562,7 @@ mod oscillators {
         }
 
         pub fn generate_sample(&self) -> f32 {
-            if !self.enabled.load(Ordering::Relaxed) {
+            if !self.enabled.load(Ordering::Relaxed) || !self.dac_enabled.load(Ordering::Relaxed) {
                 return 0.0;
             }
 
@@ -560,7 +572,23 @@ mod oscillators {
 
                 //Reset frequency timer
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
-                let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+                let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
+
+                //See square wave for explanation on timer leftover
+                match self.timer_leftover.write() {
+                    Ok(mut timer_leftover) => {
+                        *timer_leftover += samples_till_next - samples_till_next.floor();
+
+                        if(*timer_leftover > 1.0) {
+                            *timer_leftover -= 1.0;
+                            samples_till_next += 1.0;
+                        }
+                    }
+                    Err(_) => {
+                        println!("Wave table: Could not write to timer leftover");
+                    }
+                }
+
                 self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
                 
                 //Move one position forward
@@ -760,8 +788,6 @@ mod oscillators {
                             }
                         }
 
-                        println!("{}", samples_till_next);
-
                         self.enabled.store(true, Ordering::Relaxed);
                     }
                 }
@@ -800,7 +826,6 @@ mod oscillators {
                             Err(_) => {
                                 println!("Square Wave: Could not write to timer leftover");
                             }
-        
                         }
 
                         self.frequency_timer.store(samples_till_next.ceil() as u32, Ordering::Relaxed);
