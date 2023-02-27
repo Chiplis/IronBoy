@@ -247,12 +247,13 @@ mod oscillators {
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
                         self.frequency_timer.store(samples_till_next.floor() as u32, Ordering::Relaxed);
 
+                        //Store the remainder from the conversion from length in cycles to samples in timer leftover
                         match self.timer_leftover.write() {
                             Ok(mut timer_leftover) => {
                                 *timer_leftover = samples_till_next - samples_till_next.floor();
                             }
                             Err(_) => {
-    
+                                println!("Square Wave: Could not write to timer leftover")
                             }
                         }
 
@@ -277,6 +278,7 @@ mod oscillators {
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
                 let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
 
+                //If leftover plus current remainder is more than one we should make this period another sample long to make up for the lost time
                 match self.timer_leftover.write() {
                     Ok(mut timer_leftover) => {
                         *timer_leftover += samples_till_next - samples_till_next.floor();
@@ -287,7 +289,7 @@ mod oscillators {
                         }
                     }
                     Err(_) => {
-                        println!("Could not write to timer leftover");
+                        println!("Square Wave: Could not write to timer leftover");
                     }
 
                 }
@@ -641,6 +643,7 @@ mod oscillators {
         divisor : AtomicU8,
         clock_shift: AtomicU8,
         frequency_timer: AtomicU32,
+        timer_leftover: RwLock<f32>,
         sample_counter: AtomicU32,
         LFSR: Mutex<[bool; 15]>,
         width: AtomicBool,
@@ -656,6 +659,7 @@ mod oscillators {
                              divisor: AtomicU8::new(0),
                              clock_shift: AtomicU8::new(0),
                              frequency_timer: AtomicU32::new(0),
+                             timer_leftover: RwLock::new(0.0),
                              sample_counter: AtomicU32::new(0),
                              LFSR: Mutex::new([true; 15]),
                              width: AtomicBool::new(false),
@@ -746,6 +750,18 @@ mod oscillators {
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
                         self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
 
+                        //See square wave for an explanation on timer leftover
+                        match self.timer_leftover.write() {
+                            Ok(mut timer_leftover) => {
+                                *timer_leftover = samples_till_next - samples_till_next.floor();
+                            }
+                            Err(_) => {
+                                println!("Noise osc: Could not write to timer leftover")
+                            }
+                        }
+
+                        println!("{}", samples_till_next);
+
                         self.enabled.store(true, Ordering::Relaxed);
                     }
                 }
@@ -769,7 +785,24 @@ mod oscillators {
                     if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
                         //Reset frequency timer
                         let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
-                        let samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
+                        let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
+
+                        //See square wave for explanation on timer leftover
+                        match self.timer_leftover.write() {
+                            Ok(mut timer_leftover) => {
+                                *timer_leftover += samples_till_next - samples_till_next.floor();
+        
+                                if(*timer_leftover > 1.0) {
+                                    *timer_leftover -= 1.0;
+                                    samples_till_next += 1.0;
+                                }
+                            }
+                            Err(_) => {
+                                println!("Square Wave: Could not write to timer leftover");
+                            }
+        
+                        }
+
                         self.frequency_timer.store(samples_till_next.ceil() as u32, Ordering::Relaxed);
 
                         //Move LFSR on
@@ -1094,18 +1127,18 @@ impl AudioProcessingState {
 
         let osc_3_sample = self.osc_3.generate_sample();
         if self.left_osc_3_enable.load(Ordering::Relaxed) {
-           // mixed_left_sample += osc_3_sample;
+            mixed_left_sample += osc_3_sample;
         }
         if self.right_osc_3_enable.load(Ordering::Relaxed) {
-           // mixed_right_sample += osc_3_sample;
+            mixed_right_sample += osc_3_sample;
         }
 
         let osc_4_sample = self.osc_4.generate_sample();
         if self.left_osc_4_enable.load(Ordering::Relaxed) {
-            //mixed_left_sample += osc_4_sample;
+            mixed_left_sample += osc_4_sample;
         }
         if self.right_osc_4_enable.load(Ordering::Relaxed) {
-            //mixed_right_sample += osc_4_sample;
+            mixed_right_sample += osc_4_sample;
         }
 
         mixed_left_sample /= 4.0;
