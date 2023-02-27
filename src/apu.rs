@@ -660,7 +660,7 @@ mod oscillators {
                 }
             }
             
-            wave_sample as f32 / 7.5 - 1.0
+            wave_sample as f32 / 15.0
         }
     }
 
