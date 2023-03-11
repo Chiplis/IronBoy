@@ -22,7 +22,6 @@ use std::fs::read;
 
 use crate::serial::LinkCable;
 
-use std::sync::Arc;
 use crate::apu::AudioProcessingUnit;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
@@ -140,8 +139,7 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        let mut value = 0x00;
-
+        let value;
         if translated_address >= 0xFF10 && translated_address <= 0xFF3F {
             value = self.apu.read_register(translated_address);
         }

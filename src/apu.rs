@@ -1,7 +1,5 @@
 mod oscillators {
-    use rand::seq::index::sample;
     use serde::{Serialize, Deserialize};
-    use winit::event::ElementState;
     use std::{sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex}};
 
     #[derive(Serialize, Deserialize)]
@@ -46,7 +44,7 @@ mod oscillators {
                     params.period = period;
                     params.frequency_timer = (self.sample_rate / 64) * ((period) as u32);
                 }
-                Err(error) => {
+                Err(_error) => {
                     println!("Could not obtain envelope data lock");
                 }
             }
@@ -69,7 +67,7 @@ mod oscillators {
                         //Check if level change is needed
                         if params.frequency_timer <= 0 {
 
-                            params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);;
+                            params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);
 
                             if params.add_mode && params.current_level < 15 {
                                 params.current_level +=  1;
@@ -85,7 +83,7 @@ mod oscillators {
                     return output_sample;
                 }
 
-                Err(error) => {
+                Err(_error) => {
                     println!("missed vol env sample");
                     return self.last_val.load(Ordering::Relaxed) as u8;
                 }
@@ -171,7 +169,7 @@ mod oscillators {
                         Ok(mut length_counter) => {
                             *length_counter = length_samples;
                         }
-                        Err(error) => {
+                        Err(_error) => {
                             println!("Could not set square wave length");
                         }
                     }
@@ -215,12 +213,10 @@ mod oscillators {
                                     *length_counter = ((self.sample_rate as f32 / 256.0) * 64.0).ceil() as u32;
                                 }
                             }
-                            Err(error) => {
+                            Err(_error) => {
                                 println!("Could not set square wave length");
                             }
                         }
-
-                        let mut sweep_failed = false;
 
                         //Sweep data
                         if self.sweep {
@@ -304,8 +300,7 @@ mod oscillators {
                 }
 
                 1 => {
-                    let mut reg_value = 0x00;
-                    reg_value = self.duty.load(Ordering::Relaxed) << 6;
+                    let mut reg_value = self.duty.load(Ordering::Relaxed) << 6;
                     reg_value |= self.length.load(Ordering::Relaxed);
                     return reg_value;
                 }
@@ -346,7 +341,7 @@ mod oscillators {
                     Ok(mut timer_leftover) => {
                         *timer_leftover += samples_till_next - samples_till_next.floor();
 
-                        if(*timer_leftover > 1.0) {
+                        if *timer_leftover > 1.0 {
                             *timer_leftover -= 1.0;
                             samples_till_next += 1.0;
                         }
@@ -472,9 +467,9 @@ mod oscillators {
         }
 
         fn calculate_sweep_freq(&self) -> (bool, u16) {
-            let mut offset = (self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed)) as u16;
+            let offset = (self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed)) as u16;
 
-            let mut new_freq : u32 = 0;
+            let new_freq : u32;
 
             if self.sweep_negate.load(Ordering::Relaxed) {
                 //Check for underflow
@@ -553,7 +548,7 @@ mod oscillators {
                         Ok(mut length_counter) => {
                             *length_counter = length_samples;
                         }
-                        Err(error) => {
+                        Err(_error) => {
                             println!("Could not set wave table length");
                         }
                     }
@@ -591,7 +586,7 @@ mod oscillators {
                                     *length_counter = ((self.sample_rate as f32 / 256.0) * 256.0).ceil() as u32;
                                 }
                             }
-                            Err(error) => {
+                            Err(_error) => {
                                 println!("Could not set square wave length");
                             }
                         }
@@ -671,7 +666,7 @@ mod oscillators {
             let start_sample = rel_address * 2;
 
             let mut reg_val = 0x00;
-            reg_val |= (self.sound_data[start_sample].load(Ordering::Relaxed) << 4);
+            reg_val |= self.sound_data[start_sample].load(Ordering::Relaxed) << 4;
             reg_val |= self.sound_data[start_sample + 1].load(Ordering::Relaxed);
             return reg_val;
         }
@@ -694,7 +689,7 @@ mod oscillators {
                     Ok(mut timer_leftover) => {
                         *timer_leftover += samples_till_next - samples_till_next.floor();
 
-                        if(*timer_leftover > 1.0) {
+                        if *timer_leftover > 1.0 {
                             *timer_leftover -= 1.0;
                             samples_till_next += 1.0;
                         }
@@ -789,7 +784,7 @@ mod oscillators {
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
         sample_counter: AtomicU32,
-        LFSR: Mutex<[bool; 15]>,
+        lfsr: Mutex<[bool; 15]>,
         width: AtomicBool,
         trigger: AtomicU8,
         enabled: AtomicBool,
@@ -808,7 +803,7 @@ mod oscillators {
                              frequency_timer: AtomicU32::new(0),
                              timer_leftover: RwLock::new(0.0),
                              sample_counter: AtomicU32::new(0),
-                             LFSR: Mutex::new([true; 15]),
+                             lfsr: Mutex::new([true; 15]),
                              width: AtomicBool::new(false),
                              trigger: AtomicU8::new(0),
                              enabled: AtomicBool::new(false), 
@@ -834,7 +829,7 @@ mod oscillators {
                         Ok(mut length_counter) => {
                             *length_counter = length_samples;
                         }
-                        Err(error) => {
+                        Err(_error) => {
                             println!("Could not set noise generator length");
                         }
                     }
@@ -872,7 +867,6 @@ mod oscillators {
                     self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
 
                     let trigger = val & 0x80;
-                    
                     self.trigger.store(trigger, Ordering::Relaxed);
 
                     if trigger > 0 {
@@ -883,19 +877,19 @@ mod oscillators {
                                     *length_counter = ((self.sample_rate as f32 / 256.0) * 64.0).ceil() as u32;
                                 }
                             }
-                            Err(error) => {
+                            Err(_error) => {
                                 println!("Could not set square wave length");
                             }
                         }
 
                         //Fill LFSR with 1s
-                        match self.LFSR.lock() {
-                            Ok(mut LFSR) => {
-                                for bit in LFSR.iter_mut() {
+                        match self.lfsr.lock() {
+                            Ok(mut lfsr) => {
+                                for bit in lfsr.iter_mut() {
                                     *bit = true;
                                 }
                             }
-                            Err(error) => {
+                            Err(_error) => {
                                 println!("Could not obtain LFSR Mutex");
                             }
                         }
@@ -971,8 +965,8 @@ mod oscillators {
             let env_sample = self.env.generate_sample();
             let mut noise_sample = 0;
 
-            match self.LFSR.lock() {
-                Ok(mut LFSR) => {
+            match self.lfsr.lock() {
+                Ok(mut lfsr) => {
                     if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
                         //Reset frequency timer
                         let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
@@ -983,7 +977,7 @@ mod oscillators {
                             Ok(mut timer_leftover) => {
                                 *timer_leftover += samples_till_next - samples_till_next.floor();
         
-                                if(*timer_leftover > 1.0) {
+                                if *timer_leftover > 1.0 {
                                     *timer_leftover -= 1.0;
                                     samples_till_next += 1.0;
                                 }
@@ -996,19 +990,19 @@ mod oscillators {
                         self.frequency_timer.store(samples_till_next.ceil() as u32, Ordering::Relaxed);
 
                         //Move LFSR on
-                        let new_val = LFSR[0] != LFSR[1];
-                        LFSR.rotate_left(1);
+                        let new_val = lfsr[0] != lfsr[1];
+                        lfsr.rotate_left(1);
 
-                        LFSR[14] = new_val;
+                        lfsr[14] = new_val;
 
                         if self.width.load(Ordering::Relaxed) {
-                            LFSR[6] = new_val;
+                            lfsr[6] = new_val;
                         }
                     }
 
                     self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
-                    noise_sample = if LFSR[0] == true {
+                    noise_sample = if lfsr[0] == true {
                         1
                     }
                     else {
@@ -1016,7 +1010,7 @@ mod oscillators {
                     };
                 }
                 //This should never happen
-                Err(error) => {
+                Err(_error) => {
                     println!("Could not obtain LFSR lock");
                 }
             }
@@ -1061,32 +1055,6 @@ mod oscillators {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct SineGen {
-    sample_rate: u32,
-    phase: std::sync::Mutex<f32>,
-    phase_step: f32,
-}
-
-impl SineGen {
-    fn new(sample_rate: u32) -> SineGen {
-        SineGen { sample_rate: sample_rate, phase: std::sync::Mutex::new(0.0), phase_step: 1000.0 / sample_rate as f32 }
-    }
-
-    fn generate_sample(&self) -> f32 {
-        match self.phase.lock() {
-            Ok(mut phase) => {
-                let sample = (*phase * 2.0 * std::f32::consts::PI).sin();
-                *phase = (*phase + self.phase_step) % 1.0;
-                sample
-            }
-            Err(error) => {
-                0.0
-            }
-        }
-    }
-}
-
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
@@ -1114,8 +1082,6 @@ struct AudioProcessingState {
     right_master_vol: AtomicU8,
 
     power_control: AtomicBool,
-
-    test_osc: SineGen,
 }
 
 impl AudioProcessingState {
@@ -1154,7 +1120,6 @@ impl AudioProcessingState {
                                                                                        left_master_vol: AtomicU8::new(0),
                                                                                        right_master_vol: AtomicU8::new(0),
                                                                                        power_control: AtomicBool::new(false),
-                                                                                       test_osc: SineGen::new(config.sample_rate().0),
                                                                                        });
 
         let audio_callback_ref = processor.clone();
@@ -1308,7 +1273,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_f32(&self, audio: &mut [f32], info: &OutputCallbackInfo) {
+    fn audio_block_f32(&self, audio: &mut [f32], _info: &OutputCallbackInfo) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1356,7 +1321,7 @@ impl AudioProcessingState {
         }
     }
     
-    fn audio_error(&self, error: StreamError) {
+    fn audio_error(&self, _error: StreamError) {
         println!("Audio Error");
     }
 
@@ -1412,6 +1377,7 @@ impl AudioProcessingState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
 pub struct AudioProcessingUnit {
     state: Arc<AudioProcessingState>,
