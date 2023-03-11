@@ -1369,9 +1369,9 @@ impl AudioProcessingState {
         mixed_left_sample /= 4.0;
         mixed_right_sample /= 4.0;
 
-        //These volumes seem to be wrong
-        mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) + 1) as f32;
-        mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) + 1) as f32;
+        //These volumes seem to be really loud on their own so I have scaled them down
+        //mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) + 1) as f32 / 8.0;
+        //mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) + 1) as f32 / 8.0;
 
         return (mixed_left_sample, mixed_right_sample);
     }
