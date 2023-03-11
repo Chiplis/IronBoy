@@ -50,6 +50,6 @@ Esc -> Close
 ---
 ## Missing features
 
-* Sound
+* ~Sound~ - Credits to [@maxwalley](https://github.com/maxwalley)
 
 * Full MBC support (as of now only MBC0, MBC1 and MBC3 have been implemented)
