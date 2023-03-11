@@ -1283,7 +1283,7 @@ impl AudioProcessingState {
 
             audio[first_channel_index] = generated_samples.0;
 
-            if self.num_channels > 0 {
+            if self.num_channels > 1 {
                 audio[first_channel_index + 1] = generated_samples.1;
             }
         }
@@ -1299,7 +1299,7 @@ impl AudioProcessingState {
 
             audio[first_channel_index] = (f32_samples.0 * i16::MAX as f32) as i16;
 
-            if self.num_channels > 0 {
+            if self.num_channels > 1 {
                 audio[first_channel_index + 1] = (f32_samples.1 * i16::MAX as f32) as i16;
             }
         }
@@ -1315,7 +1315,7 @@ impl AudioProcessingState {
 
             audio[first_channel_index] = ((f32_samples.0 + 1.0) * u16::MAX as f32) as u16;
 
-            if self.num_channels > 0 {
+            if self.num_channels > 1 {
                 audio[first_channel_index + 1] = ((f32_samples.1 + 1.0) * u16::MAX as f32) as u16;
             }
         }
