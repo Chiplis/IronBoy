@@ -20,7 +20,7 @@ mod oscillators {
 
     impl VolumeEnvelope {
         pub fn new(sample_rate: u32) -> VolumeEnvelope {
-            VolumeEnvelope {sample_rate: sample_rate,
+            VolumeEnvelope {sample_rate,
                             params: Mutex::new(VolumeEnvelopeParams{
                                 add_mode: false, 
                                 period: 0, 
@@ -65,7 +65,7 @@ mod oscillators {
                     //Apply envelope
                     if params.period > 0 {
                         //Check if level change is needed
-                        if params.frequency_timer <= 0 {
+                        if params.frequency_timer == 0 {
 
                             params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);
 
@@ -80,12 +80,12 @@ mod oscillators {
                         params.frequency_timer -= 1
                     }
 
-                    return output_sample;
+                    output_sample
                 }
 
                 Err(_error) => {
                     println!("missed vol env sample");
-                    return self.last_val.load(Ordering::Relaxed) as u8;
+                    self.last_val.load(Ordering::Relaxed) as u8
                 }
             }
         }
@@ -120,8 +120,8 @@ mod oscillators {
             SquareWaveGenerator {frequency: AtomicU16::new(0), 
                                  frequency_timer: AtomicU32::new(0),
                                  timer_leftover: RwLock::new(0.0),
-                                 sample_rate: sample_rate, 
-                                 sweep: sweep,
+                                 sample_rate, 
+                                 sweep,
                                  position: AtomicU8::new(0),
                                  duty: AtomicU8::new(2), 
                                  trigger: AtomicU8::new(0),
@@ -292,17 +292,17 @@ mod oscillators {
                         let mut reg_val = self.sweep_period.load(Ordering::Relaxed) << 4;
                         reg_val |= (self.sweep_negate.load(Ordering::Relaxed) as u8) << 3;
                         reg_val |= self.sweep_shift.load(Ordering::Relaxed);
-                        return reg_val;
+                        reg_val
                     }
                     else {
-                        return 0x00;
+                        0x00
                     }
                 }
 
                 1 => {
                     let mut reg_value = self.duty.load(Ordering::Relaxed) << 6;
                     reg_value |= self.length.load(Ordering::Relaxed);
-                    return reg_value;
+                    reg_value
                 }
 
                 2 => {
@@ -310,18 +310,18 @@ mod oscillators {
                 }
 
                 3 => {
-                    return (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8;
+                    (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8
                 }
 
                 4 => {
                     let mut reg_value = self.trigger.load(Ordering::Relaxed);
                     reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
                     reg_value |= ((self.frequency.load(Ordering::Relaxed) & 0x0F00) >> 8) as u8;
-                    return reg_value;
+                    reg_value
                 }
 
                 _ => {
-                    return 0x00;
+                    0x00
                 }
             }
         }
@@ -331,7 +331,7 @@ mod oscillators {
                 return 0.0;
             }
 
-            if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
+            if self.frequency_timer.load(Ordering::Relaxed) == 0 {
                 //Reset frequency timer
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
                 let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
@@ -367,7 +367,7 @@ mod oscillators {
             self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
             if self.sweep {
-                if self.sweep_timer.load(Ordering::Relaxed) <= 0 && self.sweep_enabled.load(Ordering::Relaxed) && self.sweep_period.load(Ordering::Relaxed) > 0 {
+                if self.sweep_timer.load(Ordering::Relaxed) == 0 && self.sweep_enabled.load(Ordering::Relaxed) && self.sweep_period.load(Ordering::Relaxed) > 0 {
                     //Reload sweep timer
                     let sweep_num_samples = ((self.sample_rate as f32 / 128.0) * self.sweep_period.load(Ordering::Relaxed) as f32) as u32;
                     self.sweep_timer.store(sweep_num_samples, Ordering::Relaxed);
@@ -446,7 +446,7 @@ mod oscillators {
                         *length_counter = new_length;
 
                         //If we've reached the end of the current length disable the channel
-                        if *length_counter <= 0 {
+                        if *length_counter == 0 {
                             self.enabled.store(false, Ordering::Relaxed);
                         }
                     }
@@ -463,35 +463,28 @@ mod oscillators {
                 0
             };
 
-            return dac_input_sample as f32 / 15.0;
+            dac_input_sample as f32 / 15.0
         }
 
         fn calculate_sweep_freq(&self) -> (bool, u16) {
             let offset = (self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed)) as u16;
 
-            let new_freq : u32;
-
-            if self.sweep_negate.load(Ordering::Relaxed) {
+            let new_freq: u32 = if self.sweep_negate.load(Ordering::Relaxed) {
                 //Check for underflow
-                new_freq = match self.sweep_frequency.load(Ordering::Relaxed).checked_sub(offset) {
-                    Some(res) => {
-                        res.into()
-                    }
-                    None => {
-                        0
-                    }
+                 match self.sweep_frequency.load(Ordering::Relaxed).checked_sub(offset) {
+                    Some(res) => res.into(),
+                    None => 0
                 }
-            }
-            else {
-                new_freq = self.sweep_frequency.load(Ordering::Relaxed) as u32 + offset as u32;
-            }
+            } else {
+                self.sweep_frequency.load(Ordering::Relaxed) as u32 + offset as u32
+            };
 
             //Overflow check
             if new_freq > 2047 {
                 return (true, new_freq as u16);
             }
 
-            return (false, new_freq as u16);
+            (false, new_freq as u16)
         }
     }
 
@@ -514,11 +507,8 @@ mod oscillators {
 
     impl WaveTable {
         pub fn new(sample_rate: u32) -> WaveTable {
-
-            const GENERATOR: AtomicU8 = AtomicU8::new(0);
-
-            WaveTable { sample_rate: sample_rate,
-                        sound_data: [GENERATOR; 32], 
+            WaveTable { sample_rate,
+                        sound_data: [(); 32].map(|_| AtomicU8::new(0)),
                         frequency: AtomicU16::new(0),
                         frequency_timer: AtomicU32::new(0),
                         timer_leftover: RwLock::new(0.0),
@@ -629,26 +619,26 @@ mod oscillators {
                 }
 
                 1 => {
-                    return self.length.load(Ordering::Relaxed);
+                    self.length.load(Ordering::Relaxed)
                 }
 
                 2 => {
-                    return self.volume_code.load(Ordering::Relaxed) << 6;
+                    self.volume_code.load(Ordering::Relaxed) << 6
                 }
 
                 3 => {
-                    return (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8;
+                    (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8
                 }
 
                 4 => {
                     let mut reg_value = self.trigger.load(Ordering::Relaxed);
                     reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
                     reg_value |= ((self.frequency.load(Ordering::Relaxed) & 0x0F00) >> 8) as u8;
-                    return reg_value;
+                    reg_value
                 }
 
                 _ => {
-                    return 0x00;
+                    0x00
                 }
             }
         }
@@ -668,7 +658,7 @@ mod oscillators {
             let mut reg_val = 0x00;
             reg_val |= self.sound_data[start_sample].load(Ordering::Relaxed) << 4;
             reg_val |= self.sound_data[start_sample + 1].load(Ordering::Relaxed);
-            return reg_val;
+            reg_val
         }
 
         pub fn generate_sample(&self) -> f32 {
@@ -678,7 +668,7 @@ mod oscillators {
 
             let mut current_position = self.position.load(Ordering::Relaxed);
 
-            if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
+            if self.frequency_timer.load(Ordering::Relaxed) == 0 {
 
                 //Reset frequency timer
                 let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
@@ -760,7 +750,7 @@ mod oscillators {
                         *length_counter = new_length;
 
                         //If we've reached the end of the current length disable the channel
-                        if *length_counter <= 0 {
+                        if *length_counter == 0 {
                             self.enabled.store(false, Ordering::Relaxed);
                         }
                     }
@@ -795,7 +785,7 @@ mod oscillators {
 
     impl NoiseGenerator {
         pub fn new(sample_rate: u32) -> NoiseGenerator {
-            NoiseGenerator { sample_rate: sample_rate,
+            NoiseGenerator { sample_rate,
                              env: VolumeEnvelope::new(sample_rate),
                              divisor_code: AtomicU8::new(0),
                              divisor: AtomicU8::new(0),
@@ -926,15 +916,15 @@ mod oscillators {
         pub fn read_reg(&self, reg: usize) -> u8 {
             match reg {
                 0 => {
-                    return 0x00;
+                    0x00
                 }
 
                 1 => {
-                    return self.length.load(Ordering::Relaxed);
+                    self.length.load(Ordering::Relaxed)
                 }
 
                 2 => {
-                    return self.env.read_settings();
+                    self.env.read_settings()
                 }
 
                 3 => {
@@ -942,17 +932,17 @@ mod oscillators {
                     reg_val |= self.clock_shift.load(Ordering::Relaxed) << 4;
                     reg_val |= (self.width.load(Ordering::Relaxed) as u8) << 3;
                     reg_val |= self.divisor_code.load(Ordering::Relaxed);
-                    return reg_val;
+                    reg_val
                 }
 
                 4 => {
                     let mut reg_value = self.trigger.load(Ordering::Relaxed);
                     reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
-                    return reg_value;
+                    reg_value
                 }
 
                 _ => {
-                    return 0x00;
+                    0x00
                 }
             }
         }
@@ -967,7 +957,7 @@ mod oscillators {
 
             match self.lfsr.lock() {
                 Ok(mut lfsr) => {
-                    if self.frequency_timer.load(Ordering::Relaxed) <= 0 {
+                    if self.frequency_timer.load(Ordering::Relaxed) == 0 {
                         //Reset frequency timer
                         let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
                         let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
@@ -1002,12 +992,7 @@ mod oscillators {
 
                     self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
-                    noise_sample = if lfsr[0] == true {
-                        1
-                    }
-                    else {
-                        0
-                    };
+                    noise_sample = i32::from(lfsr[0]);
                 }
                 //This should never happen
                 Err(_error) => {
@@ -1033,7 +1018,7 @@ mod oscillators {
                         *length_counter = new_length;
 
                         //If we've reached the end of the current length disable the channel
-                        if *length_counter <= 0 {
+                        if *length_counter == 0 {
                             self.enabled.store(false, Ordering::Relaxed);
                         }
                     }
@@ -1050,11 +1035,12 @@ mod oscillators {
                 0
             };
 
-            return dac_input_sample as f32 / 15.0;
+            dac_input_sample as f32 / 15.0
         }
     }
 }
 
+use std::cmp;
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
@@ -1096,11 +1082,8 @@ impl AudioProcessingState {
         }).expect("Audio device does not support sample rate (44100)").with_sample_rate(cpal::SampleRate(44100));
 
         //Display device name
-        match out_dev.name() {
-            Ok(name) => {
-                println!("Using {} at {}Hz with {} channels", name, config.sample_rate().0, config.channels());
-            }
-            Err(_) => {}
+        if let Ok(name) = out_dev.name() {
+            println!("Using {} at {}Hz with {} channels", name, config.sample_rate().0, config.channels())
         }
 
         let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
@@ -1167,7 +1150,7 @@ impl AudioProcessingState {
                 }
             }
         }
-        else if address >= 0xFF30 && address <= 0xFF3F {
+        else if (0xFF30..=0xFF3F).contains(&address) {
             self.osc_3.write_sound_data(address, value);
         }  
         else {
@@ -1197,7 +1180,7 @@ impl AudioProcessingState {
                 }
 
                 _ => {
-                    println!("APU Write: Unrecognised address: {}", address);
+                    eprintln!("APU Write: Unrecognised address: {}", address);
                 }
             }
         } 
@@ -1212,28 +1195,28 @@ impl AudioProcessingState {
 
             match osc {
                 0 => {
-                    return self.osc_1.read_reg(reg);
+                    self.osc_1.read_reg(reg)
                 }
 
                 1 => {
-                    return self.osc_2.read_reg(reg);
+                    self.osc_2.read_reg(reg)
                 }
 
                 2 => {
-                    return self.osc_3.read_reg(reg);
+                    self.osc_3.read_reg(reg)
                 }
 
                 3 => {
-                    return self.osc_4.read_reg(reg);
+                    self.osc_4.read_reg(reg)
                 }
                 _ => {
                     println!("APU Read: Unrecognised oscillator number");
-                    return 0x00;
+                    0x00
                 }
             }
         }
-        else if address >= 0xFF30 && address <= 0xFF3F {
-            return self.osc_3.read_sound_data(address);
+        else if (0xFF30..=0xFF3F).contains(&address) {
+            self.osc_3.read_sound_data(address)
         }  
         else {
             match address {
@@ -1241,7 +1224,7 @@ impl AudioProcessingState {
                     let mut reg_val = 0x00;
                     reg_val |= self.left_master_vol.load(Ordering::Relaxed) << 4;
                     reg_val |= self.right_master_vol.load(Ordering::Relaxed);
-                    return reg_val;
+                    reg_val
                 }
                 0xFF25 => {
                     let mut reg_val = 0x00;
@@ -1255,7 +1238,7 @@ impl AudioProcessingState {
                     reg_val |= (self.right_osc_2_enable.load(Ordering::Relaxed) as u8) << 1;
                     reg_val |= self.right_osc_1_enable.load(Ordering::Relaxed) as u8;
 
-                    return reg_val;
+                    reg_val
                 }
                 0xFF26 => {
                     let mut reg_val = (self.power_control.load(Ordering::Relaxed) as u8) << 7;
@@ -1263,11 +1246,11 @@ impl AudioProcessingState {
                     reg_val |= (self.osc_3.is_enabled() as u8) << 2;
                     reg_val |= (self.osc_2.is_enabled() as u8) << 1;
                     reg_val |= self.osc_1.is_enabled() as u8;
-                    return reg_val;
+                    reg_val
                 }
                 _ => {
                     println!("APU Read: Unrecognised address");
-                    return 0x00;
+                    0x00
                 }
             }
         }
@@ -1280,13 +1263,13 @@ impl AudioProcessingState {
             let generated_samples = self.generate_samples();
 
             let first_channel_index = sample_index * self.num_channels as usize;
-
-            if self.num_channels == 1 {
-                audio[first_channel_index] = (generated_samples.0 + generated_samples.1) / 2.0;
-            }
-            else if self.num_channels > 1 {
-                audio[first_channel_index] = generated_samples.0;
-                audio[first_channel_index + 1] = generated_samples.1;
+            match self.num_channels.cmp(&1) {
+                cmp::Ordering::Equal => audio[first_channel_index] = (generated_samples.0 + generated_samples.1) / 2.0,
+                cmp::Ordering::Greater => {
+                    audio[first_channel_index] = generated_samples.0;
+                    audio[first_channel_index + 1] = generated_samples.1;
+                }
+                cmp::Ordering::Less => (),
             }
         }
     }
@@ -1302,12 +1285,13 @@ impl AudioProcessingState {
 
             let first_channel_index = sample_index * self.num_channels as usize;
 
-            if self.num_channels == 1 {
-                audio[first_channel_index] = (left_sample + right_sample) / 2;
-            }
-            else if self.num_channels > 1 {
-                audio[first_channel_index] = left_sample;
-                audio[first_channel_index + 1] = right_sample;
+            match self.num_channels.cmp(&1) {
+                cmp::Ordering::Equal => audio[first_channel_index] = (left_sample + right_sample) / 2,
+                cmp::Ordering::Greater => {
+                    audio[first_channel_index] = left_sample;
+                    audio[first_channel_index + 1] = right_sample;
+                }
+                cmp::Ordering::Less => (),
             }
         }
     }
@@ -1323,18 +1307,19 @@ impl AudioProcessingState {
 
             let first_channel_index = sample_index * self.num_channels as usize;
 
-            if self.num_channels == 1 {
-                audio[first_channel_index] = (left_sample + right_sample) / 2;
-            }
-            else if self.num_channels > 1 {
-                audio[first_channel_index] = left_sample;
-                audio[first_channel_index + 1] = right_sample;
+            match self.num_channels.cmp(&1) {
+                cmp::Ordering::Equal => audio[first_channel_index] = (left_sample + right_sample) / 2,
+                cmp::Ordering::Greater => {
+                    audio[first_channel_index] = left_sample;
+                    audio[first_channel_index + 1] = right_sample;
+                }
+                cmp::Ordering::Less => (),
             }
         }
     }
     
-    fn audio_error(&self, _error: StreamError) {
-        println!("Audio Error");
+    fn audio_error(&self, error: StreamError) {
+        eprintln!("Audio Error: {:?}", error);
     }
 
     fn generate_samples(&self) -> (f32, f32) {
@@ -1385,7 +1370,7 @@ impl AudioProcessingState {
         //mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) + 1) as f32 / 8.0;
         //mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) + 1) as f32 / 8.0;
 
-        return (mixed_left_sample, mixed_right_sample);
+        (mixed_left_sample, mixed_right_sample)
     }
 }
 
@@ -1405,11 +1390,20 @@ impl AudioProcessingUnit {
         AudioProcessingUnit { state: temp.0, stream: Some(temp.1) }
     }
 
-    pub fn write_register(&self, address: usize, value: u8) {
-        self.state.write_register(address, value);
+    pub fn write(&self, address: usize, value: u8) -> bool {
+        if !(0xFF10..=0xFF3F).contains(&address) {
+            false
+        } else {
+            self.state.write_register(address, value);
+            true
+        }
     }
 
-    pub fn read_register(&self, address: usize) -> u8 {
-        self.state.read_register(address)
+    pub fn read(&self, address: usize) -> Option<u8> {
+        if !(0xFF10..=0xFF3F).contains(&address) {
+            None
+        } else {
+            Some(self.state.read_register(address))
+        }
     }
 }

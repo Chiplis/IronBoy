@@ -139,13 +139,7 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        let value;
-        if translated_address >= 0xFF10 && translated_address <= 0xFF3F {
-            value = self.apu.read_register(translated_address);
-        }
-        else {
-            value = self.internal_read(translated_address);
-        }
+        let value = self.internal_read(translated_address);
 
         self.cycle(4);
         value
@@ -178,12 +172,7 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        if translated_address >= 0xFF10 && translated_address <= 0xFF3F {
-            self.apu.write_register(translated_address, value.into());
-        }
-        else {
-            self.internal_write(translated_address, value.into());
-        }
+        self.internal_write(translated_address, value.into());
 
         self.cycle(4);
     }
@@ -214,6 +203,7 @@ impl MemoryManagementUnit {
             .or_else(|| self.timer.read(translated_address))
             .or_else(|| self.joypad.read(translated_address))
             .or_else(|| self.serial.read(translated_address))
+            .or_else(|| self.apu.read(translated_address))
             .unwrap_or_else(|| self.internal_ram_read(translated_address))
     }
 
@@ -223,7 +213,8 @@ impl MemoryManagementUnit {
             || self.interrupt_handler.write(translated_address, value)
             || self.timer.write(translated_address, value)
             || self.joypad.write(translated_address, value)
-            || self.serial.write(translated_address, value))
+            || self.serial.write(translated_address, value)
+            || self.apu.write(translated_address, value))
         {
             self.internal_ram_write(translated_address, value);
         }
