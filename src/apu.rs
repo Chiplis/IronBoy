@@ -17,6 +17,7 @@ mod oscillators {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
         last_val: AtomicU8,
+        current_settings: AtomicU8,
     }
 
     impl VolumeEnvelope {
@@ -28,7 +29,8 @@ mod oscillators {
                                 current_level: 0,
                                 frequency_timer: 0,}
                             ),
-                            last_val: AtomicU8::new(0),}
+                            last_val: AtomicU8::new(0),
+                            current_settings: AtomicU8::new(0),}
         }
 
         pub fn write_settings(&self, val: u8) {
@@ -48,6 +50,12 @@ mod oscillators {
                     println!("Could not obtain envelope data lock");
                 }
             }
+
+            self.current_settings.store(val, Ordering::Relaxed);
+        }
+
+        pub fn read_settings(&self) -> u8 {
+            self.current_settings.load(Ordering::Relaxed)
         }
 
         pub fn generate_sample(&self) -> u8 {
@@ -94,7 +102,9 @@ mod oscillators {
         sweep: bool,
         position: AtomicU8,
         duty: AtomicU8,
+        trigger: AtomicU8,
         enabled: AtomicBool,
+        length: AtomicU8,
         length_counter: RwLock<u32>,
         length_enabled: AtomicBool,
         env: VolumeEnvelope,
@@ -116,7 +126,9 @@ mod oscillators {
                                  sweep: sweep,
                                  position: AtomicU8::new(0),
                                  duty: AtomicU8::new(2), 
+                                 trigger: AtomicU8::new(0),
                                  enabled: AtomicBool::new(false),
+                                 length: AtomicU8::new(0),
                                  length_counter: RwLock::new(0), 
                                  length_enabled: AtomicBool::new(false),
                                  env: VolumeEnvelope::new(sample_rate),
@@ -148,7 +160,10 @@ mod oscillators {
                     let new_duty = val >> 6;
                     self.duty.store(new_duty, Ordering::Relaxed);
 
-                    let length_256hz = 64 - (val & 0x3F);
+                    let length = val & 0x3F;
+                    self.length.store(length, Ordering::Relaxed);
+
+                    let length_256hz = 64 - length;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
 
                     //Here we set the length counter making sure nothing can use it while it is set
@@ -190,6 +205,8 @@ mod oscillators {
                     self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
 
                     let trigger = val & 0x80;
+                    self.trigger.store(trigger, Ordering::Relaxed);
+
                     if trigger > 0 {
                         //If length == 0 reset it to 64
                         match self.length_counter.write() {
@@ -264,6 +281,52 @@ mod oscillators {
 
                 _ => {
                     println!("Square Wave Osc: Unrecognised register");
+                }
+            }
+        }
+
+        pub fn is_enabled(&self) -> bool {
+            self.enabled.load(Ordering::Relaxed)
+        }
+
+        pub fn read_reg(&self, reg: usize) -> u8 {
+            match reg {
+                0 => {
+                    if self.sweep {
+                        let mut reg_val = self.sweep_period.load(Ordering::Relaxed) << 4;
+                        reg_val |= (self.sweep_negate.load(Ordering::Relaxed) as u8) << 3;
+                        reg_val |= self.sweep_shift.load(Ordering::Relaxed);
+                        return reg_val;
+                    }
+                    else {
+                        return 0x00;
+                    }
+                }
+
+                1 => {
+                    let mut reg_value = 0x00;
+                    reg_value = self.duty.load(Ordering::Relaxed) << 6;
+                    reg_value |= self.length.load(Ordering::Relaxed);
+                    return reg_value;
+                }
+
+                2 => {
+                    self.env.read_settings()
+                }
+
+                3 => {
+                    return (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8;
+                }
+
+                4 => {
+                    let mut reg_value = self.trigger.load(Ordering::Relaxed);
+                    reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
+                    reg_value |= ((self.frequency.load(Ordering::Relaxed) & 0x0F00) >> 8) as u8;
+                    return reg_value;
+                }
+
+                _ => {
+                    return 0x00;
                 }
             }
         }
@@ -446,8 +509,9 @@ mod oscillators {
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
         position: AtomicU8,
-        enabled: AtomicBool,  
-        dac_enabled: AtomicBool,
+        trigger: AtomicU8,
+        enabled: AtomicBool,
+        length: AtomicU8,
         length_counter: RwLock<u32>,
         length_enabled: AtomicBool,
         volume_code: AtomicU8,
@@ -464,8 +528,9 @@ mod oscillators {
                         frequency_timer: AtomicU32::new(0),
                         timer_leftover: RwLock::new(0.0),
                         position: AtomicU8::new(0),
+                        trigger: AtomicU8::new(0),
                         enabled: AtomicBool::new(false),
-                        dac_enabled: AtomicBool::new(false),
+                        length: AtomicU8::new(0),
                         length_counter: RwLock::new(0),
                         length_enabled: AtomicBool::new(false),
                         volume_code: AtomicU8::new(0),}
@@ -474,9 +539,12 @@ mod oscillators {
         pub fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
-                    self.dac_enabled.store((val >> 7) > 0, Ordering::Relaxed);
+                    if val == 0x00 {
+                        self.enabled.store(false, Ordering::Relaxed);
+                    }
                 }
                 1 => {
+                    self.length.store(val, Ordering::Relaxed);
                     let length_256hz = 256 - val as u32;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
 
@@ -513,6 +581,8 @@ mod oscillators {
                     self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
 
                     let trigger = val & 0x80;
+                    self.trigger.store(trigger, Ordering::Relaxed);
+
                     if trigger > 0 {
                         //If length == 0 reset it to 256
                         match self.length_counter.write() {
@@ -553,6 +623,41 @@ mod oscillators {
             }
         }
 
+        pub fn is_enabled(&self) -> bool {
+            self.enabled.load(Ordering::Relaxed)
+        }
+
+        pub fn read_reg(&self, reg: usize) -> u8 {
+            match reg {
+                0 => {
+                    0x00
+                }
+
+                1 => {
+                    return self.length.load(Ordering::Relaxed);
+                }
+
+                2 => {
+                    return self.volume_code.load(Ordering::Relaxed) << 6;
+                }
+
+                3 => {
+                    return (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8;
+                }
+
+                4 => {
+                    let mut reg_value = self.trigger.load(Ordering::Relaxed);
+                    reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
+                    reg_value |= ((self.frequency.load(Ordering::Relaxed) & 0x0F00) >> 8) as u8;
+                    return reg_value;
+                }
+
+                _ => {
+                    return 0x00;
+                }
+            }
+        }
+
         pub fn write_sound_data(&self, address: usize, val: u8) {
             let rel_address = address - 0xFF30;
             let start_sample = rel_address * 2;
@@ -561,8 +666,18 @@ mod oscillators {
             self.sound_data[start_sample + 1].store(val & 0x0F, Ordering::Relaxed);
         }
 
+        pub fn read_sound_data(&self, address: usize) -> u8 {
+            let rel_address = address - 0xFF30;
+            let start_sample = rel_address * 2;
+
+            let mut reg_val = 0x00;
+            reg_val |= (self.sound_data[start_sample].load(Ordering::Relaxed) << 4);
+            reg_val |= self.sound_data[start_sample + 1].load(Ordering::Relaxed);
+            return reg_val;
+        }
+
         pub fn generate_sample(&self) -> f32 {
-            if !self.enabled.load(Ordering::Relaxed) || !self.dac_enabled.load(Ordering::Relaxed) {
+            if !self.enabled.load(Ordering::Relaxed) {
                 return 0.0;
             }
 
@@ -668,14 +783,17 @@ mod oscillators {
     pub struct NoiseGenerator {
         sample_rate: u32,
         env: VolumeEnvelope,
-        divisor : AtomicU8,
+        divisor_code: AtomicU8,
+        divisor: AtomicU8,
         clock_shift: AtomicU8,
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
         sample_counter: AtomicU32,
         LFSR: Mutex<[bool; 15]>,
         width: AtomicBool,
+        trigger: AtomicU8,
         enabled: AtomicBool,
+        length: AtomicU8,
         length_counter: RwLock<u32>,
         length_enabled: AtomicBool,
     }
@@ -684,6 +802,7 @@ mod oscillators {
         pub fn new(sample_rate: u32) -> NoiseGenerator {
             NoiseGenerator { sample_rate: sample_rate,
                              env: VolumeEnvelope::new(sample_rate),
+                             divisor_code: AtomicU8::new(0),
                              divisor: AtomicU8::new(0),
                              clock_shift: AtomicU8::new(0),
                              frequency_timer: AtomicU32::new(0),
@@ -691,7 +810,9 @@ mod oscillators {
                              sample_counter: AtomicU32::new(0),
                              LFSR: Mutex::new([true; 15]),
                              width: AtomicBool::new(false),
+                             trigger: AtomicU8::new(0),
                              enabled: AtomicBool::new(false), 
+                             length: AtomicU8::new(0),
                              length_counter: RwLock::new(0),
                              length_enabled: AtomicBool::new(false),}
         }
@@ -703,8 +824,10 @@ mod oscillators {
                 }
 
                 1 => {
-                    let length_256hz = 64 - (val & 0x3F);
+                    let length = val & 0x3F;
+                    let length_256hz = 64 - length;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
+                    self.length.store(length, Ordering::Relaxed);
 
                     //Here we set the length counter making sure nothing can use it while it is set
                     match self.length_counter.write() {
@@ -712,7 +835,7 @@ mod oscillators {
                             *length_counter = length_samples;
                         }
                         Err(error) => {
-                            println!("Could not set square wave length");
+                            println!("Could not set noise generator length");
                         }
                     }
                 }
@@ -738,6 +861,7 @@ mod oscillators {
                         divisor_code * 16
                     };
 
+                    self.divisor_code.store(divisor_code, Ordering::Relaxed);
                     self.divisor.store(divisor, Ordering::Relaxed);
                     self.clock_shift.store(clock_shift, Ordering::Relaxed);
 
@@ -748,6 +872,9 @@ mod oscillators {
                     self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
 
                     let trigger = val & 0x80;
+                    
+                    self.trigger.store(trigger, Ordering::Relaxed);
+
                     if trigger > 0 {
                         //If length == 0 reset it to 64
                         match self.length_counter.write() {
@@ -794,6 +921,44 @@ mod oscillators {
 
                 _ => {
                     println!("Noise Osc: Unrecognised register");
+                }
+            }
+        }
+
+        pub fn is_enabled(&self) -> bool {
+            self.enabled.load(Ordering::Relaxed)
+        }
+
+        pub fn read_reg(&self, reg: usize) -> u8 {
+            match reg {
+                0 => {
+                    return 0x00;
+                }
+
+                1 => {
+                    return self.length.load(Ordering::Relaxed);
+                }
+
+                2 => {
+                    return self.env.read_settings();
+                }
+
+                3 => {
+                    let mut reg_val = 0x00;
+                    reg_val |= self.clock_shift.load(Ordering::Relaxed) << 4;
+                    reg_val |= (self.width.load(Ordering::Relaxed) as u8) << 3;
+                    reg_val |= self.divisor_code.load(Ordering::Relaxed);
+                    return reg_val;
+                }
+
+                4 => {
+                    let mut reg_value = self.trigger.load(Ordering::Relaxed);
+                    reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
+                    return reg_value;
+                }
+
+                _ => {
+                    return 0x00;
                 }
             }
         }
@@ -1033,7 +1198,7 @@ impl AudioProcessingState {
                     self.osc_4.write_reg(reg, value);
                 }
                 _ => {
-                    println!("Unrecognised oscillator number");
+                    println!("APU Write: Unrecognised oscillator number");
                 }
             }
         }
@@ -1067,10 +1232,80 @@ impl AudioProcessingState {
                 }
 
                 _ => {
-                    println!("Audio: Unrecognised address: {}", address);
+                    println!("APU Write: Unrecognised address: {}", address);
                 }
             }
         } 
+    }
+
+    pub fn read_register(&self, address: usize) -> u8 {
+        if address < 0xFF24 {
+            let rel_address = address - 0xFF10;
+
+            let osc = rel_address / 5;
+            let reg = rel_address % 5;
+
+            match osc {
+                0 => {
+                    return self.osc_1.read_reg(reg);
+                }
+
+                1 => {
+                    return self.osc_2.read_reg(reg);
+                }
+
+                2 => {
+                    return self.osc_3.read_reg(reg);
+                }
+
+                3 => {
+                    return self.osc_4.read_reg(reg);
+                }
+                _ => {
+                    println!("APU Read: Unrecognised oscillator number");
+                    return 0x00;
+                }
+            }
+        }
+        else if address >= 0xFF30 && address <= 0xFF3F {
+            return self.osc_3.read_sound_data(address);
+        }  
+        else {
+            match address {
+                0xFF24 => {
+                    let mut reg_val = 0x00;
+                    reg_val |= self.left_master_vol.load(Ordering::Relaxed) << 4;
+                    reg_val |= self.right_master_vol.load(Ordering::Relaxed);
+                    return reg_val;
+                }
+                0xFF25 => {
+                    let mut reg_val = 0x00;
+                    reg_val |= (self.left_osc_4_enable.load(Ordering::Relaxed) as u8) << 7;
+                    reg_val |= (self.left_osc_3_enable.load(Ordering::Relaxed) as u8) << 6;
+                    reg_val |= (self.left_osc_2_enable.load(Ordering::Relaxed) as u8) << 5;
+                    reg_val |= (self.left_osc_1_enable.load(Ordering::Relaxed) as u8) << 4;
+
+                    reg_val |= (self.right_osc_4_enable.load(Ordering::Relaxed) as u8) << 3;
+                    reg_val |= (self.right_osc_3_enable.load(Ordering::Relaxed) as u8) << 2;
+                    reg_val |= (self.right_osc_2_enable.load(Ordering::Relaxed) as u8) << 1;
+                    reg_val |= self.right_osc_1_enable.load(Ordering::Relaxed) as u8;
+
+                    return reg_val;
+                }
+                0xFF26 => {
+                    let mut reg_val = (self.power_control.load(Ordering::Relaxed) as u8) << 7;
+                    reg_val |= (self.osc_4.is_enabled() as u8) << 3;
+                    reg_val |= (self.osc_3.is_enabled() as u8) << 2;
+                    reg_val |= (self.osc_2.is_enabled() as u8) << 1;
+                    reg_val |= self.osc_1.is_enabled() as u8;
+                    return reg_val;
+                }
+                _ => {
+                    println!("APU Read: Unrecognised address");
+                    return 0x00;
+                }
+            }
+        }
     }
 
     fn audio_block_f32(&self, audio: &mut [f32], info: &OutputCallbackInfo) {
@@ -1170,8 +1405,8 @@ impl AudioProcessingState {
         mixed_right_sample /= 4.0;
 
         //These volumes seem to be wrong
-        //mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) + 1) as f32;
-        //mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) + 1) as f32;
+        mixed_left_sample *= (self.left_master_vol.load(Ordering::Relaxed) + 1) as f32;
+        mixed_right_sample *= (self.right_master_vol.load(Ordering::Relaxed) + 1) as f32;
 
         return (mixed_left_sample, mixed_right_sample);
     }
@@ -1194,5 +1429,9 @@ impl AudioProcessingUnit {
 
     pub fn write_register(&self, address: usize, value: u8) {
         self.state.write_register(address, value);
+    }
+
+    pub fn read_register(&self, address: usize) -> u8 {
+        self.state.read_register(address)
     }
 }

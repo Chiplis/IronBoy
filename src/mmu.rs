@@ -140,7 +140,15 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        let value = self.internal_read(translated_address);
+        let mut value = 0x00;
+
+        if translated_address >= 0xFF10 && translated_address <= 0xFF3F {
+            value = self.apu.read_register(translated_address);
+        }
+        else {
+            value = self.internal_read(translated_address);
+        }
+
         self.cycle(4);
         value
     }
