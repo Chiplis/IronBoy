@@ -1281,9 +1281,11 @@ impl AudioProcessingState {
 
             let first_channel_index = sample_index * self.num_channels as usize;
 
-            audio[first_channel_index] = generated_samples.0;
-
-            if self.num_channels > 1 {
+            if self.num_channels == 1 {
+                audio[first_channel_index] = (generated_samples.0 + generated_samples.1) / 2.0;
+            }
+            else if self.num_channels > 1 {
+                audio[first_channel_index] = generated_samples.0;
                 audio[first_channel_index + 1] = generated_samples.1;
             }
         }
@@ -1294,13 +1296,18 @@ impl AudioProcessingState {
 
         for sample_index in 0..num_samples {
             let f32_samples = self.generate_samples();
+            
+            let left_sample = (f32_samples.0 * i16::MAX as f32) as i16;
+            let right_sample = (f32_samples.1 * i16::MAX as f32) as i16;
 
             let first_channel_index = sample_index * self.num_channels as usize;
 
-            audio[first_channel_index] = (f32_samples.0 * i16::MAX as f32) as i16;
-
-            if self.num_channels > 1 {
-                audio[first_channel_index + 1] = (f32_samples.1 * i16::MAX as f32) as i16;
+            if self.num_channels == 1 {
+                audio[first_channel_index] = (left_sample + right_sample) / 2;
+            }
+            else if self.num_channels > 1 {
+                audio[first_channel_index] = left_sample;
+                audio[first_channel_index + 1] = right_sample;
             }
         }
     }
@@ -1311,12 +1318,17 @@ impl AudioProcessingState {
         for sample_index in 0..num_samples {
             let f32_samples = self.generate_samples();
 
+            let left_sample = ((f32_samples.0 + 1.0) * u16::MAX as f32) as u16;
+            let right_sample = ((f32_samples.1 + 1.0) * u16::MAX as f32) as u16;
+
             let first_channel_index = sample_index * self.num_channels as usize;
 
-            audio[first_channel_index] = ((f32_samples.0 + 1.0) * u16::MAX as f32) as u16;
-
-            if self.num_channels > 1 {
-                audio[first_channel_index + 1] = ((f32_samples.1 + 1.0) * u16::MAX as f32) as u16;
+            if self.num_channels == 1 {
+                audio[first_channel_index] = (left_sample + right_sample) / 2;
+            }
+            else if self.num_channels > 1 {
+                audio[first_channel_index] = left_sample;
+                audio[first_channel_index + 1] = right_sample;
             }
         }
     }
