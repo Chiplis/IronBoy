@@ -20,7 +20,7 @@ use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use rand::distributions::Uniform;
 use rand::Rng;
 use winit::dpi::LogicalSize;
-use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z};
+use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P};
 use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::Fullscreen::Borderless;
@@ -100,34 +100,15 @@ fn run_event_loop(
     let start = Instant::now();
     let mut slowest_frame = Duration::from_nanos(0);
     let mut focus = (Instant::now(), true);
+    let mut paused = false;
 
     event_loop.run(move |event, _target, control_flow| {
         let gameboy = &mut gameboy;
         input.update(&event);
         frames += 1.0;
-        let current_frame = run_frame(gameboy, sleep, Some(&input));
 
-        if slowest_frame < current_frame {
-            slowest_frame = current_frame
-        }
-
-        if let Some(size) = input.window_resized() {
-            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
-                p.resize_surface(size.width, size.height)
-            }
-        }
-
-        if focus.1 && Instant::now() > focus.0 {
-            // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
-            let dummy_data: Vec<u8> = rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect();
-            write(rom_path.clone() + ".tmp", dummy_data).unwrap();
-            focus.1 = false;
-        }
-
-        if let Event::WindowEvent { event: Focused(true), .. } = event {
-            if !sleep {
-                focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
-            }
+        if input.key_released(P) {
+            paused = !paused;
         }
 
         if input.key_released(Escape) {
@@ -141,6 +122,25 @@ fn run_event_loop(
             control_flow.set_exit();
         }
 
+        if let Some(size) = input.window_resized() {
+            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
+                p.resize_surface(size.width, size.height)
+            }
+        }
+
+        if !paused && focus.1 && Instant::now() > focus.0 {
+            // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
+            let dummy_data: Vec<u8> = rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect();
+            write(rom_path.clone() + ".tmp", dummy_data).unwrap();
+            focus.1 = false;
+        }
+
+        if let Event::WindowEvent { event: Focused(true), .. } = event {
+            if !sleep {
+                focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
+            }
+        }
+
         if input.key_released(S) {
             save_state(rom_path.clone(), gameboy, ".sav.json");
         }
@@ -148,6 +148,16 @@ fn run_event_loop(
         if input.key_released(F) {
             sleep = !sleep;
             println!("Changed fast mode to {}", !sleep);
+        }
+
+        if paused {
+            return
+        }
+
+        let current_frame = run_frame(gameboy, sleep, Some(&input));
+
+        if slowest_frame < current_frame {
+            slowest_frame = current_frame
         }
     });
 }

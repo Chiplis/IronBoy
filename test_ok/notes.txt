@@ -1,0 +1,1 @@
+interrupt_time.gb -> Test appears to fail because double-speed is not implemented, since we're only focusing on DMG emulation for now this shouldn't be a problem. The expected CRC is thus 7F8F4AAF.
