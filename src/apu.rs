@@ -2,7 +2,7 @@ mod oscillators {
     use serde::{Serialize, Deserialize};
     use std::{sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex}};
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     struct VolumeEnvelopeParams {
         add_mode: bool,
         period: u8,
@@ -10,7 +10,7 @@ mod oscillators {
         frequency_timer: u32,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
@@ -20,15 +20,7 @@ mod oscillators {
 
     impl VolumeEnvelope {
         pub fn new(sample_rate: u32) -> VolumeEnvelope {
-            VolumeEnvelope {sample_rate,
-                            params: Mutex::new(VolumeEnvelopeParams{
-                                add_mode: false, 
-                                period: 0, 
-                                current_level: 0,
-                                frequency_timer: 0,}
-                            ),
-                            last_val: AtomicU8::new(0),
-                            current_settings: AtomicU8::new(0),}
+            VolumeEnvelope { sample_rate, ..Default::default() }
         }
 
         pub fn write_settings(&self, val: u8) {
@@ -66,13 +58,11 @@ mod oscillators {
                     if params.period > 0 {
                         //Check if level change is needed
                         if params.frequency_timer == 0 {
-
                             params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);
 
                             if params.add_mode && params.current_level < 15 {
-                                params.current_level +=  1;
-                            }
-                            else if !params.add_mode && params.current_level > 0 {
+                                params.current_level += 1;
+                            } else if !params.add_mode && params.current_level > 0 {
                                 params.current_level -= 1;
                             }
                         }
@@ -91,7 +81,7 @@ mod oscillators {
         }
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
         frequency: AtomicU16,
         frequency_timer: AtomicU32,
@@ -117,26 +107,13 @@ mod oscillators {
 
     impl SquareWaveGenerator {
         pub fn new(sample_rate: u32, sweep: bool) -> SquareWaveGenerator {
-            SquareWaveGenerator {frequency: AtomicU16::new(0), 
-                                 frequency_timer: AtomicU32::new(0),
-                                 timer_leftover: RwLock::new(0.0),
-                                 sample_rate, 
-                                 sweep,
-                                 position: AtomicU8::new(0),
-                                 duty: AtomicU8::new(2), 
-                                 trigger: AtomicU8::new(0),
-                                 enabled: AtomicBool::new(false),
-                                 length: AtomicU8::new(0),
-                                 length_counter: RwLock::new(0), 
-                                 length_enabled: AtomicBool::new(false),
-                                 env: VolumeEnvelope::new(sample_rate),
-
-                                 sweep_period: AtomicU8::new(0),
-                                 sweep_timer: AtomicU32::new(0),
-                                 sweep_negate: AtomicBool::new(false),
-                                 sweep_shift: AtomicU8::new(0),
-                                 sweep_enabled: AtomicBool::new(false),
-                                 sweep_frequency: AtomicU16::new(0),}
+            SquareWaveGenerator {
+                sample_rate,
+                sweep,
+                duty: AtomicU8::new(2),
+                env: VolumeEnvelope::new(sample_rate),
+                ..Default::default()
+            }
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -293,8 +270,7 @@ mod oscillators {
                         reg_val |= (self.sweep_negate.load(Ordering::Relaxed) as u8) << 3;
                         reg_val |= self.sweep_shift.load(Ordering::Relaxed);
                         reg_val
-                    }
-                    else {
+                    } else {
                         0x00
                     }
                 }
@@ -349,7 +325,6 @@ mod oscillators {
                     Err(_) => {
                         println!("Square Wave: Could not write to timer leftover");
                     }
-
                 }
 
                 self.frequency_timer.store(samples_till_next.floor() as u32, Ordering::Relaxed);
@@ -450,16 +425,13 @@ mod oscillators {
                             self.enabled.store(false, Ordering::Relaxed);
                         }
                     }
-                    Err(_error) => {
-
-                    }
+                    Err(_error) => {}
                 }
             }
 
             let dac_input_sample = if wave_sample != 0 {
                 envelope_sample
-            }
-            else {
+            } else {
                 0
             };
 
@@ -471,7 +443,7 @@ mod oscillators {
 
             let new_freq: u32 = if self.sweep_negate.load(Ordering::Relaxed) {
                 //Check for underflow
-                 match self.sweep_frequency.load(Ordering::Relaxed).checked_sub(offset) {
+                match self.sweep_frequency.load(Ordering::Relaxed).checked_sub(offset) {
                     Some(res) => res.into(),
                     None => 0
                 }
@@ -489,7 +461,7 @@ mod oscillators {
     }
 
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     pub struct WaveTable {
         sample_rate: u32,
         sound_data: [AtomicU8; 32],
@@ -507,18 +479,7 @@ mod oscillators {
 
     impl WaveTable {
         pub fn new(sample_rate: u32) -> WaveTable {
-            WaveTable { sample_rate,
-                        sound_data: [(); 32].map(|_| AtomicU8::new(0)),
-                        frequency: AtomicU16::new(0),
-                        frequency_timer: AtomicU32::new(0),
-                        timer_leftover: RwLock::new(0.0),
-                        position: AtomicU8::new(0),
-                        trigger: AtomicU8::new(0),
-                        enabled: AtomicBool::new(false),
-                        length: AtomicU8::new(0),
-                        length_counter: RwLock::new(0),
-                        length_enabled: AtomicBool::new(false),
-                        volume_code: AtomicU8::new(0),}
+            WaveTable { sample_rate, ..Default::default() }
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
@@ -602,9 +563,7 @@ mod oscillators {
                     }
                 }
 
-                _ => {
-
-                }
+                _ => {}
             }
         }
 
@@ -690,12 +649,11 @@ mod oscillators {
                 }
 
                 self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
-                
+
                 //Move one position forward
                 let new_position = if current_position == 31 {
                     0
-                }
-                else {
+                } else {
                     current_position + 1
                 };
 
@@ -754,17 +712,15 @@ mod oscillators {
                             self.enabled.store(false, Ordering::Relaxed);
                         }
                     }
-                    Err(_error) => {
-
-                    }
+                    Err(_error) => {}
                 }
             }
-            
+
             wave_sample as f32 / 15.0
         }
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     pub struct NoiseGenerator {
         sample_rate: u32,
         env: VolumeEnvelope,
@@ -785,28 +741,17 @@ mod oscillators {
 
     impl NoiseGenerator {
         pub fn new(sample_rate: u32) -> NoiseGenerator {
-            NoiseGenerator { sample_rate,
-                             env: VolumeEnvelope::new(sample_rate),
-                             divisor_code: AtomicU8::new(0),
-                             divisor: AtomicU8::new(0),
-                             clock_shift: AtomicU8::new(0),
-                             frequency_timer: AtomicU32::new(0),
-                             timer_leftover: RwLock::new(0.0),
-                             sample_counter: AtomicU32::new(0),
-                             lfsr: Mutex::new([true; 15]),
-                             width: AtomicBool::new(false),
-                             trigger: AtomicU8::new(0),
-                             enabled: AtomicBool::new(false), 
-                             length: AtomicU8::new(0),
-                             length_counter: RwLock::new(0),
-                             length_enabled: AtomicBool::new(false),}
+            NoiseGenerator {
+                sample_rate,
+                env: VolumeEnvelope::new(sample_rate),
+                lfsr: Mutex::new([true; 15]),
+                ..Default::default()
+            }
         }
 
         pub fn write_reg(&self, reg: usize, val: u8) {
             match reg {
-                0 => {
-                    
-                }
+                0 => {}
 
                 1 => {
                     let length = val & 0x3F;
@@ -841,8 +786,7 @@ mod oscillators {
 
                     let divisor = if divisor_code == 0 {
                         8
-                    }
-                    else {
+                    } else {
                         divisor_code * 16
                     };
 
@@ -966,7 +910,7 @@ mod oscillators {
                         match self.timer_leftover.write() {
                             Ok(mut timer_leftover) => {
                                 *timer_leftover += samples_till_next - samples_till_next.floor();
-        
+
                                 if *timer_leftover > 1.0 {
                                     *timer_leftover -= 1.0;
                                     samples_till_next += 1.0;
@@ -1022,16 +966,13 @@ mod oscillators {
                             self.enabled.store(false, Ordering::Relaxed);
                         }
                     }
-                    Err(_error) => {
-
-                    }
+                    Err(_error) => {}
                 }
             }
-            
+
             let dac_input_sample = if noise_sample != 0 {
                 env_sample
-            }
-            else {
+            } else {
                 0
             };
 
@@ -1046,7 +987,7 @@ use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 struct AudioProcessingState {
     sample_rate: u32,
     num_channels: u16,
@@ -1086,31 +1027,22 @@ impl AudioProcessingState {
             println!("Using {} at {}Hz with {} channels", name, config.sample_rate().0, config.channels())
         }
 
-        let processor = Arc::new(AudioProcessingState{sample_rate: config.sample_rate().0, 
-                                                                                       num_channels: config.channels(),
-                                                                                       osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0, true), 
-                                                                                       osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0, false),
-                                                                                       osc_3: oscillators::WaveTable::new(config.sample_rate().0),
-                                                                                       osc_4: oscillators::NoiseGenerator::new(config.sample_rate().0),
-                                                                                       left_osc_1_enable: AtomicBool::new(false),
-                                                                                       left_osc_2_enable: AtomicBool::new(false),
-                                                                                       left_osc_3_enable: AtomicBool::new(false),
-                                                                                       left_osc_4_enable: AtomicBool::new(false),
-                                                                                       right_osc_1_enable: AtomicBool::new(false),
-                                                                                       right_osc_2_enable: AtomicBool::new(false),
-                                                                                       right_osc_3_enable: AtomicBool::new(false),
-                                                                                       right_osc_4_enable: AtomicBool::new(false),
-                                                                                       left_master_vol: AtomicU8::new(0),
-                                                                                       right_master_vol: AtomicU8::new(0),
-                                                                                       power_control: AtomicBool::new(false),
-                                                                                       });
+        let processor = Arc::new(AudioProcessingState {
+            sample_rate: config.sample_rate().0,
+            num_channels: config.channels(),
+            osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0, true),
+            osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0, false),
+            osc_3: oscillators::WaveTable::new(config.sample_rate().0),
+            osc_4: oscillators::NoiseGenerator::new(config.sample_rate().0),
+            ..Default::default()
+        });
 
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
 
         let stream = match config.sample_format() {
             cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [f32], info: &OutputCallbackInfo| audio_callback_ref.audio_block_f32(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),
-            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [i16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_i16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),                
+            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [i16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_i16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),
             cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [u16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_u16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error))
         };
 
@@ -1149,11 +1081,9 @@ impl AudioProcessingState {
                     println!("APU Write: Unrecognised oscillator number");
                 }
             }
-        }
-        else if (0xFF30..=0xFF3F).contains(&address) {
+        } else if (0xFF30..=0xFF3F).contains(&address) {
             self.osc_3.write_sound_data(address, value);
-        }  
-        else {
+        } else {
             match address {
                 0xFF24 => {
                     let left_vol = (value & 0x70) >> 4;
@@ -1183,7 +1113,7 @@ impl AudioProcessingState {
                     eprintln!("APU Write: Unrecognised address: {}", address);
                 }
             }
-        } 
+        }
     }
 
     pub fn read_register(&self, address: usize) -> u8 {
@@ -1214,11 +1144,9 @@ impl AudioProcessingState {
                     0x00
                 }
             }
-        }
-        else if (0xFF30..=0xFF3F).contains(&address) {
+        } else if (0xFF30..=0xFF3F).contains(&address) {
             self.osc_3.read_sound_data(address)
-        }  
-        else {
+        } else {
             match address {
                 0xFF24 => {
                     let mut reg_val = 0x00;
@@ -1273,13 +1201,13 @@ impl AudioProcessingState {
             }
         }
     }
-    
+
     fn audio_block_i16(&self, audio: &mut [i16], _info: &OutputCallbackInfo) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
             let f32_samples = self.generate_samples();
-            
+
             let left_sample = (f32_samples.0 * i16::MAX as f32) as i16;
             let right_sample = (f32_samples.1 * i16::MAX as f32) as i16;
 
@@ -1295,7 +1223,7 @@ impl AudioProcessingState {
             }
         }
     }
-    
+
     fn audio_block_u16(&self, audio: &mut [u16], _info: &OutputCallbackInfo) {
         let num_samples = audio.len() / self.num_channels as usize;
 
@@ -1317,13 +1245,12 @@ impl AudioProcessingState {
             }
         }
     }
-    
+
     fn audio_error(&self, error: StreamError) {
         eprintln!("Audio Error: {:?}", error);
     }
 
     fn generate_samples(&self) -> (f32, f32) {
-
         if !self.power_control.load(Ordering::Relaxed) {
             return (0.0, 0.0);
         }
