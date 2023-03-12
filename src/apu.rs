@@ -1250,7 +1250,7 @@ pub struct AudioProcessingUnit {
     state: Arc<AudioProcessingState>,
 
     #[serde(skip)]
-    stream: Option<Stream>,
+    pub(crate) stream: Option<Stream>
 }
 
 impl AudioProcessingUnit {

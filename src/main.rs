@@ -15,12 +15,13 @@ use crate::cartridge::Cartridge;
 use crate::register::Register;
 
 use clap::Parser;
+use cpal::traits::StreamTrait;
 use pixels::wgpu::PresentMode;
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use rand::distributions::Uniform;
 use rand::Rng;
 use winit::dpi::LogicalSize;
-use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P};
+use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
 use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::Fullscreen::Borderless;
@@ -84,13 +85,14 @@ fn main() {
     let pixels = setup_pixels(&window);
     let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom);
 
-    run_event_loop(event_loop, gameboy, !args.fast, args.save_on_exit, rom_path);
+    run_event_loop(event_loop, gameboy, !args.fast, false, args.save_on_exit, rom_path);
 }
 
 fn run_event_loop(
     event_loop: EventLoop<()>,
     mut gameboy: Gameboy,
     mut sleep: bool,
+    mut muted: bool,
     save_on_exit: bool,
     rom_path: String,
 ) {
@@ -148,6 +150,13 @@ fn run_event_loop(
         if input.key_released(F) {
             sleep = !sleep;
             println!("Changed fast mode to {}", !sleep);
+        }
+
+        if input.key_released(M) {
+            muted = !muted;
+            if let Some(stream) = &gameboy.mmu.apu.stream {
+                if muted { stream.pause().unwrap(); } else { stream.play().unwrap(); }
+            }
         }
 
         if paused {

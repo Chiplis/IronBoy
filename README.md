@@ -43,7 +43,8 @@ Backspace (PC) / Delete (Mac) -> Select
 
 S -> Save
 P -> Pause
-F -> Toggle frame limiter on/off
+F -> Toggle frame limiter
+M -> Toggle sound
 Esc -> Close
 ```
 
