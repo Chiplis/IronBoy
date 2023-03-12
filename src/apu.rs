@@ -935,7 +935,7 @@ mod oscillators {
 use std::cmp;
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 
-use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream};
+use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream, SupportedStreamConfig};
 use serde::{Serialize, Deserialize};
 
 #[derive(Default, Serialize, Deserialize)]
@@ -957,24 +957,17 @@ struct AudioProcessingState {
 }
 
 impl AudioProcessingState {
+
     pub fn new() -> Arc<AudioProcessingState> {
-        // Setup audio interfacing
-        let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
-        let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
-
-        let config = supported_configs_range
-            .find(|c| c.max_sample_rate() >= cpal::SampleRate(44100))
-            .expect("Audio device does not support sample rate (44100)")
-            .with_sample_rate(cpal::SampleRate(44100));
+        let config = Self::load_config();
         let sample_rate = config.sample_rate().0;
+        let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
         // Display device name
         if let Ok(name) = out_dev.name() {
             println!("Using {} at {}Hz with {} channels", name, sample_rate, config.channels())
         }
-
-        
 
         Arc::new(AudioProcessingState {
             sample_rate,
@@ -988,18 +981,12 @@ impl AudioProcessingState {
     }
 
     pub fn load_stream(processor: &Arc<AudioProcessingState>) -> Option<Stream> {
-        // Setup audio interfacing
-        let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
-
-        let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
-
-        let config = supported_configs_range
-            .find(|c| c.max_sample_rate() >= cpal::SampleRate(44100))
-            .expect("Audio device does not support sample rate (44100)")
-            .with_sample_rate(cpal::SampleRate(44100));
 
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
+
+        let config = Self::load_config();
+        let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
         let stream = match config.sample_format() {
             cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_f32(audio), move |stream_error| audio_error_ref.audio_error(stream_error)),
@@ -1012,6 +999,18 @@ impl AudioProcessingState {
         }
 
         stream.ok()
+    }
+
+    fn load_config() -> SupportedStreamConfig {
+        // Setup audio interfacing
+        let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
+
+        let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
+
+        supported_configs_range
+            .find(|c| c.max_sample_rate() >= cpal::SampleRate(44100))
+            .expect("Audio device does not support sample rate (44100)")
+            .with_sample_rate(cpal::SampleRate(44100))
     }
 
     pub fn write_register(&self, address: usize, value: u8) {
@@ -1251,24 +1250,21 @@ pub struct AudioProcessingUnit {
     state: Arc<AudioProcessingState>,
 
     #[serde(skip)]
-    stream: Option<cpal::Stream>,
-
-    #[serde(skip)]
-    loaded: bool,
+    stream: Option<Stream>,
 }
 
 impl AudioProcessingUnit {
     pub fn new() -> AudioProcessingUnit {
         let state = AudioProcessingState::new();
         let stream = AudioProcessingState::load_stream(&state);
-        AudioProcessingUnit { loaded: true, state, stream }
+        AudioProcessingUnit { state, stream }
+    }
+
+    pub fn init(&mut self) {
+        self.stream = AudioProcessingState::load_stream(&self.state);
     }
 
     pub fn write(&mut self, address: usize, value: u8) -> bool {
-        if !self.loaded {
-            self.stream = AudioProcessingState::load_stream(&self.state);
-            self.loaded = true;
-        }
         if !(0xFF10..=0xFF3F).contains(&address) {
             false
         } else {

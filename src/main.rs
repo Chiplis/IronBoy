@@ -254,7 +254,9 @@ fn load_gameboy(
             .unwrap()
             .read_to_end(save_file)
             .unwrap();
-        serde_json::de::from_slice(save_file.as_slice()).unwrap()
+        let mut gb: Gameboy = serde_json::de::from_slice(save_file.as_slice()).unwrap();
+        gb.init();
+        gb
     };
     if cold_boot {
         gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())

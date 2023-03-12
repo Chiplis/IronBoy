@@ -44,6 +44,10 @@ impl Gameboy {
             counter: 0,
         }
     }
+
+    pub fn init(&mut self) {
+        self.mmu.apu.init();
+    }
 }
 
 impl Gameboy {
