@@ -935,7 +935,7 @@ mod oscillators {
 use std::cmp;
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
 
-use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, OutputCallbackInfo, StreamError};
+use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream};
 use serde::{Serialize, Deserialize};
 
 #[derive(Default, Serialize, Deserialize)]
@@ -957,46 +957,61 @@ struct AudioProcessingState {
 }
 
 impl AudioProcessingState {
-    pub fn new() -> (Arc<AudioProcessingState>, cpal::Stream) {
+    pub fn new() -> Arc<AudioProcessingState> {
         // Setup audio interfacing
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
         let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
 
-        let config = supported_configs_range.find(|c| {
-            c.max_sample_rate() >= cpal::SampleRate(44100)
-        }).expect("Audio device does not support sample rate (44100)").with_sample_rate(cpal::SampleRate(44100));
+        let config = supported_configs_range
+            .find(|c| c.max_sample_rate() >= cpal::SampleRate(44100))
+            .expect("Audio device does not support sample rate (44100)")
+            .with_sample_rate(cpal::SampleRate(44100));
+        let sample_rate = config.sample_rate().0;
 
         // Display device name
         if let Ok(name) = out_dev.name() {
-            println!("Using {} at {}Hz with {} channels", name, config.sample_rate().0, config.channels())
+            println!("Using {} at {}Hz with {} channels", name, sample_rate, config.channels())
         }
 
-        let processor = Arc::new(AudioProcessingState {
-            sample_rate: config.sample_rate().0,
+        
+
+        Arc::new(AudioProcessingState {
+            sample_rate,
             num_channels: config.channels(),
-            osc_1: oscillators::SquareWaveGenerator::new(config.sample_rate().0, true),
-            osc_2: oscillators::SquareWaveGenerator::new(config.sample_rate().0, false),
-            osc_3: oscillators::WaveTable::new(config.sample_rate().0),
-            osc_4: oscillators::NoiseGenerator::new(config.sample_rate().0),
+            osc_1: oscillators::SquareWaveGenerator::new(sample_rate, true),
+            osc_2: oscillators::SquareWaveGenerator::new(sample_rate, false),
+            osc_3: oscillators::WaveTable::new(sample_rate),
+            osc_4: oscillators::NoiseGenerator::new(sample_rate),
             ..Default::default()
-        });
+        })
+    }
+
+    pub fn load_stream(processor: &Arc<AudioProcessingState>) -> Option<Stream> {
+        // Setup audio interfacing
+        let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
+
+        let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
+
+        let config = supported_configs_range
+            .find(|c| c.max_sample_rate() >= cpal::SampleRate(44100))
+            .expect("Audio device does not support sample rate (44100)")
+            .with_sample_rate(cpal::SampleRate(44100));
 
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
 
         let stream = match config.sample_format() {
-            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [f32], info: &OutputCallbackInfo| audio_callback_ref.audio_block_f32(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),
-            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [i16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_i16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error)),
-            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio: &mut [u16], info: &OutputCallbackInfo| audio_callback_ref.audio_block_u16(audio, info), move |stream_error| audio_error_ref.audio_error(stream_error))
+            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_f32(audio), move |stream_error| audio_error_ref.audio_error(stream_error)),
+            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_i16(audio), move |stream_error| audio_error_ref.audio_error(stream_error)),
+            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_u16(audio), move |stream_error| audio_error_ref.audio_error(stream_error))
         };
 
-        match stream {
-            Ok(_) => println!("Stream Created"),
-            Err(ref error) => println!("Stream Failed: {error}")
+        if let Err(ref error) = stream {
+            println!("Error while building stream: {error}");
         }
 
-        (processor, stream.unwrap())
+        stream.ok()
     }
 
     pub fn write_register(&self, address: usize, value: u8) {
@@ -1116,7 +1131,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_f32(&self, audio: &mut [f32], _info: &OutputCallbackInfo) {
+    fn audio_block_f32(&self, audio: &mut [f32]) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1135,7 +1150,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_i16(&self, audio: &mut [i16], _info: &OutputCallbackInfo) {
+    fn audio_block_i16(&self, audio: &mut [i16]) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1157,7 +1172,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_u16(&self, audio: &mut [u16], _info: &OutputCallbackInfo) {
+    fn audio_block_u16(&self, audio: &mut [u16]) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1237,16 +1252,23 @@ pub struct AudioProcessingUnit {
 
     #[serde(skip)]
     stream: Option<cpal::Stream>,
+
+    #[serde(skip)]
+    loaded: bool,
 }
 
 impl AudioProcessingUnit {
     pub fn new() -> AudioProcessingUnit {
-        let temp = AudioProcessingState::new();
-
-        AudioProcessingUnit { state: temp.0, stream: Some(temp.1) }
+        let state = AudioProcessingState::new();
+        let stream = AudioProcessingState::load_stream(&state);
+        AudioProcessingUnit { loaded: true, state, stream }
     }
 
-    pub fn write(&self, address: usize, value: u8) -> bool {
+    pub fn write(&mut self, address: usize, value: u8) -> bool {
+        if !self.loaded {
+            self.stream = AudioProcessingState::load_stream(&self.state);
+            self.loaded = true;
+        }
         if !(0xFF10..=0xFF3F).contains(&address) {
             false
         } else {
