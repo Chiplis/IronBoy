@@ -989,9 +989,10 @@ impl AudioProcessingState {
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
         let stream = match config.sample_format() {
-            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_f32(audio), move |stream_error| audio_error_ref.audio_error(stream_error)),
-            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_i16(audio), move |stream_error| audio_error_ref.audio_error(stream_error)),
-            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_u16(audio), move |stream_error| audio_error_ref.audio_error(stream_error))
+            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_f32(audio), move |stream_error| audio_error_ref.audio_error(stream_error), None),
+            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_i16(audio), move |stream_error| audio_error_ref.audio_error(stream_error), None),
+            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_u16(audio), move |stream_error| audio_error_ref.audio_error(stream_error), None),
+            unsupported => panic!("Unsupported stream format: {unsupported}")
         };
 
         if let Err(ref error) = stream {

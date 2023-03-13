@@ -14,7 +14,7 @@ use std::path::Path;
 use crate::cartridge::Cartridge;
 use crate::register::Register;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use cpal::traits::StreamTrait;
 use pixels::wgpu::PresentMode;
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
@@ -28,6 +28,7 @@ use winit::window::Fullscreen::Borderless;
 use winit::window::{Window, WindowBuilder};
 use winit_input_helper::WinitInputHelper;
 use WindowEvent::Focused;
+use crate::SaveFile::{Bin, Json};
 
 mod cartridge;
 mod gameboy;
@@ -74,6 +75,16 @@ struct Args {
     /// Use specified boot ROM
     #[clap(long)]
     boot_rom: Option<String>,
+
+    /// Use specified file format for saves
+    #[clap(value_enum, long, default_value_t = SaveFile::Bin)]
+    format: SaveFile,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum SaveFile {
+    Json,
+    Bin,
 }
 
 fn main() {
@@ -85,7 +96,7 @@ fn main() {
     let pixels = setup_pixels(&window);
     let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom);
 
-    run_event_loop(event_loop, gameboy, !args.fast, false, args.save_on_exit, rom_path);
+    run_event_loop(event_loop, gameboy, !args.fast, false, args.save_on_exit, rom_path, args.format);
 }
 
 fn run_event_loop(
@@ -95,6 +106,7 @@ fn run_event_loop(
     mut muted: bool,
     save_on_exit: bool,
     rom_path: String,
+    format: SaveFile,
 ) {
     let mut input = WinitInputHelper::new();
 
@@ -114,7 +126,7 @@ fn run_event_loop(
         }
 
         if input.key_released(Escape) {
-            exit_emulator(save_on_exit, rom_path.clone(), gameboy);
+            exit_emulator(save_on_exit, rom_path.clone(), gameboy, format);
             println!(
                 "Finished running at {} FPS average.\nSlowest frame took {:?}.\nSlowest render frame took {:?}.",
                 frames / start.elapsed().as_secs_f64(),
@@ -126,7 +138,7 @@ fn run_event_loop(
 
         if let Some(size) = input.window_resized() {
             if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
-                p.resize_surface(size.width, size.height)
+                p.resize_surface(size.width, size.height).unwrap();
             }
         }
 
@@ -144,7 +156,7 @@ fn run_event_loop(
         }
 
         if input.key_released(S) {
-            save_state(rom_path.clone(), gameboy, ".sav.json");
+            save_state(rom_path.clone(), gameboy, format);
         }
 
         if input.key_released(F) {
@@ -160,7 +172,7 @@ fn run_event_loop(
         }
 
         if paused {
-            return
+            return;
         }
 
         let current_frame = run_frame(gameboy, sleep, Some(&input));
@@ -218,26 +230,34 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
     start.elapsed()
 }
 
-fn save_state(rom_path: String, gameboy: &mut Gameboy, append: &str) {
+fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
     println!("Saving state...");
-    let append = if !rom_path.ends_with(append) {
-        append
-    } else {
-        ""
+    let append = match format {
+        Json => ".sav.json",
+        Bin => ".sav.bin"
     };
 
-    gameboy.mmu.mbc.save();
+    let rom_path = rom_path.replace(".sav.json", "").replace(".sav.bin", "") + append;
 
-    let mut save_file = File::create(rom_path.to_string() + append).unwrap();
-    save_file
-        .write_all(serde_json::ser::to_vec(gameboy).unwrap().as_slice())
-        .unwrap();
-    println!("Savefile {}{} successfully generated.", rom_path, append);
+    gameboy.mmu.mbc.save();
+    let now = Instant::now();
+    let save_data = match format {
+        Json => simd_json::to_vec(gameboy).unwrap(),
+        Bin => bincode::serialize(gameboy).unwrap()
+    };
+    println!("Serialization took {}ms", now.elapsed().as_millis());
+    thread::spawn(move || {
+        let mut save_file = File::create(&rom_path).unwrap();
+        save_file
+            .write_all(save_data.as_slice())
+            .unwrap();
+        println!("Save file {} successfully generated.", rom_path);
+    });
 }
 
-fn exit_emulator(save: bool, rom_path: String, gameboy: &mut Gameboy) {
+fn exit_emulator(save: bool, rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
     if save {
-        save_state(rom_path.clone(), gameboy, ".esc.sav.json");
+        save_state(rom_path.clone(), gameboy, format);
     }
     let tmp = rom_path + ".tmp";
     let tmp = Path::new(&tmp);
@@ -258,15 +278,28 @@ fn load_gameboy(
         let mem = MemoryManagementUnit::new(rom, cartridge, boot_rom, Path::new(&rom_path));
         Gameboy::new(mem)
     } else {
+
         let save_file = &mut vec![];
+        let format = if rom_path.ends_with(".json") {
+            Json
+        } else if rom_path.ends_with(".bin") {
+            Bin
+        } else {
+            panic!("Unexpected file format for ROM save file: {}", rom_path);
+        };
+
         File::open(rom_path)
             .unwrap()
             .read_to_end(save_file)
             .unwrap();
-        let mut gb: Gameboy = serde_json::de::from_slice(save_file.as_slice()).unwrap();
+        let mut gb: Gameboy = match format {
+            Json => simd_json::from_slice(save_file).unwrap(),
+            Bin => bincode::deserialize(save_file.as_slice()).unwrap()
+        };
         gb.init();
         gb
     };
+
     if cold_boot {
         gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())
     }
