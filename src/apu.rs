@@ -14,7 +14,6 @@ mod oscillators {
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
-        last_val: AtomicU8,
         current_settings: AtomicU8,
     }
 
@@ -47,7 +46,6 @@ mod oscillators {
 
         pub fn generate_sample(&self) -> u8 {
             if let Ok(mut params) = self.params.lock() {
-                self.last_val.store(params.current_level, Ordering::Relaxed);
                 let output_sample = params.current_level as u8;
 
                 // Apply envelope
@@ -68,7 +66,7 @@ mod oscillators {
                 output_sample
             } else {
                 eprintln!("Missed vol env sample");
-                self.last_val.load(Ordering::Relaxed) as u8
+                0
             }
         }
     }

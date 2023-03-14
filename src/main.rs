@@ -87,6 +87,24 @@ enum SaveFile {
     Bin,
 }
 
+impl SaveFile {
+    const FORMATS: [Self; 2] = [Json, Bin];
+
+    fn extension(&self) -> &str {
+        match self {
+            Json => ".sav.json",
+            Bin => ".sav.bin"
+        }
+    }
+
+    fn save(&self, gameboy: &Gameboy) -> Vec<u8> {
+        match self {
+            Json => simd_json::to_vec(gameboy).unwrap(),
+            Bin => bincode::serialize(gameboy).unwrap()
+        }
+    }
+}
+
 fn main() {
     let args = Args::parse();
     let rom_path = args.rom_file;
@@ -231,27 +249,27 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
 }
 
 fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
-    println!("Saving state...");
-    let append = match format {
-        Json => ".sav.json",
-        Bin => ".sav.bin"
-    };
+    println!("Saving state.");
 
-    let rom_path = rom_path.replace(".sav.json", "").replace(".sav.bin", "") + append;
+    let rom_path = SaveFile::FORMATS
+        .iter()
+        .map(SaveFile::extension)
+        .fold(rom_path, |path, extension| path.replace(extension, ""))
+        + format.extension();
 
     gameboy.mmu.mbc.save();
+
     let now = Instant::now();
-    let save_data = match format {
-        Json => simd_json::to_vec(gameboy).unwrap(),
-        Bin => bincode::serialize(gameboy).unwrap()
-    };
+    let save = format.save(gameboy);
     println!("Serialization took {}ms", now.elapsed().as_millis());
+
     thread::spawn(move || {
-        let mut save_file = File::create(&rom_path).unwrap();
-        save_file
-            .write_all(save_data.as_slice())
-            .unwrap();
-        println!("Save file {} successfully generated.", rom_path);
+        let now = Instant::now();
+
+        let mut save_file= File::create(&rom_path).unwrap();
+        save_file.write_all(save.as_slice()).unwrap();
+
+        println!("Save file {} successfully generated in {}ms.", rom_path, now.elapsed().as_millis());
     });
 }
 
@@ -278,7 +296,6 @@ fn load_gameboy(
         let mem = MemoryManagementUnit::new(rom, cartridge, boot_rom, Path::new(&rom_path));
         Gameboy::new(mem)
     } else {
-
         let save_file = &mut vec![];
         let format = if rom_path.ends_with(".json") {
             Json
