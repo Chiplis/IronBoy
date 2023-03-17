@@ -30,7 +30,7 @@ Options:
       --fast                   Start emulator with unlocked framerate
       --save-on-exit           Automatically save state before exiting emulator
       --boot-rom <BOOT_ROM>    Use specified boot ROM
-      --format <FORMAT>      Use specified file format for saves [default: bin] [possible values: json, bin]
+      --format <FORMAT>        Use specified file format for saves [default: bin] [possible values: json, bin]
   -h, --help                   Print help information
   -V, --version                Print version information
 ```
