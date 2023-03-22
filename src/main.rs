@@ -154,10 +154,8 @@ fn run_event_loop(
             control_flow.set_exit();
         }
 
-        if let Some(size) = input.window_resized() {
-            if let Some(p) = gameboy.mmu.renderer.pixels().as_mut() {
-                p.resize_surface(size.width, size.height).unwrap();
-            }
+        if let (Some(size), Some(p)) = (input.window_resized(), gameboy.mmu.renderer.pixels().as_mut()) {
+            p.resize_surface(size.width, size.height).unwrap();
         }
 
         if !paused && focus.1 && Instant::now() > focus.0 {
@@ -266,7 +264,7 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
     thread::spawn(move || {
         let now = Instant::now();
 
-        let mut save_file= File::create(&rom_path).unwrap();
+        let mut save_file = File::create(&rom_path).unwrap();
         save_file.write_all(save.as_slice()).unwrap();
 
         println!("Save file {} successfully generated in {}ms.", rom_path, now.elapsed().as_millis());

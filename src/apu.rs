@@ -47,22 +47,21 @@ mod oscillators {
         pub fn generate_sample(&self) -> u8 {
             if let Ok(mut params) = self.params.lock() {
                 let output_sample = params.current_level as u8;
-
-                // Apply envelope
-                if params.period > 0 {
-                    // Check if level change is needed
-                    if params.frequency_timer == 0 {
-                        params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);
-
-                        if params.add_mode && params.current_level < 15 {
-                            params.current_level += 1;
-                        } else if !params.add_mode && params.current_level > 0 {
-                            params.current_level -= 1;
-                        }
-                    }
-
-                    params.frequency_timer -= 1
+                if params.period == 0 {
+                    return output_sample;
                 }
+                // Apply envelope
+                // Check if level change is needed
+                if params.frequency_timer == 0 {
+                    params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);
+
+                    if params.add_mode && params.current_level < 15 {
+                        params.current_level += 1;
+                    } else if !params.add_mode && params.current_level > 0 {
+                        params.current_level -= 1;
+                    }
+                }
+                params.frequency_timer -= 1;
                 output_sample
             } else {
                 eprintln!("Missed vol env sample");
@@ -955,9 +954,7 @@ struct AudioProcessingState {
 }
 
 impl AudioProcessingState {
-
     pub fn new() -> Arc<AudioProcessingState> {
-
         let config = Self::load_config();
         let sample_rate = config.sample_rate().0;
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
@@ -979,7 +976,6 @@ impl AudioProcessingState {
     }
 
     pub fn load_stream(processor: &Arc<AudioProcessingState>) -> Option<Stream> {
-
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
 
@@ -1249,7 +1245,7 @@ pub struct AudioProcessingUnit {
     state: Arc<AudioProcessingState>,
 
     #[serde(skip)]
-    pub(crate) stream: Option<Stream>
+    pub(crate) stream: Option<Stream>,
 }
 
 impl AudioProcessingUnit {
