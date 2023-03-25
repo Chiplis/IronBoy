@@ -3,24 +3,6 @@
 version = 3
 
 [[package]]
-name = "IronBoy"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "clap",
- "cpal",
- "image",
- "pausable_clock",
- "pixels",
- "rand",
- "serde",
- "simd-json",
- "typetag",
- "winit",
- "winit_input_helper",
-]
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -882,6 +864,24 @@ checksum = "e21e0a36a4dc4b469422ee17f715e8313f4a637675656d6a13637954278c6f55"
 dependencies = [
  "ctor",
  "ghost",
+]
+
+[[package]]
+name = "iron_boy"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "clap",
+ "cpal",
+ "image",
+ "pausable_clock",
+ "pixels",
+ "rand",
+ "serde",
+ "simd-json",
+ "typetag",
+ "winit",
+ "winit_input_helper",
 ]
 
 [[package]]
