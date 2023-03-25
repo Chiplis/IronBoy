@@ -1,5 +1,5 @@
 [package]
-name = "IronBoy"
+name = "iron_boy"
 version = "0.1.0"
 authors = ["Nicolás Siplis <nicolas.siplis@gmail.com>"]
 edition = "2021"

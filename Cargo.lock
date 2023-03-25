@@ -3,6 +3,24 @@
 version = 3
 
 [[package]]
+name = "IronBoy"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "clap",
+ "cpal",
+ "image",
+ "pausable_clock",
+ "pixels",
+ "rand",
+ "serde",
+ "simd-json",
+ "typetag",
+ "winit",
+ "winit_input_helper",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -590,24 +608,6 @@ dependencies = [
  "miniz_oxide 0.6.2",
  "smallvec",
  "threadpool",
-]
-
-[[package]]
-name = "feboy"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "clap",
- "cpal",
- "image",
- "pausable_clock",
- "pixels",
- "rand",
- "serde",
- "simd-json",
- "typetag",
- "winit",
- "winit_input_helper",
 ]
 
 [[package]]
