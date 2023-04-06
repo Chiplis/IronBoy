@@ -1,3 +1,5 @@
+![image psd(11)](https://user-images.githubusercontent.com/25803723/230508071-c5738223-f67d-46e5-8121-12f1ef99ae60.png)
+
 # IronBoy
 A Gameboy emulator written in Rust as both a learning exercise and a love letter to the console that got me into gaming.
 
