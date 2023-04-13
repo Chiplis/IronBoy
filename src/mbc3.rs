@@ -1,5 +1,6 @@
 use std::cmp::max;
-use std::time::{Duration, SystemTime};
+use instant::Duration;
+use wasm_timer::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +38,7 @@ struct RealTimeClock {
     halted: bool,
     latched: bool,
     day_carry_bit: bool,
-    timestamp: SystemTime,
+    timestamp: u64,
 }
 
 impl RealTimeClock {
@@ -133,7 +134,7 @@ impl MBC3 {
                 halted: false,
                 latched: false,
                 day_carry_bit: false,
-                timestamp: SystemTime::now(),
+                timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
             },
             rtc_enabled: false,
         }
@@ -197,13 +198,14 @@ impl MemoryBankController for MBC3 {
             + self.rtc.days as u64 * 24 * 3600;
 
         self.rtc.additional_secs = SystemTime::now()
-            .duration_since(self.rtc.timestamp)
+            .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
+            - self.rtc.timestamp
             + total_secs;
     }
 
     fn save(&mut self) {
-        self.rtc.timestamp = SystemTime::now();
+        self.rtc.timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     }
 }
