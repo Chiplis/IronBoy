@@ -1,7 +1,4 @@
-use crate::{
-    mmu::{MemoryArea, OamCorruptionCause},
-    HEIGHT, WIDTH,
-};
+use crate::mmu::{MemoryArea, OamCorruptionCause};
 use OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 
 use serde::{Deserialize, Serialize};
@@ -669,7 +666,7 @@ impl PixelProcessingUnit {
                 // Discard already handled sprites
                 // TODO: discover why this is necessary (blindly copied from SameBoy)
                 while self.sprite_buffer_len > 0
-                    && (self.scanline_x < WIDTH as u8 || self.scanline_x >= (-8i8) as u8)
+                    && (self.scanline_x < Self::WIDTH as u8 || self.scanline_x >= (-8i8) as u8)
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx
                         < self.scanline_x.wrapping_add(8)
                 {
@@ -767,8 +764,8 @@ impl PixelProcessingUnit {
                 self.output_pixel();
                 self.tick_pixel_fetcher(self.ly);
 
-                debug_assert!(self.screen_x <= WIDTH as u8);
-                if self.screen_x == WIDTH as u8 {
+                debug_assert!(self.screen_x <= Self::WIDTH as u8);
+                if self.screen_x == Self::WIDTH as u8 {
                     (0, HorizontalBlank(StartHBlank))
                 } else {
                     (1, PixelTransfer(WindowActivationCheck))
@@ -801,7 +798,7 @@ impl PixelProcessingUnit {
             }
             HorizontalBlank(IncreaseLine) => {
                 self.ly += 1;
-                if self.ly == HEIGHT as u8 {
+                if self.ly == Self::HEIGHT as u8 {
                     (0, VerticalBlank(StartVBlank))
                 } else {
                     (0, HorizontalBlank(StartLine))
@@ -818,7 +815,7 @@ impl PixelProcessingUnit {
             }
             // 2
             VerticalBlank(InterruptCheck) => {
-                if self.ly == HEIGHT as u8 && !self.stat_signal && self.stat & 0x20 != 0 {
+                if self.ly == Self::HEIGHT as u8 && !self.stat_signal && self.stat & 0x20 != 0 {
                     *stat_interrupt = true;
                 }
 
@@ -832,7 +829,7 @@ impl PixelProcessingUnit {
                 (0, VerticalBlank(FirstLineCheck))
             }
             VerticalBlank(FirstLineCheck) => {
-                if self.ly == HEIGHT as u8 {
+                if self.ly == Self::HEIGHT as u8 {
                     self.set_stat_mode(1);
                     *vblank_interrupt = true;
                     if !self.stat_signal && self.stat & 0x20 != 0 {
@@ -933,6 +930,9 @@ impl PixelProcessingUnit {
         }
         self.handle_oam_read_corruption(row);
     }
+
+    const WIDTH: usize = 160;
+    const HEIGHT: usize = 144;
 
     fn handle_oam_read_corruption(&mut self, row: usize) {
         self.handle_oam_pattern_corruption(|a, b, c| b | (a & c), row);
@@ -1097,13 +1097,13 @@ impl PixelProcessingUnit {
 
             // scanline_x values greater or equal than 160 are interpreted as negative (for scrolling)
             // or are out of bounds.
-            if self.scanline_x >= WIDTH as u8 {
+            if self.scanline_x >= Self::WIDTH as u8 {
                 // Discart the pixel. Used for scrolling the background.
                 self.scanline_x = self.scanline_x.wrapping_add(1);
                 return;
             }
 
-            let i = (self.ly as usize) * WIDTH + self.screen_x as usize;
+            let i = (self.ly as usize) * Self::WIDTH + self.screen_x as usize;
             let background_enable = self.lcdc & 0x01 != 0;
             let bcolor = if background_enable { pixel & 0b11 } else { 0 };
 

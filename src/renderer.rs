@@ -25,12 +25,12 @@ impl Renderer {
     }
 
     pub(crate) fn render(&mut self, screen: &[u8]) {
-        let now = Instant::now();
+        let now = instant::Instant::now();
         if let Some(pixels) = self.pixels().as_mut() {
             let frame = pixels.get_frame_mut();
             frame.copy_from_slice(screen);
             pixels.render().unwrap();
-            let duration = Instant::now() - now;
+            let duration = instant::Instant::now() - now;
             // println!("Render took {:?}", duration);
             self.slowest = max(self.slowest, duration);
         }

@@ -7,17 +7,26 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+leptos = { version = "*", features = ["stable"] }
+wasm-bindgen = "*"
+wasm-bindgen-futures = "0.4.34"
 winit = "0.28.2"
 winit_input_helper = "0.14.0"
 pixels = "0.11.0"
 clap = { version = "4.0.18", features = ["derive"] }
-pausable_clock = "1.0.1"
+pausable_clock = { git = "https://github.com/nicolas-siplis/pausable_clock.git" }
 serde = { version = "1.0.147", features = ["derive", "rc"] }
-typetag = "0.2.3"
-simd-json = "0.7.0"
+serde_json = "1.0.95"
+serde-wasm-bindgen = "*"
 bincode = "1.3.3"
-rand = "0.8.5"
+rand = { version = "*" }
+getrandom = { version = "*", features = ["js"] }
 cpal = "0.15.0"
+wasm-rs-async-executor = "0.9.0"
+console_error_panic_hook = "0.1.7"
+web-sys = { version = "0.3.61", features = [ "Window", "Navigator", "console", "Document", "HtmlInputElement", "Event", "EventTarget", "FileList", "File", "Blob", "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult" ] }
+dominator = "0.5.32"
+instant = "0.1.12"
 
 [dev-dependencies]
 image = "0.24.4"

@@ -9,7 +9,6 @@ use crate::register::RegisterId::*;
 use crate::register::WordRegister::{ProgramCounter, StackPointer};
 use crate::register::{ByteRegister, Register, RegisterId, WordRegister};
 use std::cmp::max;
-use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +20,7 @@ use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 #[derive(Serialize, Deserialize)]
 pub struct Gameboy {
     #[serde(skip)]
-    pub pin: Option<(u64, Instant)>,
+    pub pin: Option<(u64, instant::Instant)>,
     pub reg: Register,
     pub ei_counter: i8,
     pub ime: bool,
@@ -34,7 +33,7 @@ pub struct Gameboy {
 impl Gameboy {
     pub fn new(mem: MemoryManagementUnit) -> Self {
         Self {
-            pin: Some((0, Instant::now())),
+            pin: Some((0, instant::Instant::now())),
             halt_bug: false,
             reg: Register::new(mem.boot_rom.is_some()),
             mmu: mem,
@@ -46,7 +45,7 @@ impl Gameboy {
     }
 
     pub fn init(&mut self) {
-        self.mmu.apu.init();
+        // self.mmu.apu.map(|mut a| a.init());
     }
 }
 

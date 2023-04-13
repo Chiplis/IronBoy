@@ -189,7 +189,6 @@ impl MemoryArea for MBC3 {
     }
 }
 
-#[typetag::serde]
 impl MemoryBankController for MBC3 {
     fn start(&mut self) {
         let total_secs = self.rtc.seconds as u64

@@ -30,7 +30,6 @@ impl MBC1 {
     }
 }
 
-#[typetag::serde]
 impl MemoryBankController for MBC1 {}
 
 impl MemoryArea for MBC1 {

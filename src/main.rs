@@ -1,33 +1,43 @@
 extern crate core;
 
-use std::thread;
-
-use gameboy::Gameboy;
-
-use crate::mmu::MemoryManagementUnit;
-use std::time::{Duration, Instant};
-
-use std::fs::{read, remove_file, write, File};
+use std::cell::RefCell;
+use std::default::Default;
+use std::fs::{File, read, remove_file, write};
 use std::io::{Read, Write};
 use std::path::Path;
-
-use crate::cartridge::Cartridge;
-use crate::register::Register;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use clap::{Parser, ValueEnum};
 use cpal::traits::StreamTrait;
-use pixels::wgpu::PresentMode;
+use leptos::{js_sys, web_sys};
+use leptos::js_sys::{Object, Reflect, Uint8Array};
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
+use pixels::wgpu::{Backends, PresentMode};
 use rand::distributions::Uniform;
 use rand::Rng;
-use winit::dpi::LogicalSize;
-use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
-use winit::event::{Event, VirtualKeyCode, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::window::Fullscreen::Borderless;
-use winit::window::{Window, WindowBuilder};
-use winit_input_helper::WinitInputHelper;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{console, FileList, FileReader, HtmlElement, HtmlInputElement, ReadableStreamDefaultReader};
+use web_sys::console::log_1;
 use WindowEvent::Focused;
+use winit::dpi::LogicalSize;
+use winit::event::{Event, VirtualKeyCode, WindowEvent};
+use winit::event::VirtualKeyCode::{Back, C, Down, Escape, F, Left, M, P, Return, Right, S, Up, Z};
+use winit::event_loop::EventLoop;
+use winit::window::{Window, WindowBuilder};
+use winit::window::Fullscreen::Borderless;
+use winit_input_helper::WinitInputHelper;
+
+use gameboy::Gameboy;
+
+use crate::cartridge::Cartridge;
+use crate::mmu::MemoryManagementUnit;
+use crate::register::Register;
 use crate::SaveFile::{Bin, Json};
 
 mod cartridge;
@@ -54,7 +64,13 @@ mod test;
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
 
-#[derive(Parser, Debug)]
+impl Default for SaveFile {
+    fn default() -> Self {
+        Json
+    }
+}
+
+#[derive(Default, Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// GameBoy ROM file to input
@@ -99,7 +115,7 @@ impl SaveFile {
 
     fn save(&self, gameboy: &Gameboy) -> Vec<u8> {
         match self {
-            Json => simd_json::to_vec(gameboy).unwrap(),
+            Json => serde_json::to_vec(gameboy).unwrap(),
             Bin => bincode::serialize(gameboy).unwrap()
         }
     }
@@ -107,15 +123,195 @@ impl SaveFile {
 
 fn main() {
     let args = Args::parse();
-    let rom_path = args.rom_file;
-
+    let rom_path = args.rom_file.clone();
     let event_loop = EventLoop::new();
     let window = setup_window(rom_path.clone(), &event_loop);
-    let pixels = setup_pixels(&window);
-    let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom);
-
-    run_event_loop(event_loop, gameboy, !args.fast, false, args.save_on_exit, rom_path, args.format);
+//    let (tx, rx) = channel();
+//    wasm_rs_async_executor::single_threaded::block_on(run(&window, rom_path, &Args::default(), tx));
 }
+
+#[wasm_bindgen(start)]
+pub fn start() {
+    console_error_panic_hook::set_once();
+    wasm_rs_async_executor::single_threaded::block_on(run());
+}
+
+async fn start_wasm(file: web_sys::File) {
+    let event_loop = EventLoop::new();
+    let args = Args {
+        rom_file: "silver_gb".to_string(),
+        cold_boot: false,
+        fast: false,
+        save_on_exit: false,
+        boot_rom: None,
+        format: Json,
+    };
+    let window = setup_window("silver.gb".to_string(), &event_loop);
+    // Retrieve current width and height dimensions of browser client window
+    let get_window_size = || {
+        let client_window = web_sys::window().unwrap();
+        LogicalSize::new(
+            client_window.inner_width().unwrap().as_f64().unwrap(),
+            client_window.inner_height().unwrap().as_f64().unwrap(),
+        )
+    };
+    window.set_inner_size(get_window_size());
+    let size = window.inner_size();
+    let window_size = size;
+    let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+    console::log_1(&"Setting up pixels2.".into());
+
+    // Initialize winit window with current dimensions of browser client
+    // Listen for resize event on browser client. Adjust winit window dimensions
+    // on event trigger
+    let closure = Closure::wrap(Box::new(|_e: web_sys::Event| {
+        // Retrieve current width and height dimensions of browser client window
+        let get_window_size = || {
+            console::log_1(&"Getting windows size.".into());
+            let client_window = web_sys::window().unwrap();
+            LogicalSize::new(
+                client_window.inner_width().unwrap().as_f64().unwrap(),
+                client_window.inner_height().unwrap().as_f64().unwrap(),
+            )
+        };
+        let size = get_window_size();
+        // &window.set_inner_size(size);
+    }) as Box<dyn FnMut(_)>);
+    let client_window = web_sys::window().unwrap();
+    client_window
+        .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
+        .unwrap();
+    closure.forget();
+
+    console::log_1(&"Finishing pixels setup.".into());
+
+    web_sys::window()
+        .and_then(|win| win.document())
+        .and_then(|doc| doc.body())
+        .and_then(|body: HtmlElement| -> Option<()> {
+            #[cfg(target_arch = "wasm32")]
+            {
+                use winit::platform::web::WindowExtWebSys;
+                body.append_child(&web_sys::Element::from(window.canvas())).ok();
+            }
+            Some(())
+        })
+        .unwrap();
+
+    let pixels = Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture)
+        .await
+        .expect_throw("Error finishing pixels setup");
+    file_callback(pixels, event_loop, Some(file)).await;
+}
+
+async fn run() {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&"Setting up pixels1.".into());
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        use winit::platform::web::WindowExtWebSys;
+        let client_window = web_sys::window().unwrap();
+        // Attach winit canvas to body element
+        let w = web_sys::window();
+        w
+            .and_then(|win| win.document())
+            .and_then(|doc| doc.body())
+            .and_then(|body| {
+                let input = web_sys::window().expect("WINDOW").document().unwrap()
+                    .create_element("input")
+                    .expect_throw("Create input")
+                    .dyn_into::<HtmlInputElement>()
+                    .unwrap();
+
+                input
+                    .set_attribute("type", "file")
+                    .expect_throw("Set input type file");
+
+                input
+                    .set_attribute("id", "iron-boy")
+                    .expect_throw("Set input id");
+
+                let recv_file = {
+                    Closure::<dyn FnMut()>::wrap(Box::new(move || {
+                        let document = web_sys::window().unwrap().document().unwrap();
+                        let file = web_sys::Document::get_element_by_id(&document, "iron-boy")
+                            .unwrap()
+                            .dyn_into::<HtmlInputElement>()
+                            .unwrap()
+                            .files()
+                            .unwrap()
+                            .item(0)
+                            .unwrap();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            start_wasm(file).await;
+                        })
+                    }))
+                };
+                input
+                    .add_event_listener_with_callback("change", recv_file.as_ref().dyn_ref().unwrap())
+                    .expect_throw("Listen for file upload");
+                recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
+
+                body.append_child(&input).ok()
+            })
+            .expect("couldn't append canvas and input to document body");
+        web_sys::console::log_1(&"Loading IronBoy.".into());
+    }
+
+    #[cfg(target_arch = "unix")]
+    #[cfg(target_arch = "windows")] {
+        let mut gameboy = load_gameboy_desktop(rom_path.clone(), args.boot_rom.clone());
+        if args.cold_boot {
+            gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())
+        }
+        gameboy.mmu.renderer.set_pixels(pixels);
+        gameboy.mmu.start();
+        run_event_loop(RefCell::new(event_loop), gameboy, !args.fast, false, args.save_on_exit, rom_path, args.format);
+    }
+}
+
+async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<web_sys::File>) {
+    let file = match file {
+        Some(file) => file,
+        None => return,
+    };
+    console::log_2(&"File:".into(), &file.name().into());
+    let reader = file
+        .stream()
+        .get_reader()
+        .dyn_into::<ReadableStreamDefaultReader>()
+        .expect_throw("Reader is reader");
+    let mut data = Vec::new();
+    loop {
+        let chunk = JsFuture::from(reader.read())
+            .await
+            .expect_throw("Read")
+            .dyn_into::<Object>()
+            .unwrap();
+        // ReadableStreamReadResult is somehow wrong. So go by hand. Might be a web-sys bug.
+        let done = Reflect::get(&chunk, &"done".into()).expect_throw("Get done");
+        if done.is_truthy() {
+            break;
+        }
+        let chunk = Reflect::get(&chunk, &"value".into())
+            .expect_throw("Get chunk")
+            .dyn_into::<Uint8Array>()
+            .expect_throw("bytes are bytes");
+        let data_len = data.len();
+        data.resize(data_len + chunk.length() as usize, 255);
+        chunk.copy_to(&mut data[data_len..]);
+    }
+    console::log_2(
+        &"Got data".into(),
+        &String::from_utf8_lossy(&data).into_owned().into(),
+    );
+
+    let gameboy = load_gameboy_wasm(pixels, data);
+
+    run_event_loop(event_loop, gameboy, true, false, false, "".to_string(), SaveFile::Json);
+}
+
 
 fn run_event_loop(
     event_loop: EventLoop<()>,
@@ -129,11 +325,10 @@ fn run_event_loop(
     let mut input = WinitInputHelper::new();
 
     let mut frames = 0.0;
-    let start = Instant::now();
+    let start = instant::Instant::now();
     let mut slowest_frame = Duration::from_nanos(0);
-    let mut focus = (Instant::now(), true);
+    let mut focus = (instant::Instant::now(), true);
     let mut paused = false;
-
     event_loop.run(move |event, _target, control_flow| {
         let gameboy = &mut gameboy;
         input.update(&event);
@@ -154,20 +349,24 @@ fn run_event_loop(
             control_flow.set_exit();
         }
 
-        if let (Some(size), Some(p)) = (input.window_resized(), gameboy.mmu.renderer.pixels().as_mut()) {
-            p.resize_surface(size.width, size.height).unwrap();
-        }
+        // if let (Some(size), Some(p)) = (input.window_resized(), gameboy.mmu.renderer.pixels().as_mut()) {
+        //     if first_resize {
+        //         first_resize = false;
+        //     } else {
+        //         p.resize_surface(size.width, size.height).unwrap();
+        //     }
+        // }
 
-        if !paused && focus.1 && Instant::now() > focus.0 {
+        if !paused && focus.1 && instant::Instant::now() > focus.0 {
             // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
-            let dummy_data: Vec<u8> = rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect();
-            write(rom_path.clone() + ".tmp", dummy_data).unwrap();
+            // let dummy_data: Vec<u8> = rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect();
+            // write(rom_path.clone() + ".tmp", dummy_data).unwrap();
             focus.1 = false;
         }
 
         if let Event::WindowEvent { event: Focused(true), .. } = event {
             if !sleep {
-                focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
+                focus = (instant::Instant::now() + Duration::from_secs_f64(0.5), true);
             }
         }
 
@@ -182,9 +381,9 @@ fn run_event_loop(
 
         if input.key_released(M) {
             muted = !muted;
-            if let Some(stream) = &gameboy.mmu.apu.stream {
+            /*if let Some(stream) = &gameboy.mmu.apu.stream {
                 if muted { stream.pause().unwrap(); } else { stream.play().unwrap(); }
-            }
+            }*/
         }
 
         if paused {
@@ -201,11 +400,11 @@ fn run_event_loop(
 
 fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper>) -> Duration {
     let mut elapsed_cycles = 0;
-    let start = Instant::now();
+    let start = instant::Instant::now();
     let pin = if let Some(pin) = gameboy.pin {
         (pin.0 + 1, pin.1)
     } else {
-        (1, Instant::now())
+        (1, instant::Instant::now())
     };
 
     while elapsed_cycles < CYCLES_PER_FRAME {
@@ -236,8 +435,8 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
     }
 
     let expected = pin.1 + Duration::from_nanos(pin.0 * NANOS_PER_FRAME);
-    gameboy.pin = if Instant::now() < expected {
-        thread::sleep(expected - Instant::now());
+    gameboy.pin = if instant::Instant::now() < expected {
+        while instant::Instant::now() < expected {};
         Some(pin)
     } else {
         None
@@ -255,14 +454,14 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
         .fold(rom_path, |path, extension| path.replace(extension, ""))
         + format.extension();
 
-    gameboy.mmu.mbc.save();
+    gameboy.mmu.save();
 
-    let now = Instant::now();
+    let now = instant::Instant::now();
     let save = format.save(gameboy);
     println!("Serialization took {}ms", now.elapsed().as_millis());
 
     thread::spawn(move || {
-        let now = Instant::now();
+        let now = instant::Instant::now();
 
         let mut save_file = File::create(&rom_path).unwrap();
         save_file.write_all(save.as_slice()).unwrap();
@@ -282,10 +481,20 @@ fn exit_emulator(save: bool, rom_path: String, gameboy: &mut Gameboy, format: Sa
     }
 }
 
-fn load_gameboy(
-    pixels: Pixels,
+fn load_gameboy_wasm(pixels: Pixels, data: Vec<u8>) -> Gameboy {
+    log_1(&"Loading Cartridge".into());
+    let cartridge = Cartridge::new(&data);
+    log_1(&"Loading Memory".into());
+    let mem = MemoryManagementUnit::new(data, cartridge, None, Path::new(""));
+    log_1(&"Loading Gameboy".into());
+    let mut gb = Gameboy::new(mem);
+    gb.mmu.renderer.set_pixels(pixels);
+    gb.mmu.start();
+    gb
+}
+
+fn load_gameboy_desktop(
     rom_path: String,
-    cold_boot: bool,
     boot_rom: Option<String>,
 ) -> Gameboy {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
@@ -308,32 +517,42 @@ fn load_gameboy(
             .read_to_end(save_file)
             .unwrap();
         let mut gb: Gameboy = match format {
-            Json => simd_json::from_slice(save_file).unwrap(),
+            Json => serde_json::from_slice(save_file).unwrap(),
             Bin => bincode::deserialize(save_file.as_slice()).unwrap()
         };
         gb.init();
         gb
     };
 
-    if cold_boot {
-        gameboy.reg = Register::new(gameboy.mmu.boot_rom.is_some())
-    }
-
-    gameboy.mmu.renderer.set_pixels(pixels);
-    gameboy.mmu.mbc.start();
-
     gameboy
 }
 
-fn setup_pixels(window: &Window) -> Pixels {
+async fn setup_pixels(window: &Window) -> Pixels {
     let (width, height) = (WIDTH as u32, HEIGHT as u32);
-    PixelsBuilder::new(width, height, SurfaceTexture::new(width, height, window))
+    let pixels = PixelsBuilder::new(width, height, SurfaceTexture::new(width, height, window))
+        .wgpu_backend(Backends::all())
+        .device_descriptor(pixels::wgpu::DeviceDescriptor {
+            limits: pixels::wgpu::Limits::downlevel_webgl2_defaults(),
+            ..Default::default()
+        })
         .present_mode(PresentMode::AutoNoVsync)
-        .build()
-        .unwrap()
+        .build_async()
+        .await;
+    if let Err(e) = pixels {
+        web_sys::console::log_1(&e.to_string().into());
+        unreachable!()
+    } else {
+        pixels.unwrap()
+    }
 }
 
 fn setup_window(rom_path: String, event_loop: &EventLoop<()>) -> Window {
+    println!("Hello");
+
+    #[cfg(windows)]
+    #[cfg(unix)]
+    web_sys::console::log_1(&"Setting up window.".into());
+
     WindowBuilder::new()
         .with_title(rom_path)
         .with_inner_size(LogicalSize::new(WIDTH as u32, HEIGHT as u32))
