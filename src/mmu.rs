@@ -49,7 +49,7 @@ pub struct MemoryManagementUnit {
     pub(crate) joypad: Joypad,
     pub cycles: u16,
     pub dma: u8,
-    // pub apu: AudioProcessingUnit,
+    pub apu: AudioProcessingUnit,
 }
 
 impl MemoryManagementUnit {
@@ -112,7 +112,7 @@ impl MemoryManagementUnit {
             cycles: 0,
             serial: LinkCable::new(),
             boot_rom: boot,
-            // apu: AudioProcessingUnit::new(),
+            apu: AudioProcessingUnit::new(),
             mbc0,
             mbc1,
             mbc3,
@@ -265,7 +265,7 @@ impl MemoryManagementUnit {
             .or_else(|| self.timer.read(translated_address))
             .or_else(|| self.joypad.read(translated_address))
             .or_else(|| self.serial.read(translated_address))
-            // .or_else(|| self.apu.read(translated_address))
+            .or_else(|| self.apu.read(translated_address))
             .unwrap_or_else(|| self.internal_ram_read(translated_address))
     }
 
@@ -275,8 +275,8 @@ impl MemoryManagementUnit {
             || self.interrupt_handler.write(translated_address, value)
             || self.timer.write(translated_address, value)
             || self.joypad.write(translated_address, value)
-            || self.serial.write(translated_address, value))
-            // || self.apu.write(translated_address, value))
+            || self.serial.write(translated_address, value)
+            || self.apu.write(translated_address, value))
         {
             self.internal_ram_write(translated_address, value);
         }
