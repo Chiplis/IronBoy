@@ -5,7 +5,6 @@ use crate::joypad::Joypad;
 use crate::mmu::OamCorruptionCause::{IncDec, Read, ReadWrite, Write};
 use crate::ppu::PixelProcessingUnit;
 use crate::timer::Timer;
-use crate::WIDTH;
 use std::any::{Any, TypeId};
 
 use std::path::Path;
@@ -23,6 +22,7 @@ use std::fs::read;
 use crate::serial::LinkCable;
 
 use crate::apu::AudioProcessingUnit;
+use crate::mmu::Mbc::{One, Three, Zero};
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum OamCorruptionCause {
@@ -37,7 +37,9 @@ pub struct MemoryManagementUnit {
     #[serde(skip)]
     pub(crate) renderer: Renderer,
     pub boot_rom: Option<Vec<u8>>,
-    pub(crate) mbc: Box<dyn MemoryBankController>,
+    mbc0: Option<MBC0>,
+    mbc1: Option<MBC1>,
+    mbc3: Option<MBC3>,
     work_ram: Vec<u8>,
     high_ram: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
@@ -50,9 +52,37 @@ pub struct MemoryManagementUnit {
     pub apu: AudioProcessingUnit,
 }
 
+impl MemoryManagementUnit {
+    pub(crate) fn save(&mut self) {
+        if let Some(mbc) = &mut self.mbc0 {
+            mbc.save()
+        } else if let Some(mbc) = &mut self.mbc1 {
+            mbc.save()
+        } else if let Some(mbc) = &mut self.mbc3 {
+            mbc.save()
+        }
+    }
+
+    pub(crate) fn start(&mut self) {
+        if let Some(mbc) = &mut self.mbc0 {
+            mbc.start()
+        } else if let Some(mbc) = &mut self.mbc1 {
+            mbc.start()
+        } else if let Some(mbc) = &mut self.mbc3 {
+            mbc.start()
+        }
+    }
+}
+
 pub trait MemoryArea {
     fn read(&self, address: usize) -> Option<u8>;
     fn write(&mut self, address: usize, value: u8) -> bool;
+}
+
+enum Mbc {
+    Zero(MBC0),
+    One(MBC1),
+    Three(MBC3),
 }
 
 impl MemoryManagementUnit {
@@ -63,6 +93,13 @@ impl MemoryManagementUnit {
         rom_path: &Path,
     ) -> MemoryManagementUnit {
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
+
+        let (mbc0, mbc1, mbc3) = match Self::load_mbc(cartridge, rom, rom_path) {
+            Zero(mbc) => (Some(mbc), None, None),
+            One(mbc) => (None, Some(mbc), None),
+            Three(mbc) => (None, None, Some(mbc))
+        };
+
         let mem = MemoryManagementUnit {
             renderer: Renderer::new(),
             high_ram: vec![0; 0x10000 - 0xFEA0],
@@ -75,10 +112,12 @@ impl MemoryManagementUnit {
             cycles: 0,
             serial: LinkCable::new(),
             boot_rom: boot,
-            mbc: Self::load_mbc(cartridge, rom, rom_path),
             apu: AudioProcessingUnit::new(),
+            mbc0,
+            mbc1,
+            mbc3,
         };
-        
+
         MemoryManagementUnit::init_memory(mem)
     }
 
@@ -86,18 +125,18 @@ impl MemoryManagementUnit {
         cartridge: Cartridge,
         rom: Vec<u8>,
         rom_path: &Path,
-    ) -> Box<dyn MemoryBankController> {
+    ) -> Mbc {
         match cartridge.mbc {
-            0x00 => Box::new(MBC0::new(rom, vec![0; 32 * 1024])),
-            0x01..=0x03 => Box::new(MBC1::new(cartridge, rom)),
-            0x0F..=0x13 => Box::new(MBC3::new(cartridge, rom)),
+            0x00 => Zero(MBC0::new(rom, vec![0; 32 * 1024])),
+            0x01..=0x03 => One(MBC1::new(cartridge, rom)),
+            0x0F..=0x13 => Three(MBC3::new(cartridge, rom)),
             _ => {
                 println!(
                     "MBC ID {} not implemented, defaulting to MBC0 - {}",
                     cartridge.mbc,
                     rom_path.to_str().unwrap()
                 );
-                Box::new(MBC0::new(rom, vec![0; 32 * 1024]))
+                Zero(MBC0::new(rom, vec![0; 32 * 1024]))
             }
         }
     }
@@ -186,6 +225,30 @@ impl MemoryManagementUnit {
         }
     }
 
+    fn mbc_read(&self, translated_address: usize) -> Option<u8> {
+        if let Some(mbc) = &self.mbc0 {
+            mbc.read(translated_address)
+        } else if let Some(mbc) = &self.mbc1 {
+            mbc.read(translated_address)
+        } else if let Some(mbc) = &self.mbc3 {
+            mbc.read(translated_address)
+        } else {
+            None
+        }
+    }
+
+    fn mbc_write(&mut self, translated_address: usize, value: u8) -> bool {
+        if let Some(mbc) = &mut self.mbc0 {
+            mbc.write(translated_address, value)
+        } else if let Some(mbc) = &mut self.mbc1 {
+            mbc.write(translated_address, value)
+        } else if let Some(mbc) = &mut self.mbc3 {
+            mbc.write(translated_address, value)
+        } else {
+            false
+        }
+    }
+
     fn internal_ram_write(&mut self, address: usize, value: u8) {
         match address as u16 {
             0xC000..=0xDFFF => self.work_ram[address - 0xC000] = value,
@@ -196,8 +259,7 @@ impl MemoryManagementUnit {
     }
 
     pub fn internal_read(&self, translated_address: usize) -> u8 {
-        self.mbc
-            .read(translated_address)
+        self.mbc_read(translated_address)
             .or_else(|| self.ppu.read(translated_address))
             .or_else(|| self.interrupt_handler.read(translated_address))
             .or_else(|| self.timer.read(translated_address))
@@ -208,7 +270,7 @@ impl MemoryManagementUnit {
     }
 
     fn internal_write(&mut self, translated_address: usize, value: u8) {
-        if !(self.mbc.write(translated_address, value)
+        if !(self.mbc_write(translated_address, value)
             || self.ppu.write(translated_address, value)
             || self.interrupt_handler.write(translated_address, value)
             || self.timer.write(translated_address, value)
@@ -226,6 +288,8 @@ impl MemoryManagementUnit {
         self.machine_cycle(ticks);
     }
 
+    const WIDTH: usize = 160;
+
     pub fn dma_transfer(&mut self) {
         if !self.ppu.dma_running {
             return;
@@ -238,7 +302,7 @@ impl MemoryManagementUnit {
         self.ppu.dma_block_oam = true;
 
         // 8 cycles delay + 160 machine cycles
-        if elapsed < 8 + WIDTH * 4 {
+        if elapsed < 8 + Self::WIDTH * 4 {
             return;
         }
 
@@ -254,7 +318,7 @@ impl MemoryManagementUnit {
         } as usize
             * 0x100;
 
-        for (index, address) in (start..start + WIDTH).enumerate() {
+        for (index, address) in (start..start + Self::WIDTH).enumerate() {
             self.ppu.oam[index] = match address {
                 0x8000..=0x9FFF => self.ppu.vram[address - 0x8000],
                 _ => self.internal_read(address),

@@ -1,6 +1,6 @@
 use pixels::Pixels;
 use std::cmp::max;
-use std::time::{Duration, Instant};
+use instant::{Duration, Instant};
 
 #[derive(Default)]
 pub struct Renderer {

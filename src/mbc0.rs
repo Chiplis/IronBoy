@@ -9,7 +9,6 @@ pub struct MBC0 {
     pub ram: Vec<u8>,
 }
 
-#[typetag::serde]
 impl MemoryBankController for MBC0 {}
 
 impl MBC0 {

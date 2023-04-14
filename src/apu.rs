@@ -1,6 +1,6 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
-    use std::{sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex}};
+    use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex};
 
     #[derive(Default, Serialize, Deserialize)]
     struct VolumeEnvelopeParams {
@@ -14,15 +14,16 @@ mod oscillators {
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
+        #[serde(skip)]
         current_settings: AtomicU8,
     }
 
     impl VolumeEnvelope {
-        pub fn new(sample_rate: u32) -> VolumeEnvelope {
+        pub(crate) fn new(sample_rate: u32) -> VolumeEnvelope {
             VolumeEnvelope { sample_rate, ..Default::default() }
         }
 
-        pub fn write_settings(&self, val: u8) {
+        pub(crate) fn write_settings(&self, val: u8) {
             let starting_vol = val >> 4;
             let add_mode = ((val & 0x08) >> 3) > 0;
             let period = val & 0x07;
@@ -40,13 +41,13 @@ mod oscillators {
             self.current_settings.store(val, Ordering::Relaxed);
         }
 
-        pub fn read_settings(&self) -> u8 {
+        pub(crate) fn read_settings(&self) -> u8 {
             self.current_settings.load(Ordering::Relaxed)
         }
 
-        pub fn generate_sample(&self) -> u8 {
+        pub(crate) fn generate_sample(&self) -> u8 {
             if let Ok(mut params) = self.params.lock() {
-                let output_sample = params.current_level as u8;
+                let output_sample = params.current_level;
                 if params.period == 0 {
                     return output_sample;
                 }
@@ -72,30 +73,43 @@ mod oscillators {
 
     #[derive(Default, Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
+        #[serde(skip)]
         frequency: AtomicU16,
+        #[serde(skip)]
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
         sample_rate: u32,
         sweep: bool,
+        #[serde(skip)]
         position: AtomicU8,
+        #[serde(skip)]
         duty: AtomicU8,
+        #[serde(skip)]
         trigger: AtomicU8,
+        #[serde(skip)]
         enabled: AtomicBool,
+        #[serde(skip)]
         length: AtomicU8,
         length_counter: RwLock<u32>,
+        #[serde(skip)]
         length_enabled: AtomicBool,
         env: VolumeEnvelope,
-
+        #[serde(skip)]
         sweep_period: AtomicU8,
+        #[serde(skip)]
         sweep_timer: AtomicU32,
+        #[serde(skip)]
         sweep_negate: AtomicBool,
+        #[serde(skip)]
         sweep_shift: AtomicU8,
+        #[serde(skip)]
         sweep_enabled: AtomicBool,
+        #[serde(skip)]
         sweep_frequency: AtomicU16,
     }
 
     impl SquareWaveGenerator {
-        pub fn new(sample_rate: u32, sweep: bool) -> SquareWaveGenerator {
+        pub(crate) fn new(sample_rate: u32, sweep: bool) -> SquareWaveGenerator {
             SquareWaveGenerator {
                 sample_rate,
                 sweep,
@@ -105,7 +119,7 @@ mod oscillators {
             }
         }
 
-        pub fn write_reg(&self, reg: usize, val: u8) {
+        pub(crate) fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
                     if self.sweep {
@@ -245,11 +259,11 @@ mod oscillators {
             }
         }
 
-        pub fn is_enabled(&self) -> bool {
+        pub(crate) fn is_enabled(&self) -> bool {
             self.enabled.load(Ordering::Relaxed)
         }
 
-        pub fn read_reg(&self, reg: usize) -> u8 {
+        pub(crate) fn read_reg(&self, reg: usize) -> u8 {
             match reg {
                 0 => {
                     if self.sweep {
@@ -283,7 +297,7 @@ mod oscillators {
             }
         }
 
-        pub fn generate_sample(&self) -> f32 {
+        pub(crate) fn generate_sample(&self) -> f32 {
             if !self.enabled.load(Ordering::Relaxed) {
                 return 0.0;
             }
@@ -420,7 +434,7 @@ mod oscillators {
         }
 
         fn calculate_sweep_freq(&self) -> (bool, u16) {
-            let offset = (self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed)) as u16;
+            let offset = self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed);
 
             let new_freq: u32 = if self.sweep_negate.load(Ordering::Relaxed) {
                 // Check for underflow
@@ -445,25 +459,34 @@ mod oscillators {
     #[derive(Default, Serialize, Deserialize)]
     pub struct WaveTable {
         sample_rate: u32,
+        #[serde(skip)]
         sound_data: [AtomicU8; 32],
+        #[serde(skip)]
         frequency: AtomicU16,
+        #[serde(skip)]
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
+        #[serde(skip)]
         position: AtomicU8,
+        #[serde(skip)]
         trigger: AtomicU8,
+        #[serde(skip)]
         enabled: AtomicBool,
+        #[serde(skip)]
         length: AtomicU8,
         length_counter: RwLock<u32>,
+        #[serde(skip)]
         length_enabled: AtomicBool,
+        #[serde(skip)]
         volume_code: AtomicU8,
     }
 
     impl WaveTable {
-        pub fn new(sample_rate: u32) -> WaveTable {
+        pub(crate) fn new(sample_rate: u32) -> WaveTable {
             WaveTable { sample_rate, ..Default::default() }
         }
 
-        pub fn write_reg(&self, reg: usize, val: u8) {
+        pub(crate) fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {
                     if val == 0x00 {
@@ -546,11 +569,11 @@ mod oscillators {
             }
         }
 
-        pub fn is_enabled(&self) -> bool {
+        pub(crate) fn is_enabled(&self) -> bool {
             self.enabled.load(Ordering::Relaxed)
         }
 
-        pub fn read_reg(&self, reg: usize) -> u8 {
+        pub(crate) fn read_reg(&self, reg: usize) -> u8 {
             match reg {
                 1 => self.length.load(Ordering::Relaxed),
 
@@ -569,7 +592,7 @@ mod oscillators {
             }
         }
 
-        pub fn write_sound_data(&self, address: usize, val: u8) {
+        pub(crate) fn write_sound_data(&self, address: usize, val: u8) {
             let rel_address = address - 0xFF30;
             let start_sample = rel_address * 2;
 
@@ -577,7 +600,7 @@ mod oscillators {
             self.sound_data[start_sample + 1].store(val & 0x0F, Ordering::Relaxed);
         }
 
-        pub fn read_sound_data(&self, address: usize) -> u8 {
+        pub(crate) fn read_sound_data(&self, address: usize) -> u8 {
             let rel_address = address - 0xFF30;
             let start_sample = rel_address * 2;
 
@@ -587,7 +610,7 @@ mod oscillators {
             reg_val
         }
 
-        pub fn generate_sample(&self) -> f32 {
+        pub(crate) fn generate_sample(&self) -> f32 {
             if !self.enabled.load(Ordering::Relaxed) {
                 return 0.0;
             }
@@ -691,23 +714,31 @@ mod oscillators {
     pub struct NoiseGenerator {
         sample_rate: u32,
         env: VolumeEnvelope,
+        #[serde(skip)]
         divisor_code: AtomicU8,
+        #[serde(skip)]
         divisor: AtomicU8,
+        #[serde(skip)]
         clock_shift: AtomicU8,
+        #[serde(skip)]
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
-        sample_counter: AtomicU32,
         lfsr: Mutex<[bool; 15]>,
+        #[serde(skip)]
         width: AtomicBool,
+        #[serde(skip)]
         trigger: AtomicU8,
+        #[serde(skip)]
         enabled: AtomicBool,
+        #[serde(skip)]
         length: AtomicU8,
         length_counter: RwLock<u32>,
+        #[serde(skip)]
         length_enabled: AtomicBool,
     }
 
     impl NoiseGenerator {
-        pub fn new(sample_rate: u32) -> NoiseGenerator {
+        pub(crate) fn new(sample_rate: u32) -> NoiseGenerator {
             NoiseGenerator {
                 sample_rate,
                 env: VolumeEnvelope::new(sample_rate),
@@ -716,7 +747,7 @@ mod oscillators {
             }
         }
 
-        pub fn write_reg(&self, reg: usize, val: u8) {
+        pub(crate) fn write_reg(&self, reg: usize, val: u8) {
             match reg {
                 0 => {}
 
@@ -820,11 +851,11 @@ mod oscillators {
             }
         }
 
-        pub fn is_enabled(&self) -> bool {
+        pub(crate) fn is_enabled(&self) -> bool {
             self.enabled.load(Ordering::Relaxed)
         }
 
-        pub fn read_reg(&self, reg: usize) -> u8 {
+        pub(crate) fn read_reg(&self, reg: usize) -> u8 {
             match reg {
                 1 => self.length.load(Ordering::Relaxed),
 
@@ -848,7 +879,7 @@ mod oscillators {
             }
         }
 
-        pub fn generate_sample(&self) -> f32 {
+        pub(crate) fn generate_sample(&self) -> f32 {
             if !self.enabled.load(Ordering::Relaxed) {
                 return 0.0;
             }
@@ -943,18 +974,20 @@ struct AudioProcessingState {
     osc_2: oscillators::SquareWaveGenerator,
     osc_3: oscillators::WaveTable,
     osc_4: oscillators::NoiseGenerator,
-
+    #[serde(skip)]
     left_osc_enable: [AtomicBool; 4],
+    #[serde(skip)]
     right_osc_enable: [AtomicBool; 4],
-
+    #[serde(skip)]
     left_master_vol: AtomicU8,
+    #[serde(skip)]
     right_master_vol: AtomicU8,
-
+    #[serde(skip)]
     power_control: AtomicBool,
 }
 
 impl AudioProcessingState {
-    pub fn new() -> Arc<AudioProcessingState> {
+    pub(crate) fn new() -> Arc<AudioProcessingState> {
         let config = Self::load_config();
         let sample_rate = config.sample_rate().0;
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
@@ -975,7 +1008,7 @@ impl AudioProcessingState {
         })
     }
 
-    pub fn load_stream(processor: &Arc<AudioProcessingState>) -> Option<Stream> {
+    pub(crate) fn load_stream(processor: &Arc<AudioProcessingState>) -> Option<Stream> {
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
 
@@ -1008,7 +1041,7 @@ impl AudioProcessingState {
             .with_sample_rate(cpal::SampleRate(44100))
     }
 
-    pub fn write_register(&self, address: usize, value: u8) {
+    pub(crate) fn write_register(&self, address: usize, value: u8) {
         if address < 0xFF24 {
             let rel_address = address - 0xFF10;
 
@@ -1057,7 +1090,7 @@ impl AudioProcessingState {
         }
     }
 
-    pub fn read_register(&self, address: usize) -> u8 {
+    pub(crate) fn read_register(&self, address: usize) -> u8 {
         if address < 0xFF24 {
             let rel_address = address - 0xFF10;
 
@@ -1240,7 +1273,7 @@ impl AudioProcessingState {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct AudioProcessingUnit {
     state: Arc<AudioProcessingState>,
 
@@ -1249,17 +1282,17 @@ pub struct AudioProcessingUnit {
 }
 
 impl AudioProcessingUnit {
-    pub fn new() -> AudioProcessingUnit {
+    pub(crate) fn new() -> AudioProcessingUnit {
         let state = AudioProcessingState::new();
         let stream = AudioProcessingState::load_stream(&state);
         AudioProcessingUnit { state, stream }
     }
 
-    pub fn init(&mut self) {
+    pub(crate) fn init(&mut self) {
         self.stream = AudioProcessingState::load_stream(&self.state);
     }
 
-    pub fn write(&mut self, address: usize, value: u8) -> bool {
+    pub(crate) fn write(&mut self, address: usize, value: u8) -> bool {
         if !(0xFF10..=0xFF3F).contains(&address) {
             false
         } else {
@@ -1268,7 +1301,7 @@ impl AudioProcessingUnit {
         }
     }
 
-    pub fn read(&self, address: usize) -> Option<u8> {
+    pub(crate) fn read(&self, address: usize) -> Option<u8> {
         if !(0xFF10..=0xFF3F).contains(&address) {
             None
         } else {

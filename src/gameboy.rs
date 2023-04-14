@@ -9,7 +9,7 @@ use crate::register::RegisterId::*;
 use crate::register::WordRegister::{ProgramCounter, StackPointer};
 use crate::register::{ByteRegister, Register, RegisterId, WordRegister};
 use std::cmp::max;
-use std::time::Instant;
+use instant::Instant;
 
 use serde::{Deserialize, Serialize};
 
