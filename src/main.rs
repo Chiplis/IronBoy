@@ -15,7 +15,9 @@ use crate::register::Register;
 
 use clap::{Parser, ValueEnum};
 use cpal::traits::StreamTrait;
-use pixels::{Pixels, SurfaceTexture};
+
+use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
+use pixels::wgpu::PresentMode;
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
@@ -40,8 +42,6 @@ use {
 
 #[cfg(any(unix, windows))]
 use {
-    pixels::wgpu::PresentMode,
-    pixels::PixelsBuilder,
     rand::Rng,
     rand::distributions::Uniform,
     winit::event::{Event, WindowEvent},
@@ -142,7 +142,6 @@ async fn start_wasm(file: web_sys::File) {
     window.set_inner_size(get_window_size());
     let size = window.inner_size();
     let window_size = size;
-    let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
     console::log_1(&"Setting up pixels2.".into());
 
     // Initialize winit window with current dimensions of browser client
@@ -175,21 +174,23 @@ async fn start_wasm(file: web_sys::File) {
         .and_then(|doc| doc.body())
         .and_then(|body: HtmlElement| -> Option<()> {
             use winit::platform::web::WindowExtWebSys;
-            body.append_child(&web_sys::Element::from(window.canvas())).ok();
+            let canvas = window.canvas();
+            canvas.set_attribute("style", "width: 640px; height: 576px;").unwrap();
+
+            let canvas = &web_sys::Element::from(window.canvas());
+
+            body.append_child(&canvas).ok();
             Some(())
         })
         .unwrap();
 
-    let pixels = Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture)
-        .await
-        .expect_throw("Error finishing pixels setup");
+    let pixels = setup_pixels(&window).await;
     file_callback(pixels, event_loop, Some(file)).await;
 }
 
 #[cfg(target_arch = "wasm32")]
 async fn run() {
     web_sys::console::log_1(&"Setting up pixels1.".into());
-    // Attach winit canvas to body element
     let w = web_sys::window();
     w
         .and_then(|win| win.document())
@@ -342,6 +343,7 @@ fn run_event_loop(
         let mut focus = (Instant::now(), true);
 
     event_loop.run(move |event, _target, control_flow| {
+
         let gameboy = &mut gameboy;
         input.update(&event);
         frames += 1.0;
@@ -544,6 +546,16 @@ fn load_gameboy(
     gameboy.mmu.start();
 
     gameboy
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn setup_pixels(window: &Window) -> Pixels {
+    let (width, height) = (WIDTH as u32, HEIGHT as u32);
+    PixelsBuilder::new(width, height, SurfaceTexture::new(width, height, window))
+        .present_mode(PresentMode::Fifo)
+        .build_async()
+        .await
+        .unwrap()
 }
 
 #[cfg(any(unix, windows))]
