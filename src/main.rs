@@ -353,7 +353,7 @@ fn run_event_loop(
         }
 
         if let Event::WindowEvent { event: Focused(true), .. } = event {
-            if let (Some(stream), false) = (&gameboy.mmu.apu.stream, muted) {
+            if let (Some(stream), false, false) = (&gameboy.mmu.apu.stream, muted, paused) {
                 stream.play().unwrap();
             }
         }
