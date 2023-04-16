@@ -1,31 +1,79 @@
-<html>
-  <head>
-    <link data-trunk rel="scss" href="index.scss"/>
-  </head>
-  	<body>
-		<div>
-			Z -> A
-		</div>
-		<div>
-			C -> B
-		</div>
-		<div>
-			Enter -> Start
-		</div>
-		<div>
-			Backspace -> Select
-		</div>
-		<div>
-			S -> Save
-		</div>
-		<div>
-			P -> Pause
-		</div>
-		<div>
-			M -> Toggle sound
-		</div>
-		<div>
-			Esc -> Close -> B
-		</div>
-	</body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<main>
+
+    <div id="ironboy-container" style="display: flex; justify-content: space-around">
+
+        <div id="controls" style="display: flex; flex-direction: column">
+
+            <div>
+
+                Z -&gt; A
+
+            </div>
+
+            <div>
+
+                C -&gt; B
+
+            </div>
+
+            <div>
+
+                Enter -&gt; Start
+
+            </div>
+
+            <div>
+
+                Backspace -&gt; Select
+
+            </div>
+
+            <div>
+
+                S -&gt; Save
+
+            </div>
+
+            <div>
+
+                P -&gt; Pause
+
+            </div>
+
+            <div>
+
+                M -&gt; Toggle sound
+
+            </div>
+
+            <div>
+
+                Esc -&gt; Close
+
+            </div>
+
+        </div>
+
+        <canvas id="ironboy-canvas">
+
+
+        </canvas>
+
+        <div style="flex-basis: 20%">
+
+            <label for="ironboy-input">Choose your ROM file</label>
+
+            <input id="ironboy-input" type="file" accept=".gb">
+
+        </div>
+
+    </div>
+
+</main>
 </html>

@@ -36,7 +36,8 @@ use {
     wasm_bindgen::{JsCast, UnwrapThrowExt},
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
-    web_sys::{console, HtmlInputElement, ReadableStreamDefaultReader, HtmlElement},
+    web_sys::{console, HtmlInputElement, ReadableStreamDefaultReader, HtmlCanvasElement},
+    winit::platform::web::WindowBuilderExtWebSys
 };
 
 #[cfg(any(unix, windows))]
@@ -128,19 +129,15 @@ impl SaveFile {
 #[cfg(target_arch = "wasm32")]
 async fn start_wasm(file: web_sys::File) {
     let event_loop = EventLoop::new();
-    let window = setup_window("silver.gb".to_string(), &event_loop);
-    // Retrieve current width and height dimensions of browser client window
-    let get_window_size = || {
-        let client_window = web_sys::window().unwrap();
-        LogicalSize::new(
-            client_window.inner_width().unwrap().as_f64().unwrap(),
-            client_window.inner_height().unwrap().as_f64().unwrap(),
-        )
-    };
-    window.set_inner_size(get_window_size());
-    let size = window.inner_size();
-    let window_size = size;
-    console::log_1(&"Setting up pixels2.".into());
+
+    let canvas = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("ironboy-canvas"))
+        .and_then(|c| c.dyn_into::<HtmlCanvasElement>().ok());
+
+    let window = setup_window(file.name()).with_canvas(canvas).build(&event_loop).unwrap();
+    window.set_inner_size(LogicalSize::new(640.0, 576.0));
+    let pixels = setup_pixels(&window).await;
 
     // Initialize winit window with current dimensions of browser client
     // Listen for resize event on browser client. Adjust winit window dimensions
@@ -165,73 +162,38 @@ async fn start_wasm(file: web_sys::File) {
         .unwrap();
     closure.forget();
 
-    console::log_1(&"Finishing pixels setup.".into());
-
-    web_sys::window()
-        .and_then(|win| win.document())
-        .and_then(|doc| doc.body())
-        .and_then(|body: HtmlElement| -> Option<()> {
-            use winit::platform::web::WindowExtWebSys;
-            let canvas = window.canvas();
-            canvas.set_attribute("style", "width: 640px; height: 576px;").unwrap();
-
-            let canvas = &web_sys::Element::from(window.canvas());
-
-            body.append_child(&canvas).ok();
-            Some(())
-        })
-        .unwrap();
-
-    let pixels = setup_pixels(&window).await;
     file_callback(pixels, event_loop, Some(file)).await;
 }
 
 #[cfg(target_arch = "wasm32")]
 async fn run() {
-    web_sys::console::log_1(&"Setting up pixels1.".into());
     let w = web_sys::window();
-    w
-        .and_then(|win| win.document())
-        .and_then(|doc| doc.body())
-        .and_then(|body| {
-            let input = web_sys::window().expect("WINDOW").document().unwrap()
-                .create_element("input")
-                .expect_throw("Create input")
+
+    let recv_file = {
+        Closure::<dyn FnMut()>::wrap(Box::new(move || {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let file = web_sys::Document::get_element_by_id(&document, "ironboy-input")
+                .unwrap()
                 .dyn_into::<HtmlInputElement>()
+                .unwrap()
+                .files()
+                .unwrap()
+                .item(0)
                 .unwrap();
+            wasm_bindgen_futures::spawn_local(async move {
+                start_wasm(file).await;
+            })
+        }))
+    };
 
-            input
-                .set_attribute("type", "file")
-                .expect_throw("Set input type file");
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("ironboy-input"))
+        .and_then(|i| i.dyn_into::<HtmlInputElement>().ok())
+        .and_then(|i| i.add_event_listener_with_callback("change", recv_file.as_ref().dyn_ref().unwrap()).ok())
+        .expect("Failed to add setup emulator callback to input.");
 
-            input
-                .set_attribute("id", "iron-boy")
-                .expect_throw("Set input id");
-
-            let recv_file = {
-                Closure::<dyn FnMut()>::wrap(Box::new(move || {
-                    let document = web_sys::window().unwrap().document().unwrap();
-                    let file = web_sys::Document::get_element_by_id(&document, "iron-boy")
-                        .unwrap()
-                        .dyn_into::<HtmlInputElement>()
-                        .unwrap()
-                        .files()
-                        .unwrap()
-                        .item(0)
-                        .unwrap();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        start_wasm(file).await;
-                    })
-                }))
-            };
-            input
-                .add_event_listener_with_callback("change", recv_file.as_ref().dyn_ref().unwrap())
-                .expect_throw("Listen for file upload");
-            recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
-
-            body.append_child(&input).ok()
-        })
-        .expect("couldn't append canvas and input to document body");
+    recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
     web_sys::console::log_1(&"Loading IronBoy.".into());
 }
 
@@ -310,7 +272,7 @@ fn main_desktop() {
     let rom_path = args.rom_file;
 
     let event_loop = EventLoop::new();
-    let window = setup_window(rom_path.clone(), &event_loop);
+    let window = setup_window(rom_path.clone()).build(&event_loop).unwrap();
     let pixels = setup_pixels(&window);
     let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom);
 
@@ -588,7 +550,7 @@ fn setup_pixels(window: &Window) -> Pixels {
         .unwrap()
 }
 
-fn setup_window(rom_path: String, event_loop: &EventLoop<()>) -> Window {
+fn setup_window(rom_path: String) -> WindowBuilder {
     WindowBuilder::new()
         .with_title(rom_path)
         .with_inner_size(LogicalSize::new(WIDTH as u32, HEIGHT as u32))
@@ -596,8 +558,6 @@ fn setup_window(rom_path: String, event_loop: &EventLoop<()>) -> Window {
         .with_resizable(true)
         .with_visible(true)
         .with_fullscreen(Some(Borderless(None)))
-        .build(event_loop)
-        .unwrap()
 }
 
 const CYCLES_PER_FRAME: u16 = 17556;
