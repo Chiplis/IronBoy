@@ -18,6 +18,7 @@ use cpal::traits::StreamTrait;
 
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
+use wasm_bindgen::JsValue;
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
@@ -32,11 +33,9 @@ use crate::SaveFile::{Bin, Json};
 #[cfg(target_arch = "wasm32")]
 use {
     leptos::js_sys::{Object, Reflect, Uint8Array},
-
     wasm_bindgen::{JsCast, UnwrapThrowExt},
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
-
     web_sys::{console, HtmlInputElement, ReadableStreamDefaultReader, HtmlElement},
 };
 
@@ -44,11 +43,11 @@ use {
 use {
     rand::Rng,
     rand::distributions::Uniform,
-    winit::event::{Event, WindowEvent},
     std::fs::{read, remove_file, write, File},
 };
 
-#[cfg(target_os="macos")]
+
+use winit::event::{Event, WindowEvent};
 use WindowEvent::Focused;
 
 mod cartridge;
@@ -128,7 +127,6 @@ impl SaveFile {
 
 #[cfg(target_arch = "wasm32")]
 async fn start_wasm(file: web_sys::File) {
-
     let event_loop = EventLoop::new();
     let window = setup_window("silver.gb".to_string(), &event_loop);
     // Retrieve current width and height dimensions of browser client window
@@ -342,14 +340,21 @@ fn run_event_loop(
     #[cfg(target_os = "macos")]
         let mut focus = (Instant::now(), true);
 
-    event_loop.run(move |event, _target, control_flow| {
+    #[cfg(target_arch = "wasm32")]
+        let mut current_frame = Duration::from_secs(0);
+    #[cfg(target_arch = "wasm32")]
+        let mut wait_time = Instant::now();
 
+    event_loop.run(move |event, _target, control_flow| {
         let gameboy = &mut gameboy;
         input.update(&event);
         frames += 1.0;
 
         if input.key_released(P) {
             paused = !paused;
+            if let Some(stream) = &gameboy.mmu.apu.stream {
+                if paused { stream.pause().unwrap(); } else if !muted { stream.play().unwrap(); }
+            }
         }
 
         if input.key_released(Escape) {
@@ -385,13 +390,24 @@ fn run_event_loop(
             }
         }
 
+        if let Event::WindowEvent { event: Focused(true), .. } = event {
+            if let (Some(stream), false) = (&gameboy.mmu.apu.stream, muted) {
+                stream.play().unwrap();
+            }
+        }
+
+        if let Event::WindowEvent { event: Focused(false), .. } = event {
+            if let Some(stream) = &gameboy.mmu.apu.stream {
+                stream.pause().unwrap();
+            }
+        }
+
         if input.key_released(S) {
             save_state(rom_path.clone(), gameboy, format);
         }
 
         if input.key_released(F) {
             sleep = !sleep;
-            println!("Changed fast mode to {}", !sleep);
         }
 
         if input.key_released(M) {
@@ -405,15 +421,25 @@ fn run_event_loop(
             return;
         }
 
-        let current_frame = run_frame(gameboy, sleep, Some(&input));
+        #[cfg(target_arch = "wasm32")]
+        if wait_time.elapsed() < current_frame {
+            return;
+        } else {
+            current_frame = run_frame(gameboy, sleep, Some(&input)).1;
+            wait_time = instant::Instant::now();
+        }
 
-        if slowest_frame < current_frame {
-            slowest_frame = current_frame
+        #[cfg(any(unix, windows))] {
+            let (current_frame, sleep_time) = run_frame(gameboy, sleep, Some(&input));
+            thread::sleep(sleep_time);
+            if slowest_frame < current_frame {
+                slowest_frame = current_frame;
+            }
         }
     });
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper>) -> Duration {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper>) -> (Duration, Duration) {
     let mut elapsed_cycles = 0;
     let start = Instant::now();
     let pin = if let Some(pin) = gameboy.pin {
@@ -446,24 +472,19 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
     gameboy.mmu.joypad.held_direction = map_held([Up, Down, Left, Right]);
 
     if !sleep {
-        return start.elapsed();
+        return (start.elapsed(), Duration::from_secs(0));
     }
 
     let expected = pin.1 + Duration::from_nanos(pin.0 * NANOS_PER_FRAME);
 
     let now = Instant::now();
     gameboy.pin = if now < expected {
-        #[cfg(any(unix, windows))]
-        thread::sleep(expected - now);
-
-        // TODO: Implement frame limiting in WASM
-
         Some(pin)
     } else {
         None
     };
 
-    start.elapsed()
+    (start.elapsed(), if now < expected { expected - now } else { Duration::from_secs(0) })
 }
 
 fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
@@ -581,3 +602,4 @@ fn setup_window(rom_path: String, event_loop: &EventLoop<()>) -> Window {
 
 const CYCLES_PER_FRAME: u16 = 17556;
 const NANOS_PER_FRAME: u64 = 16742706;
+const FRAME_DURATION: Duration = Duration::from_nanos(NANOS_PER_FRAME);
