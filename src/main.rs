@@ -136,7 +136,7 @@ async fn start_wasm(file: web_sys::File) {
         .and_then(|c| c.dyn_into::<HtmlCanvasElement>().ok());
 
     let window = setup_window(file.name()).with_canvas(canvas).build(&event_loop).unwrap();
-    window.set_inner_size(LogicalSize::new(640.0, 576.0));
+    window.set_inner_size(LogicalSize::new(160.0, 144.0));
     let pixels = setup_pixels(&window).await;
 
     // Initialize winit window with current dimensions of browser client
