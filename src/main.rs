@@ -300,6 +300,8 @@ fn run_event_loop(
         stream.play().unwrap();
     }
 
+    let mut last_save = Instant::now();
+
     #[cfg(target_os = "macos")]
         let mut focus = (Instant::now(), true);
 
@@ -354,7 +356,10 @@ fn run_event_loop(
         }
 
         if input.key_released(S) {
-            save_state(rom_path.clone(), gameboy, format);
+            if last_save + Duration::from_secs(1) < Instant::now() {
+                save_state(rom_path.clone(), gameboy, format);
+                last_save = Instant::now();
+            }
         }
 
         if input.key_released(F) {
