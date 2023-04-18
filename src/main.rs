@@ -157,7 +157,7 @@ async fn run() {
     let recv_file = {
         Closure::<dyn FnMut()>::wrap(Box::new(move || {
             let document = web_sys::window().unwrap().document().unwrap();
-            let file = web_sys::Document::get_element_by_id(&document, "ironboy-input")
+            let file = document.get_element_by_id("ironboy-input")
                 .unwrap()
                 .dyn_into::<HtmlInputElement>()
                 .unwrap()
@@ -191,6 +191,7 @@ async fn run() {
                 let arr = Array::new();
                 arr.push(&array_buffer);
                 let file = web_sys::File::new_with_buffer_source_sequence(&arr, "demo.gb").unwrap();
+
                 start_wasm(file).await;
             })
         }))
@@ -233,6 +234,15 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
     let name = file.name().replace(".sav.bin", "").replace(".sav.json", "");
     let gameboy = load_gameboy(pixels, file.name(), false, None, data);
 
+    let doc = web_sys::window().unwrap().document().unwrap();
+    doc.get_element_by_id("rom-selector")
+        .unwrap()
+        .set_attribute("style", "display: none")
+        .unwrap();
+    doc.get_element_by_id("ironboy-demo")
+        .unwrap()
+        .set_attribute("style", "display: none")
+        .unwrap();
     run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Bin);
 }
 
@@ -549,4 +559,3 @@ fn setup_window(rom_path: String) -> WindowBuilder {
 
 const CYCLES_PER_FRAME: u16 = 17556;
 const NANOS_PER_FRAME: u64 = 16742706;
-const FRAME_DURATION: Duration = Duration::from_nanos(NANOS_PER_FRAME);
