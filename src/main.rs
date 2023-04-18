@@ -73,6 +73,7 @@ mod apu;
 
 #[cfg(test)]
 mod test;
+mod mbc5;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -245,7 +246,7 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         .unwrap();
     doc.get_element_by_id("ironboy-led")
         .unwrap()
-        .set_attribute("style", "filter: brightness(4); transition: all 1.5s linear")
+        .set_attribute("style", "filter: brightness(1.5); transition: all 1.5s linear")
         .unwrap();
     run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Bin);
 }

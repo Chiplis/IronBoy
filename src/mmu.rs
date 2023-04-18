@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use crate::mbc::MemoryBankController;
 use crate::mbc0::MBC0;
 use crate::mbc1::MBC1;
-use crate::mbc3::MBC3;
 
 use crate::renderer::Renderer;
 use std::fs::read;
@@ -22,7 +21,9 @@ use std::fs::read;
 use crate::serial::LinkCable;
 
 use crate::apu::AudioProcessingUnit;
-use crate::mmu::Mbc::{One, Three, Zero};
+use crate::mbc3::MBC3;
+use crate::mbc5::MBC5;
+use crate::mmu::Mbc::{Five, One, Three, Zero};
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum OamCorruptionCause {
@@ -40,6 +41,7 @@ pub struct MemoryManagementUnit {
     mbc0: Option<MBC0>,
     mbc1: Option<MBC1>,
     mbc3: Option<MBC3>,
+    mbc5: Option<MBC5>,
     work_ram: Vec<u8>,
     high_ram: Vec<u8>,
     pub interrupt_handler: InterruptHandler,
@@ -59,6 +61,8 @@ impl MemoryManagementUnit {
         } else if let Some(mbc) = &mut self.mbc1 {
             mbc.save()
         } else if let Some(mbc) = &mut self.mbc3 {
+            mbc.save()
+        } else if let Some(mbc) = &mut self.mbc5 {
             mbc.save()
         }
     }
@@ -83,6 +87,7 @@ enum Mbc {
     Zero(MBC0),
     One(MBC1),
     Three(MBC3),
+    Five(MBC5)
 }
 
 impl MemoryManagementUnit {
@@ -94,10 +99,11 @@ impl MemoryManagementUnit {
     ) -> MemoryManagementUnit {
         let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
 
-        let (mbc0, mbc1, mbc3) = match Self::load_mbc(cartridge, rom, rom_path) {
-            Zero(mbc) => (Some(mbc), None, None),
-            One(mbc) => (None, Some(mbc), None),
-            Three(mbc) => (None, None, Some(mbc))
+        let (mbc0, mbc1, mbc3, mbc5) = match Self::load_mbc(cartridge, rom, rom_path) {
+            Zero(mbc) => (Some(mbc), None, None, None),
+            One(mbc) => (None, Some(mbc), None, None),
+            Three(mbc) => (None, None, Some(mbc), None),
+            Five(mbc) => (None, None, None, Some(mbc))
         };
 
         let mem = MemoryManagementUnit {
@@ -116,6 +122,7 @@ impl MemoryManagementUnit {
             mbc0,
             mbc1,
             mbc3,
+            mbc5
         };
 
         MemoryManagementUnit::init_memory(mem)
@@ -130,6 +137,7 @@ impl MemoryManagementUnit {
             0x00 => Zero(MBC0::new(rom, vec![0; 32 * 1024])),
             0x01..=0x03 => One(MBC1::new(cartridge, rom)),
             0x0F..=0x13 => Three(MBC3::new(cartridge, rom)),
+            0x19..=0x1E => Five(MBC5::new(cartridge, rom)),
             _ => {
                 println!(
                     "MBC ID {} not implemented, defaulting to MBC0 - {}",
@@ -231,6 +239,8 @@ impl MemoryManagementUnit {
         } else if let Some(mbc) = &self.mbc1 {
             mbc.read(translated_address)
         } else if let Some(mbc) = &self.mbc3 {
+            mbc.read(translated_address)
+        } else if let Some(mbc) = &self.mbc5 {
             mbc.read(translated_address)
         } else {
             None
