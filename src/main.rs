@@ -15,10 +15,12 @@ use crate::register::Register;
 
 use clap::{Parser, ValueEnum};
 use cpal::traits::StreamTrait;
+use leptos::js_sys::{Array, ArrayBuffer};
 
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
 use wasm_bindgen::JsValue;
+use web_sys::{Blob, HtmlDivElement, Request, RequestInit, Response, Url, window};
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
@@ -36,8 +38,8 @@ use {
     wasm_bindgen::{JsCast, UnwrapThrowExt},
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
-    web_sys::{console, HtmlInputElement, ReadableStreamDefaultReader, HtmlCanvasElement},
-    winit::platform::web::WindowBuilderExtWebSys
+    web_sys::{console, HtmlInputElement, HtmlAnchorElement, ReadableStreamDefaultReader, HtmlCanvasElement},
+    winit::platform::web::WindowBuilderExtWebSys,
 };
 
 #[cfg(any(unix, windows))]
@@ -130,38 +132,21 @@ impl SaveFile {
 async fn start_wasm(file: web_sys::File) {
     let event_loop = EventLoop::new();
 
-    let canvas = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id("ironboy-canvas"))
-        .and_then(|c| c.dyn_into::<HtmlCanvasElement>().ok());
+    let window = setup_window(file.name()).build(&event_loop).unwrap();
 
-    let window = setup_window(file.name()).with_canvas(canvas).build(&event_loop).unwrap();
-    window.set_inner_size(LogicalSize::new(160.0, 144.0));
+    web_sys::window()
+        .and_then(|win| win.document())
+        .and_then(|doc| doc.get_element_by_id("ironboy-canvas"))
+        .and_then(|container| {
+            use winit::platform::web::WindowExtWebSys;
+            let canvas = &web_sys::Element::from(window.canvas());
+            canvas.set_attribute("style", "width: 100%; height: 100%").unwrap();
+            container.append_child(canvas).ok()
+        });
+
+    window.set_inner_size(LogicalSize::new(240, 218));
+
     let pixels = setup_pixels(&window).await;
-
-    // Initialize winit window with current dimensions of browser client
-    // Listen for resize event on browser client. Adjust winit window dimensions
-    // on event trigger
-    let closure = Closure::wrap(Box::new(|_e: web_sys::Event| {
-        // Retrieve current width and height dimensions of browser client window
-        let get_window_size = || {
-            console::log_1(&"Getting windows size.".into());
-            let client_window = web_sys::window().unwrap();
-            LogicalSize::new(
-                client_window.inner_width().unwrap().as_f64().unwrap(),
-                client_window.inner_height().unwrap().as_f64().unwrap(),
-            )
-        };
-        // TODO: Figure out how to handle resize
-        // let size = get_window_size();
-        // &window.set_inner_size(size);
-    }) as Box<dyn FnMut(_)>);
-    let client_window = web_sys::window().unwrap();
-    client_window
-        .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
-        .unwrap();
-    closure.forget();
-
     file_callback(pixels, event_loop, Some(file)).await;
 }
 
@@ -180,7 +165,32 @@ async fn run() {
                 .unwrap()
                 .item(0)
                 .unwrap();
+            web_sys::console::log_1(&format!("{}", file.name()).into());
             wasm_bindgen_futures::spawn_local(async move {
+                start_wasm(file).await;
+            })
+        }))
+    };
+
+
+    let run_demo = {
+        Closure::<dyn FnMut()>::wrap(Box::new(move || {
+            wasm_bindgen_futures::spawn_local(async move {
+                let document = web_sys::window().unwrap().document().unwrap();
+
+                let mut opts = RequestInit::new();
+                opts.method("GET");
+                // opts.mode(RequestMode::Cors);
+                let url = format!("pocket.gb");
+                let request = Request::new_with_str_and_init(&url, &opts).unwrap();
+                let resp_value = JsFuture::from(web_sys::window().unwrap().fetch_with_request(&request)).await.unwrap();
+                let resp: Response = resp_value.dyn_into().unwrap();
+
+                // Convert this other `Promise` into a rust `Future`.
+                let array_buffer: ArrayBuffer = JsFuture::from(resp.array_buffer().unwrap()).await.unwrap().dyn_into::<>().unwrap();
+                let arr = Array::new();
+                arr.push(&array_buffer);
+                let file = web_sys::File::new_with_buffer_source_sequence(&arr, "demo.gb").unwrap();
                 start_wasm(file).await;
             })
         }))
@@ -193,6 +203,14 @@ async fn run() {
         .and_then(|i| i.add_event_listener_with_callback("change", recv_file.as_ref().dyn_ref().unwrap()).ok())
         .expect("Failed to add setup emulator callback to input.");
 
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("ironboy-demo"))
+        .and_then(|i| i.dyn_into::<HtmlDivElement>().ok())
+        .and_then(|i| i.add_event_listener_with_callback("click", run_demo.as_ref().dyn_ref().unwrap()).ok())
+        .expect("Failed to setup demo.");
+
+    run_demo.forget();
     recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
     web_sys::console::log_1(&"Loading IronBoy.".into());
 }
@@ -234,22 +252,10 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         &String::from_utf8_lossy(&data).into_owned().into(),
     );
 
-    let gameboy = load_gameboy_wasm(pixels, data);
+    let name = file.name().replace(".sav.bin", "").replace(".sav.json", "");
+    let gameboy = load_gameboy(pixels, file.name(), false, None, data);
 
-    run_event_loop(event_loop, gameboy, true, false, false, "".to_string(), SaveFile::Json);
-}
-
-#[cfg(target_arch = "wasm32")]
-fn load_gameboy_wasm(pixels: Pixels, data: Vec<u8>) -> Gameboy {
-    console::log_1(&"Loading Cartridge".into());
-    let cartridge = Cartridge::new(&data);
-    console::log_1(&"Loading Memory".into());
-    let mem = MemoryManagementUnit::new(data, cartridge, None, Path::new(""));
-    console::log_1(&"Loading Gameboy".into());
-    let mut gb = Gameboy::new(mem);
-    gb.mmu.renderer.set_pixels(pixels);
-    gb.mmu.start();
-    gb
+    run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Json);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -274,7 +280,8 @@ fn main_desktop() {
     let event_loop = EventLoop::new();
     let window = setup_window(rom_path.clone()).build(&event_loop).unwrap();
     let pixels = setup_pixels(&window);
-    let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom);
+    let rom = read(rom_path.clone()).expect("Unable to read ROM file");
+    let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom, rom);
 
     run_event_loop(event_loop, gameboy, !args.fast, false, args.save_on_exit, rom_path, args.format);
 }
@@ -473,6 +480,26 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
 
         println!("Save file {} successfully generated in {}ms.", rom_path, now.elapsed().as_millis());
     });
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.create_element("a").ok())
+            .and_then(|a| a.dyn_into::<HtmlAnchorElement>().ok())
+            .and_then(|a| {
+                let array = Array::new();
+                let uarray = Uint8Array::new_with_length(save.len() as u32);
+                uarray.copy_from(&save);
+                array.push(&uarray);
+                let blob = Blob::new_with_u8_array_sequence(&array);
+                let object_url = Url::create_object_url_with_blob(&blob.unwrap());
+                a.set_href(&object_url.unwrap());
+                a.set_attribute("download", &rom_path.clone()).unwrap();
+                a.click();
+                Some(())
+            });
+    }
 }
 
 #[cfg(any(unix, windows))]
@@ -487,20 +514,18 @@ fn exit_emulator(save: bool, rom_path: String, gameboy: &mut Gameboy, format: Sa
     }
 }
 
-#[cfg(any(unix, windows))]
 fn load_gameboy(
     pixels: Pixels,
     rom_path: String,
     cold_boot: bool,
     boot_rom: Option<String>,
+    mut data: Vec<u8>,
 ) -> Gameboy {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {
-        let rom = read(rom_path.clone()).expect("Unable to read ROM file");
-        let cartridge = Cartridge::new(&rom);
-        let mem = MemoryManagementUnit::new(rom, cartridge, boot_rom, Path::new(&rom_path));
+        let cartridge = Cartridge::new(&data);
+        let mem = MemoryManagementUnit::new(data, cartridge, boot_rom, Path::new(&rom_path));
         Gameboy::new(mem)
     } else {
-        let save_file = &mut vec![];
         let format = if rom_path.ends_with(".json") {
             Json
         } else if rom_path.ends_with(".bin") {
@@ -509,13 +534,9 @@ fn load_gameboy(
             panic!("Unexpected file format for ROM save file: {}", rom_path);
         };
 
-        File::open(rom_path)
-            .unwrap()
-            .read_to_end(save_file)
-            .unwrap();
         let mut gb: Gameboy = match format {
-            Json => serde_json::from_slice(save_file).unwrap(),
-            Bin => bincode::deserialize(save_file.as_slice()).unwrap()
+            Json => serde_json::from_slice(data.as_mut()).unwrap(),
+            Bin => bincode::deserialize(data.as_mut()).unwrap()
         };
         gb.init();
         gb

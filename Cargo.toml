@@ -25,7 +25,7 @@ getrandom = { version = "*", features = ["js"] }
 cpal = { version = "0.15.2", features = ["wasm-bindgen"] }
 wasm-rs-async-executor = "0.9.0"
 console_error_panic_hook = "0.1.7"
-web-sys = { version = "0.3.61", features = [ "Window", "Navigator", "console", "Document", "HtmlCanvasElement", "HtmlInputElement", "Event", "EventTarget", "FileList", "File", "Blob", "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult" ] }
+web-sys = { version = "0.3.61", features = [ "Window", "Navigator", "console", "Document", "HtmlAnchorElement","HtmlCanvasElement", "HtmlInputElement", "Event", "EventTarget", "FileList", "File", "Blob", "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult" ] }
 dominator = "0.5.32"
 instant = "0.1.12"
 
