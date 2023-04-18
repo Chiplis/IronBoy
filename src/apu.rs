@@ -1,6 +1,6 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
-    use std::sync::{atomic::{AtomicU16, AtomicU8, Ordering, AtomicBool, AtomicU32}, RwLock, Mutex};
+    use std::sync::{Mutex, RwLock};
 
     #[derive(Default, Serialize, Deserialize)]
     struct VolumeEnvelopeParams {
@@ -14,8 +14,8 @@ mod oscillators {
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        current_settings: AtomicU8,
+
+        current_settings: u8,
     }
 
     impl VolumeEnvelope {
@@ -23,7 +23,7 @@ mod oscillators {
             VolumeEnvelope { sample_rate, ..Default::default() }
         }
 
-        pub(crate) fn write_settings(&self, val: u8) {
+        pub(crate) fn write_settings(&mut self, val: u8) {
             let starting_vol = val >> 4;
             let add_mode = ((val & 0x08) >> 3) > 0;
             let period = val & 0x07;
@@ -38,11 +38,11 @@ mod oscillators {
                 eprintln!("Could not obtain envelope data lock")
             }
 
-            self.current_settings.store(val, Ordering::Relaxed);
+            self.current_settings = (val);
         }
 
         pub(crate) fn read_settings(&self) -> u8 {
-            self.current_settings.load(Ordering::Relaxed)
+            self.current_settings
         }
 
         pub(crate) fn generate_sample(&self) -> u8 {
@@ -73,39 +73,26 @@ mod oscillators {
 
     #[derive(Default, Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        frequency: AtomicU16,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        frequency_timer: AtomicU32,
+        frequency: u16,
+
+        frequency_timer: u32,
         timer_leftover: RwLock<f32>,
         sample_rate: u32,
         sweep: bool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        position: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        duty: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        trigger: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        enabled: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        length: AtomicU8,
+        position: u8,
+        duty: u8,
+        trigger: u8,
+        enabled: bool,
+        length: u8,
         length_counter: RwLock<u32>,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        length_enabled: AtomicBool,
+        length_enabled: bool,
         env: VolumeEnvelope,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sweep_period: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sweep_timer: AtomicU32,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sweep_negate: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sweep_shift: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sweep_enabled: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sweep_frequency: AtomicU16,
+        sweep_period: u8,
+        sweep_timer: u32,
+        sweep_negate: bool,
+        sweep_shift: u8,
+        sweep_enabled: bool,
+        sweep_frequency: u16,
     }
 
     impl SquareWaveGenerator {
@@ -113,13 +100,13 @@ mod oscillators {
             SquareWaveGenerator {
                 sample_rate,
                 sweep,
-                duty: AtomicU8::new(2),
+                duty: 2,
                 env: VolumeEnvelope::new(sample_rate),
                 ..Default::default()
             }
         }
 
-        pub(crate) fn write_reg(&self, reg: usize, val: u8) {
+        pub(crate) fn write_reg(&mut self, reg: usize, val: u8) {
             match reg {
                 0 => {
                     if self.sweep {
@@ -127,19 +114,19 @@ mod oscillators {
                         let negate = (val & 0x08) > 0;
                         let shift = val & 0x07;
 
-                        self.sweep_period.store(period, Ordering::Relaxed);
-                        self.sweep_negate.store(negate, Ordering::Relaxed);
-                        self.sweep_shift.store(shift, Ordering::Relaxed);
+                        self.sweep_period = period;
+                        self.sweep_negate = negate;
+                        self.sweep_shift = shift;
                     }
                 }
 
                 // Duty and length
                 1 => {
                     let new_duty = val >> 6;
-                    self.duty.store(new_duty, Ordering::Relaxed);
+                    self.duty = (new_duty);
 
                     let length = val & 0x3F;
-                    self.length.store(length, Ordering::Relaxed);
+                    self.length = length;
 
                     let length_256hz = 64 - length;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
@@ -161,15 +148,15 @@ mod oscillators {
 
                     // Disable channel if no DAC power
                     if val & 0xF0 == 0 {
-                        self.enabled.store(false, Ordering::Relaxed);
+                        self.enabled = false;
                     }
                 }
 
                 // Frequency 8 least significant bits
                 3 => {
                     // No need to worry about safety since this thread is the only one which will ever change frequency
-                    let new_frequency = (val as u16 & 0xFF) | (self.frequency.load(Ordering::Relaxed) & 0xFF00);
-                    self.frequency.store(new_frequency, Ordering::Relaxed);
+                    let new_frequency = (val as u16 & 0xFF) | (self.frequency & 0xFF00);
+                    self.frequency = new_frequency;
                 }
 
                 // Frequency 3 most significant bits and trigger
@@ -177,13 +164,13 @@ mod oscillators {
 
                     // No need to worry about safety since this thread is the only one which will ever change frequency
                     let msb = ((val as u16 & 0x7) << 8) | 0xFF;
-                    let new_frequency = (msb & 0xFF00) | (self.frequency.load(Ordering::Relaxed) & 0xFF);
-                    self.frequency.store(new_frequency, Ordering::Relaxed);
+                    let new_frequency = (msb & 0xFF00) | (self.frequency & 0xFF);
+                    self.frequency = new_frequency;
 
-                    self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
+                    self.length_enabled = (val & 0x40) > 0;
 
                     let trigger = val & 0x80;
-                    self.trigger.store(trigger, Ordering::Relaxed);
+                    self.trigger = trigger;
 
                     if trigger == 0 {
                         return;
@@ -204,44 +191,44 @@ mod oscillators {
                     // Sweep data
                     if self.sweep {
                         // Copy frequency to shadow register
-                        self.sweep_frequency.store(new_frequency, Ordering::Relaxed);
+                        self.sweep_frequency = new_frequency;
 
-                        let sweep_period = self.sweep_period.load(Ordering::Relaxed);
-                        let sweep_shift = self.sweep_shift.load(Ordering::Relaxed);
+                        let sweep_period = self.sweep_period;
+                        let sweep_shift = self.sweep_shift;
 
                         // Reload sweep timer
                         let sweep_num_samples = ((self.sample_rate as f32 / 128.0) * sweep_period as f32) as u32;
-                        self.sweep_timer.store(sweep_num_samples, Ordering::Relaxed);
+                        self.sweep_timer = sweep_num_samples;
 
                         // Set sweep enabled flag
                         let sweep_enabled = sweep_period != 0 && sweep_shift != 0;
-                        self.sweep_enabled.store(sweep_enabled, Ordering::Relaxed);
+                        self.sweep_enabled = sweep_enabled;
 
                         // Perform frequency and overflow calcs
                         if sweep_enabled {
                             let (overflow, new_sweep_freq) = self.calculate_sweep_freq();
 
                             if overflow {
-                                self.enabled.store(false, Ordering::Relaxed);
+                                self.enabled = false;
                                 return;
                             }
 
-                            self.sweep_frequency.store(new_sweep_freq, Ordering::Relaxed);
-                            self.frequency.store(new_sweep_freq, Ordering::Relaxed);
+                            self.sweep_frequency = new_sweep_freq;
+                            self.frequency = new_sweep_freq;
 
                             let (overflow_2, _) = self.calculate_sweep_freq();
 
                             if overflow_2 {
-                                self.enabled.store(false, Ordering::Relaxed);
+                                self.enabled = false;
                                 return;
                             }
                         }
                     }
 
                     // Reset frequency timer and timer leftover
-                    let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
+                    let cycles_till_next = (2048 - self.frequency as u32) * 4;
                     let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
-                    self.frequency_timer.store(samples_till_next.floor() as u32, Ordering::Relaxed);
+                    self.frequency_timer = samples_till_next.floor() as u32;
 
                     // Store the remainder from the conversion from length in cycles to samples in timer leftover
                     match self.timer_leftover.write() {
@@ -252,7 +239,7 @@ mod oscillators {
                     }
 
                     // Set enabled
-                    self.enabled.store(true, Ordering::Relaxed);
+                    self.enabled = true;
                 }
 
                 reg => println!("Square Wave Osc: Unrecognised register ({reg})"),
@@ -260,16 +247,16 @@ mod oscillators {
         }
 
         pub(crate) fn is_enabled(&self) -> bool {
-            self.enabled.load(Ordering::Relaxed)
+            self.enabled
         }
 
         pub(crate) fn read_reg(&self, reg: usize) -> u8 {
             match reg {
                 0 => {
                     if self.sweep {
-                        let mut reg_val = self.sweep_period.load(Ordering::Relaxed) << 4;
-                        reg_val |= (self.sweep_negate.load(Ordering::Relaxed) as u8) << 3;
-                        reg_val |= self.sweep_shift.load(Ordering::Relaxed);
+                        let mut reg_val = self.sweep_period << 4;
+                        reg_val |= (self.sweep_negate as u8) << 3;
+                        reg_val |= self.sweep_shift;
                         reg_val
                     } else {
                         0x00
@@ -277,19 +264,19 @@ mod oscillators {
                 }
 
                 1 => {
-                    let mut reg_value = self.duty.load(Ordering::Relaxed) << 6;
-                    reg_value |= self.length.load(Ordering::Relaxed);
+                    let mut reg_value = self.duty << 6;
+                    reg_value |= self.length;
                     reg_value
                 }
 
                 2 => self.env.read_settings(),
 
-                3 => (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8,
+                3 => (self.frequency & 0x00FF) as u8,
 
                 4 => {
-                    let mut reg_value = self.trigger.load(Ordering::Relaxed);
-                    reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
-                    reg_value |= ((self.frequency.load(Ordering::Relaxed) & 0x0F00) >> 8) as u8;
+                    let mut reg_value = self.trigger;
+                    reg_value |= (self.length_enabled as u8) << 6;
+                    reg_value |= ((self.frequency & 0x0F00) >> 8) as u8;
                     reg_value
                 }
 
@@ -297,14 +284,14 @@ mod oscillators {
             }
         }
 
-        pub(crate) fn generate_sample(&self) -> f32 {
-            if !self.enabled.load(Ordering::Relaxed) {
+        pub(crate) fn generate_sample(&mut self) -> f32 {
+            if !self.enabled {
                 return 0.0;
             }
 
-            if self.frequency_timer.load(Ordering::Relaxed) == 0 {
+            if self.frequency_timer == 0 {
                 // Reset frequency timer
-                let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 4;
+                let cycles_till_next = (2048 - self.frequency as u32) * 4;
                 let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
 
                 // If leftover plus current remainder is more than one we should make this period another sample long to make up for the lost time
@@ -322,75 +309,75 @@ mod oscillators {
                     }
                 }
 
-                self.frequency_timer.store(samples_till_next.floor() as u32, Ordering::Relaxed);
+                self.frequency_timer = samples_till_next.floor() as u32;
 
-                let current_position = self.position.load(Ordering::Relaxed);
+                let current_position = self.position;
 
                 let mut new_position = current_position + 1;
                 if new_position >= 8 {
                     new_position = 0;
                 }
 
-                self.position.store(new_position, Ordering::Relaxed);
+                self.position = new_position;
             }
 
-            self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+            self.frequency_timer = self.frequency_timer - 1;
 
             if self.sweep {
-                if self.sweep_timer.load(Ordering::Relaxed) == 0 && self.sweep_enabled.load(Ordering::Relaxed) && self.sweep_period.load(Ordering::Relaxed) > 0 {
+                if self.sweep_timer == 0 && self.sweep_enabled && self.sweep_period > 0 {
                     // Reload sweep timer
-                    let sweep_num_samples = ((self.sample_rate as f32 / 128.0) * self.sweep_period.load(Ordering::Relaxed) as f32) as u32;
-                    self.sweep_timer.store(sweep_num_samples, Ordering::Relaxed);
+                    let sweep_num_samples = ((self.sample_rate as f32 / 128.0) * self.sweep_period as f32) as u32;
+                    self.sweep_timer = sweep_num_samples;
 
                     let (overflow, new_sweep_freq) = self.calculate_sweep_freq();
 
                     if overflow {
-                        self.enabled.store(false, Ordering::Relaxed);
+                        self.enabled = false;
                         return 0.0;
                     }
 
-                    self.sweep_frequency.store(new_sweep_freq, Ordering::Relaxed);
-                    self.frequency.store(new_sweep_freq, Ordering::Relaxed);
+                    self.sweep_frequency = new_sweep_freq;
+                    self.frequency = new_sweep_freq;
 
                     let (overflow_2, _) = self.calculate_sweep_freq();
 
                     if overflow_2 {
-                        self.enabled.store(false, Ordering::Relaxed);
+                        self.enabled = false;
                         return 0.0;
                     }
                 }
 
-                self.sweep_timer.store(self.sweep_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+                self.sweep_timer = self.sweep_timer - 1;
             }
 
             let mut wave_sample = 0;
             let envelope_sample = self.env.generate_sample();
 
-            match self.duty.load(Ordering::Relaxed) {
+            match self.duty {
                 // 12.5%
                 0 => {
-                    if self.position.load(Ordering::Relaxed) == 7 {
+                    if self.position == 7 {
                         wave_sample = 1;
                     }
                 }
 
                 // 25%
                 1 => {
-                    if self.position.load(Ordering::Relaxed) >= 6 {
+                    if self.position >= 6 {
                         wave_sample = 1;
                     }
                 }
 
                 // 50%
                 2 => {
-                    if self.position.load(Ordering::Relaxed) >= 4 {
+                    if self.position >= 4 {
                         wave_sample = 1;
                     }
                 }
 
                 // 75%
                 3 => {
-                    if self.position.load(Ordering::Relaxed) < 6 {
+                    if self.position < 6 {
                         wave_sample = 1;
                     }
                 }
@@ -398,7 +385,7 @@ mod oscillators {
                 _ => {}
             }
 
-            if self.length_enabled.load(Ordering::Relaxed) {
+            if self.length_enabled {
                 // Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
                 match self.length_counter.try_write() {
                     Ok(mut length_counter) => {
@@ -417,7 +404,7 @@ mod oscillators {
 
                         // If we've reached the end of the current length disable the channel
                         if *length_counter == 0 {
-                            self.enabled.store(false, Ordering::Relaxed);
+                            self.enabled = false;
                         }
                     }
                     Err(_error) => {}
@@ -434,16 +421,16 @@ mod oscillators {
         }
 
         fn calculate_sweep_freq(&self) -> (bool, u16) {
-            let offset = self.sweep_frequency.load(Ordering::Relaxed) >> self.sweep_shift.load(Ordering::Relaxed);
+            let offset = self.sweep_frequency >> self.sweep_shift;
 
-            let new_freq: u32 = if self.sweep_negate.load(Ordering::Relaxed) {
+            let new_freq: u32 = if self.sweep_negate {
                 // Check for underflow
-                match self.sweep_frequency.load(Ordering::Relaxed).checked_sub(offset) {
+                match self.sweep_frequency.checked_sub(offset) {
                     Some(res) => res.into(),
                     None => 0
                 }
             } else {
-                self.sweep_frequency.load(Ordering::Relaxed) as u32 + offset as u32
+                self.sweep_frequency as u32 + offset as u32
             };
 
             // Overflow check
@@ -459,26 +446,26 @@ mod oscillators {
     #[derive(Default, Serialize, Deserialize)]
     pub struct WaveTable {
         sample_rate: u32,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        sound_data: [AtomicU8; 32],
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        frequency: AtomicU16,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        frequency_timer: AtomicU32,
+
+        sound_data: [u8; 32],
+
+        frequency: u16,
+
+        frequency_timer: u32,
         timer_leftover: RwLock<f32>,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        position: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        trigger: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        enabled: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        length: AtomicU8,
+
+        position: u8,
+
+        trigger: u8,
+
+        enabled: bool,
+
+        length: u8,
         length_counter: RwLock<u32>,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        length_enabled: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        volume_code: AtomicU8,
+
+        length_enabled: bool,
+
+        volume_code: u8,
     }
 
     impl WaveTable {
@@ -486,15 +473,15 @@ mod oscillators {
             WaveTable { sample_rate, ..Default::default() }
         }
 
-        pub(crate) fn write_reg(&self, reg: usize, val: u8) {
+        pub(crate) fn write_reg(&mut self, reg: usize, val: u8) {
             match reg {
                 0 => {
                     if val == 0x00 {
-                        self.enabled.store(false, Ordering::Relaxed);
+                        self.enabled = false;
                     }
                 }
                 1 => {
-                    self.length.store(val, Ordering::Relaxed);
+                    self.length = val;
                     let length_256hz = 256 - val as u32;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
 
@@ -508,14 +495,14 @@ mod oscillators {
                 }
 
                 2 => {
-                    self.volume_code.store((val & 60) >> 5, Ordering::Relaxed);
+                    self.volume_code = (val & 60) >> 5;
                 }
 
                 // Frequency 8 least significant bits
                 3 => {
                     // No need to worry about safety since this thread is the only one which will ever change frequency
-                    let new_frequency = (val as u16 & 0xFF) | (self.frequency.load(Ordering::Relaxed) & 0xFF00);
-                    self.frequency.store(new_frequency, Ordering::Relaxed);
+                    let new_frequency = (val as u16 & 0xFF) | (self.frequency & 0xFF00);
+                    self.frequency = new_frequency;
                 }
 
                 // Frequency 3 most significant bits and Trigger
@@ -523,13 +510,13 @@ mod oscillators {
 
                     // No need to worry about safety since this thread is the only one which will ever change frequency
                     let msb = ((val as u16 & 0x7) << 8) | 0xFF;
-                    let new_frequency = (msb & 0xFF00) | (self.frequency.load(Ordering::Relaxed) & 0xFF);
-                    self.frequency.store(new_frequency, Ordering::Relaxed);
+                    let new_frequency = (msb & 0xFF00) | (self.frequency & 0xFF);
+                    self.frequency = new_frequency;
 
-                    self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
+                    self.length_enabled = (val & 0x40) > 0;
 
                     let trigger = val & 0x80;
-                    self.trigger.store(trigger, Ordering::Relaxed);
+                    self.trigger = trigger;
 
                     if trigger > 0 {
                         // If length == 0 reset it to 256
@@ -545,9 +532,9 @@ mod oscillators {
                         }
 
                         // Reset frequency timer
-                        let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
+                        let cycles_till_next = (2048 - self.frequency as u32) * 2;
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
-                        self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+                        self.frequency_timer = samples_till_next as u32;
 
                         // See square wave for an explanation on timer leftover
                         match self.timer_leftover.write() {
@@ -559,9 +546,9 @@ mod oscillators {
                             }
                         }
 
-                        self.position.store(0, Ordering::Relaxed);
+                        self.position = 0;
 
-                        self.enabled.store(true, Ordering::Relaxed);
+                        self.enabled = true;
                     }
                 }
 
@@ -570,21 +557,21 @@ mod oscillators {
         }
 
         pub(crate) fn is_enabled(&self) -> bool {
-            self.enabled.load(Ordering::Relaxed)
+            self.enabled
         }
 
         pub(crate) fn read_reg(&self, reg: usize) -> u8 {
             match reg {
-                1 => self.length.load(Ordering::Relaxed),
+                1 => self.length,
 
-                2 => self.volume_code.load(Ordering::Relaxed) << 6,
+                2 => self.volume_code << 6,
 
-                3 => (self.frequency.load(Ordering::Relaxed) & 0x00FF) as u8,
+                3 => (self.frequency & 0x00FF) as u8,
 
                 4 => {
-                    let mut reg_value = self.trigger.load(Ordering::Relaxed);
-                    reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
-                    reg_value |= ((self.frequency.load(Ordering::Relaxed) & 0x0F00) >> 8) as u8;
+                    let mut reg_value = self.trigger;
+                    reg_value |= (self.length_enabled as u8) << 6;
+                    reg_value |= ((self.frequency & 0x0F00) >> 8) as u8;
                     reg_value
                 }
 
@@ -592,12 +579,12 @@ mod oscillators {
             }
         }
 
-        pub(crate) fn write_sound_data(&self, address: usize, val: u8) {
+        pub(crate) fn write_sound_data(&mut self, address: usize, val: u8) {
             let rel_address = address - 0xFF30;
             let start_sample = rel_address * 2;
 
-            self.sound_data[start_sample].store(val >> 4, Ordering::Relaxed);
-            self.sound_data[start_sample + 1].store(val & 0x0F, Ordering::Relaxed);
+            self.sound_data[start_sample] = val >> 4;
+            self.sound_data[start_sample + 1] = val & 0x0F;
         }
 
         pub(crate) fn read_sound_data(&self, address: usize) -> u8 {
@@ -605,22 +592,22 @@ mod oscillators {
             let start_sample = rel_address * 2;
 
             let mut reg_val = 0x00;
-            reg_val |= self.sound_data[start_sample].load(Ordering::Relaxed) << 4;
-            reg_val |= self.sound_data[start_sample + 1].load(Ordering::Relaxed);
+            reg_val |= self.sound_data[start_sample] << 4;
+            reg_val |= self.sound_data[start_sample + 1];
             reg_val
         }
 
-        pub(crate) fn generate_sample(&self) -> f32 {
-            if !self.enabled.load(Ordering::Relaxed) {
+        pub(crate) fn generate_sample(&mut self) -> f32 {
+            if !self.enabled {
                 return 0.0;
             }
 
-            let mut current_position = self.position.load(Ordering::Relaxed);
+            let mut current_position = self.position;
 
-            if self.frequency_timer.load(Ordering::Relaxed) == 0 {
+            if self.frequency_timer == 0 {
 
                 // Reset frequency timer
-                let cycles_till_next = (2048 - self.frequency.load(Ordering::Relaxed) as u32) * 2;
+                let cycles_till_next = (2048 - self.frequency as u32) * 2;
                 let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * cycles_till_next as f32;
 
                 // See square wave for explanation on timer leftover
@@ -638,7 +625,7 @@ mod oscillators {
                     }
                 }
 
-                self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+                self.frequency_timer = samples_till_next as u32;
 
                 // Move one position forward
                 let new_position = if current_position == 31 {
@@ -647,15 +634,15 @@ mod oscillators {
                     current_position + 1
                 };
 
-                self.position.store(new_position, Ordering::Relaxed);
+                self.position = new_position;
                 current_position = new_position;
             }
 
-            self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+            self.frequency_timer = self.frequency_timer - 1;
 
-            let mut wave_sample = self.sound_data[current_position as usize].load(Ordering::Relaxed);
+            let mut wave_sample = self.sound_data[current_position as usize];
 
-            let volume_shift = match self.volume_code.load(Ordering::Relaxed) {
+            let volume_shift = match self.volume_code {
                 0 => {
                     4
                 }
@@ -680,7 +667,7 @@ mod oscillators {
 
             wave_sample >>= volume_shift;
 
-            if self.length_enabled.load(Ordering::Relaxed) {
+            if self.length_enabled {
                 // Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
                 match self.length_counter.try_write() {
                     Ok(mut length_counter) => {
@@ -699,7 +686,7 @@ mod oscillators {
 
                         // If we've reached the end of the current length disable the channel
                         if *length_counter == 0 {
-                            self.enabled.store(false, Ordering::Relaxed);
+                            self.enabled = false;
                         }
                     }
                     Err(_error) => {}
@@ -714,27 +701,27 @@ mod oscillators {
     pub struct NoiseGenerator {
         sample_rate: u32,
         env: VolumeEnvelope,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        divisor_code: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        divisor: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        clock_shift: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        frequency_timer: AtomicU32,
+
+        divisor_code: u8,
+
+        divisor: u8,
+
+        clock_shift: u8,
+
+        frequency_timer: u32,
         timer_leftover: RwLock<f32>,
         lfsr: Mutex<[bool; 15]>,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        width: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        trigger: AtomicU8,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        enabled: AtomicBool,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        length: AtomicU8,
+
+        width: bool,
+
+        trigger: u8,
+
+        enabled: bool,
+
+        length: u8,
         length_counter: RwLock<u32>,
-        #[cfg_attr(target_arch="wasm32", serde(skip))]
-        length_enabled: AtomicBool,
+
+        length_enabled: bool,
     }
 
     impl NoiseGenerator {
@@ -747,7 +734,7 @@ mod oscillators {
             }
         }
 
-        pub(crate) fn write_reg(&self, reg: usize, val: u8) {
+        pub(crate) fn write_reg(&mut self, reg: usize, val: u8) {
             match reg {
                 0 => {}
 
@@ -755,7 +742,7 @@ mod oscillators {
                     let length = val & 0x3F;
                     let length_256hz = 64 - length;
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
-                    self.length.store(length, Ordering::Relaxed);
+                    self.length = length;
 
                     // Here we set the length counter making sure nothing can use it while it is set
                     match self.length_counter.write() {
@@ -773,7 +760,7 @@ mod oscillators {
 
                     // Disable channel if no DAC power
                     if val & 0xF0 == 0 {
-                        self.enabled.store(false, Ordering::Relaxed);
+                        self.enabled = false;
                     }
                 }
 
@@ -788,18 +775,18 @@ mod oscillators {
                         divisor_code * 16
                     };
 
-                    self.divisor_code.store(divisor_code, Ordering::Relaxed);
-                    self.divisor.store(divisor, Ordering::Relaxed);
-                    self.clock_shift.store(clock_shift, Ordering::Relaxed);
+                    self.divisor_code = divisor_code;
+                    self.divisor = divisor;
+                    self.clock_shift = clock_shift;
 
-                    self.width.store(width != 0, Ordering::Relaxed);
+                    self.width = width != 0;
                 }
 
                 4 => {
-                    self.length_enabled.store((val & 0x40) > 0, Ordering::Relaxed);
+                    self.length_enabled = (val & 0x40) > 0;
 
                     let trigger = val & 0x80;
-                    self.trigger.store(trigger, Ordering::Relaxed);
+                    self.trigger = trigger;
 
                     if trigger > 0 {
                         // If length == 0 reset it to 64
@@ -827,9 +814,9 @@ mod oscillators {
                         }
 
                         // Set frequency timer
-                        let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
+                        let frequency = (self.divisor as u32) << (self.clock_shift as u32);
                         let samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
-                        self.frequency_timer.store(samples_till_next as u32, Ordering::Relaxed);
+                        self.frequency_timer = samples_till_next as u32;
 
                         // See square wave for an explanation on timer leftover
                         match self.timer_leftover.write() {
@@ -841,7 +828,7 @@ mod oscillators {
                             }
                         }
 
-                        self.enabled.store(true, Ordering::Relaxed);
+                        self.enabled = true;
                     }
                 }
 
@@ -852,26 +839,26 @@ mod oscillators {
         }
 
         pub(crate) fn is_enabled(&self) -> bool {
-            self.enabled.load(Ordering::Relaxed)
+            self.enabled
         }
 
         pub(crate) fn read_reg(&self, reg: usize) -> u8 {
             match reg {
-                1 => self.length.load(Ordering::Relaxed),
+                1 => self.length,
 
                 2 => self.env.read_settings(),
 
                 3 => {
                     let mut reg_val = 0x00;
-                    reg_val |= self.clock_shift.load(Ordering::Relaxed) << 4;
-                    reg_val |= (self.width.load(Ordering::Relaxed) as u8) << 3;
-                    reg_val |= self.divisor_code.load(Ordering::Relaxed);
+                    reg_val |= self.clock_shift << 4;
+                    reg_val |= (self.width as u8) << 3;
+                    reg_val |= self.divisor_code;
                     reg_val
                 }
 
                 4 => {
-                    let mut reg_value = self.trigger.load(Ordering::Relaxed);
-                    reg_value |= (self.length_enabled.load(Ordering::Relaxed) as u8) << 6;
+                    let mut reg_value = self.trigger;
+                    reg_value |= (self.length_enabled as u8) << 6;
                     reg_value
                 }
 
@@ -879,8 +866,8 @@ mod oscillators {
             }
         }
 
-        pub(crate) fn generate_sample(&self) -> f32 {
-            if !self.enabled.load(Ordering::Relaxed) {
+        pub(crate) fn generate_sample(&mut self) -> f32 {
+            if !self.enabled {
                 return 0.0;
             }
 
@@ -889,9 +876,9 @@ mod oscillators {
 
             match self.lfsr.lock() {
                 Ok(mut lfsr) => {
-                    if self.frequency_timer.load(Ordering::Relaxed) == 0 {
+                    if self.frequency_timer == 0 {
                         // Reset frequency timer
-                        let frequency = (self.divisor.load(Ordering::Relaxed) as u32) << (self.clock_shift.load(Ordering::Relaxed) as u32);
+                        let frequency = (self.divisor as u32) << (self.clock_shift as u32);
                         let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
 
                         // See square wave for explanation on timer leftover
@@ -909,7 +896,7 @@ mod oscillators {
                             }
                         }
 
-                        self.frequency_timer.store(samples_till_next.ceil() as u32, Ordering::Relaxed);
+                        self.frequency_timer = samples_till_next.ceil() as u32;
 
                         // Move LFSR on
                         let new_val = lfsr[0] != lfsr[1];
@@ -917,12 +904,12 @@ mod oscillators {
 
                         lfsr[14] = new_val;
 
-                        if self.width.load(Ordering::Relaxed) {
+                        if self.width {
                             lfsr[6] = new_val;
                         }
                     }
 
-                    self.frequency_timer.store(self.frequency_timer.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
+                    self.frequency_timer = self.frequency_timer - 1;
 
                     noise_sample = i32::from(lfsr[0]);
                 }
@@ -932,7 +919,7 @@ mod oscillators {
                 }
             }
 
-            if self.length_enabled.load(Ordering::Relaxed) {
+            if self.length_enabled {
 
                 // Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
                 if let Ok(mut length_counter) = self.length_counter.try_write() {
@@ -944,7 +931,7 @@ mod oscillators {
 
                     // If we've reached the end of the current length disable the channel
                     if *length_counter == 0 {
-                        self.enabled.store(false, Ordering::Relaxed);
+                        self.enabled = false;
                     }
                 }
             }
@@ -961,7 +948,7 @@ mod oscillators {
 }
 
 use std::cmp;
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}, Mutex};
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream, SupportedStreamConfig};
 use serde::{Serialize, Deserialize};
@@ -974,20 +961,20 @@ struct AudioProcessingState {
     osc_2: oscillators::SquareWaveGenerator,
     osc_3: oscillators::WaveTable,
     osc_4: oscillators::NoiseGenerator,
-    #[cfg_attr(target_arch="wasm32", serde(skip))]
-    left_osc_enable: [AtomicBool; 4],
-    #[cfg_attr(target_arch="wasm32", serde(skip))]
-    right_osc_enable: [AtomicBool; 4],
-    #[cfg_attr(target_arch="wasm32", serde(skip))]
-    left_master_vol: AtomicU8,
-    #[cfg_attr(target_arch="wasm32", serde(skip))]
-    right_master_vol: AtomicU8,
-    #[cfg_attr(target_arch="wasm32", serde(skip))]
-    power_control: AtomicBool,
+
+    left_osc_enable: [bool; 4],
+
+    right_osc_enable: [bool; 4],
+
+    left_master_vol: u8,
+
+    right_master_vol: u8,
+
+    power_control: bool,
 }
 
 impl AudioProcessingState {
-    pub(crate) fn new() -> Arc<AudioProcessingState> {
+    pub(crate) fn new() -> Arc<Mutex<AudioProcessingState>> {
         let config = Self::load_config();
         let sample_rate = config.sample_rate().0;
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
@@ -997,7 +984,7 @@ impl AudioProcessingState {
             println!("Using {} at {}Hz with {} channels", name, sample_rate, config.channels())
         }
 
-        Arc::new(AudioProcessingState {
+        Arc::new(Mutex::new(AudioProcessingState {
             sample_rate,
             num_channels: config.channels(),
             osc_1: oscillators::SquareWaveGenerator::new(sample_rate, true),
@@ -1005,10 +992,10 @@ impl AudioProcessingState {
             osc_3: oscillators::WaveTable::new(sample_rate),
             osc_4: oscillators::NoiseGenerator::new(sample_rate),
             ..Default::default()
-        })
+        }))
     }
 
-    pub(crate) fn load_stream(processor: &Arc<AudioProcessingState>) -> Option<Stream> {
+    pub(crate) fn load_stream(processor: &Arc<Mutex<AudioProcessingState>>) -> Option<Stream> {
         let audio_callback_ref = processor.clone();
         let audio_error_ref = processor.clone();
 
@@ -1016,9 +1003,9 @@ impl AudioProcessingState {
         let out_dev = cpal::default_host().default_output_device().expect("No available output device found");
 
         let stream = match config.sample_format() {
-            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_f32(audio), move |stream_error| audio_error_ref.audio_error(stream_error), None),
-            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_i16(audio), move |stream_error| audio_error_ref.audio_error(stream_error), None),
-            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.audio_block_u16(audio), move |stream_error| audio_error_ref.audio_error(stream_error), None),
+            cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.lock().unwrap().audio_block_f32(audio), move |stream_error| audio_error_ref.lock().unwrap().audio_error(stream_error), None),
+            cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.lock().unwrap().audio_block_f32(audio), move |stream_error| audio_error_ref.lock().unwrap().audio_error(stream_error), None),
+            cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.lock().unwrap().audio_block_f32(audio), move |stream_error| audio_error_ref.lock().unwrap().audio_error(stream_error), None),
             unsupported => panic!("Unsupported stream format: {unsupported}")
         };
 
@@ -1041,7 +1028,7 @@ impl AudioProcessingState {
             .with_sample_rate(cpal::SampleRate(44100))
     }
 
-    pub(crate) fn write_register(&self, address: usize, value: u8) {
+    pub(crate) fn write_register(&mut self, address: usize, value: u8) {
         if address < 0xFF24 {
             let rel_address = address - 0xFF10;
 
@@ -1063,24 +1050,24 @@ impl AudioProcessingState {
                     let left_vol = (value & 0x70) >> 4;
                     let right_vol = value & 0x07;
 
-                    self.left_master_vol.store(left_vol, Ordering::Relaxed);
-                    self.right_master_vol.store(right_vol, Ordering::Relaxed);
+                    self.left_master_vol = left_vol;
+                    self.right_master_vol = right_vol;
                 }
 
                 0xFF25 => {
-                    self.left_osc_enable[3].store((value >> 7) > 0, Ordering::Relaxed);
-                    self.left_osc_enable[2].store(((value & 0x40) >> 6) > 0, Ordering::Relaxed);
-                    self.left_osc_enable[1].store(((value & 0x20) >> 5) > 0, Ordering::Relaxed);
-                    self.left_osc_enable[0].store(((value & 0x10) >> 4) > 0, Ordering::Relaxed);
+                    self.left_osc_enable[3] = (value >> 7) > 0;
+                    self.left_osc_enable[2] = ((value & 0x40) >> 6) > 0;
+                    self.left_osc_enable[1] = ((value & 0x20) >> 5) > 0;
+                    self.left_osc_enable[0] = ((value & 0x10) >> 4) > 0;
 
-                    self.right_osc_enable[3].store(((value & 0x08) >> 3) > 0, Ordering::Relaxed);
-                    self.right_osc_enable[2].store(((value & 0x04) >> 2) > 0, Ordering::Relaxed);
-                    self.right_osc_enable[1].store(((value & 0x02) >> 1) > 0, Ordering::Relaxed);
-                    self.right_osc_enable[0].store((value & 0x01) > 0, Ordering::Relaxed);
+                    self.right_osc_enable[3] = ((value & 0x08) >> 3) > 0;
+                    self.right_osc_enable[2] = ((value & 0x04) >> 2) > 0;
+                    self.right_osc_enable[1] = ((value & 0x02) >> 1) > 0;
+                    self.right_osc_enable[0] = (value & 0x01) > 0;
                 }
 
                 0xFF26 => {
-                    self.power_control.store((value >> 7) > 0, Ordering::Relaxed);
+                    self.power_control = (value >> 7) > 0;
                 }
 
                 _ => {
@@ -1124,26 +1111,26 @@ impl AudioProcessingState {
             match address {
                 0xFF24 => {
                     let mut reg_val = 0x00;
-                    reg_val |= self.left_master_vol.load(Ordering::Relaxed) << 4;
-                    reg_val |= self.right_master_vol.load(Ordering::Relaxed);
+                    reg_val |= self.left_master_vol << 4;
+                    reg_val |= self.right_master_vol;
                     reg_val
                 }
                 0xFF25 => {
                     let mut reg_val = 0x00;
-                    reg_val |= (self.left_osc_enable[3].load(Ordering::Relaxed) as u8) << 7;
-                    reg_val |= (self.left_osc_enable[2].load(Ordering::Relaxed) as u8) << 6;
-                    reg_val |= (self.left_osc_enable[1].load(Ordering::Relaxed) as u8) << 5;
-                    reg_val |= (self.left_osc_enable[0].load(Ordering::Relaxed) as u8) << 4;
+                    reg_val |= (self.left_osc_enable[3] as u8) << 7;
+                    reg_val |= (self.left_osc_enable[2] as u8) << 6;
+                    reg_val |= (self.left_osc_enable[1] as u8) << 5;
+                    reg_val |= (self.left_osc_enable[0] as u8) << 4;
 
-                    reg_val |= (self.right_osc_enable[3].load(Ordering::Relaxed) as u8) << 3;
-                    reg_val |= (self.right_osc_enable[2].load(Ordering::Relaxed) as u8) << 2;
-                    reg_val |= (self.right_osc_enable[1].load(Ordering::Relaxed) as u8) << 1;
-                    reg_val |= self.right_osc_enable[0].load(Ordering::Relaxed) as u8;
+                    reg_val |= (self.right_osc_enable[3] as u8) << 3;
+                    reg_val |= (self.right_osc_enable[2] as u8) << 2;
+                    reg_val |= (self.right_osc_enable[1] as u8) << 1;
+                    reg_val |= self.right_osc_enable[0] as u8;
 
                     reg_val
                 }
                 0xFF26 => {
-                    let mut reg_val = (self.power_control.load(Ordering::Relaxed) as u8) << 7;
+                    let mut reg_val = (self.power_control as u8) << 7;
                     reg_val |= (self.osc_4.is_enabled() as u8) << 3;
                     reg_val |= (self.osc_3.is_enabled() as u8) << 2;
                     reg_val |= (self.osc_2.is_enabled() as u8) << 1;
@@ -1158,7 +1145,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_f32(&self, audio: &mut [f32]) {
+    fn audio_block_f32(&mut self, audio: &mut [f32]) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1177,7 +1164,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_i16(&self, audio: &mut [i16]) {
+    fn audio_block_i16(&mut self, audio: &mut [i16]) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1199,7 +1186,7 @@ impl AudioProcessingState {
         }
     }
 
-    fn audio_block_u16(&self, audio: &mut [u16]) {
+    fn audio_block_u16(&mut self, audio: &mut [u16]) {
         let num_samples = audio.len() / self.num_channels as usize;
 
         for sample_index in 0..num_samples {
@@ -1225,8 +1212,8 @@ impl AudioProcessingState {
         eprintln!("Audio Error: {:?}", error);
     }
 
-    fn generate_samples(&self) -> (f32, f32) {
-        if !self.power_control.load(Ordering::Relaxed) {
+    fn generate_samples(&mut self) -> (f32, f32) {
+        if !self.power_control {
             return (0.0, 0.0);
         }
 
@@ -1234,34 +1221,34 @@ impl AudioProcessingState {
         let mut mixed_right_sample = 0.0;
 
         let osc_1_sample = self.osc_1.generate_sample();
-        if self.left_osc_enable[0].load(Ordering::Relaxed) {
+        if self.left_osc_enable[0] {
             mixed_left_sample += osc_1_sample;
         }
-        if self.right_osc_enable[0].load(Ordering::Relaxed) {
+        if self.right_osc_enable[0] {
             mixed_right_sample += osc_1_sample;
         }
 
         let osc_2_sample = self.osc_2.generate_sample();
-        if self.left_osc_enable[1].load(Ordering::Relaxed) {
+        if self.left_osc_enable[1] {
             mixed_left_sample += osc_2_sample;
         }
-        if self.right_osc_enable[1].load(Ordering::Relaxed) {
+        if self.right_osc_enable[1] {
             mixed_right_sample += osc_2_sample;
         }
 
         let osc_3_sample = self.osc_3.generate_sample();
-        if self.left_osc_enable[2].load(Ordering::Relaxed) {
+        if self.left_osc_enable[2] {
             mixed_left_sample += osc_3_sample;
         }
-        if self.right_osc_enable[2].load(Ordering::Relaxed) {
+        if self.right_osc_enable[2] {
             mixed_right_sample += osc_3_sample;
         }
 
         let osc_4_sample = self.osc_4.generate_sample();
-        if self.left_osc_enable[3].load(Ordering::Relaxed) {
+        if self.left_osc_enable[3] {
             mixed_left_sample += osc_4_sample;
         }
-        if self.right_osc_enable[3].load(Ordering::Relaxed) {
+        if self.right_osc_enable[3] {
             mixed_right_sample += osc_4_sample;
         }
 
@@ -1275,7 +1262,7 @@ impl AudioProcessingState {
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Default)]
 pub struct AudioProcessingUnit {
-    state: Arc<AudioProcessingState>,
+    state: Arc<Mutex<AudioProcessingState>>,
     #[serde(skip)]
     pub(crate) stream: Option<Stream>,
 }
@@ -1295,7 +1282,7 @@ impl AudioProcessingUnit {
         if !(0xFF10..=0xFF3F).contains(&address) {
             false
         } else {
-            self.state.write_register(address, value);
+            self.state.lock().unwrap().write_register(address, value);
             true
         }
     }
@@ -1304,7 +1291,7 @@ impl AudioProcessingUnit {
         if !(0xFF10..=0xFF3F).contains(&address) {
             None
         } else {
-            Some(self.state.read_register(address))
+            Some(self.state.lock().unwrap().read_register(address))
         }
     }
 }
