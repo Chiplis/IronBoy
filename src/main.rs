@@ -222,31 +222,9 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         None => return,
     };
     console::log_2(&"File:".into(), &file.name().into());
-    let reader = file
-        .stream()
-        .get_reader()
-        .dyn_into::<ReadableStreamDefaultReader>()
-        .expect_throw("Reader is reader");
-    let mut data = Vec::new();
-    loop {
-        let chunk = JsFuture::from(reader.read())
-            .await
-            .expect_throw("Read")
-            .dyn_into::<Object>()
-            .unwrap();
-        // ReadableStreamReadResult is somehow wrong. So go by hand. Might be a web-sys bug.
-        let done = Reflect::get(&chunk, &"done".into()).expect_throw("Get done");
-        if done.is_truthy() {
-            break;
-        }
-        let chunk = Reflect::get(&chunk, &"value".into())
-            .expect_throw("Get chunk")
-            .dyn_into::<Uint8Array>()
-            .expect_throw("bytes are bytes");
-        let data_len = data.len();
-        data.resize(data_len + chunk.length() as usize, 255);
-        chunk.copy_to(&mut data[data_len..]);
-    }
+    let array_buffer = JsFuture::from(file.array_buffer()).await.unwrap();
+    let data = Uint8Array::new(&array_buffer).to_vec();
+
     console::log_2(
         &"Got data".into(),
         &String::from_utf8_lossy(&data).into_owned().into(),
