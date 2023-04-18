@@ -255,7 +255,7 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
     let name = file.name().replace(".sav.bin", "").replace(".sav.json", "");
     let gameboy = load_gameboy(pixels, file.name(), false, None, data);
 
-    run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Json);
+    run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Bin);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -356,18 +356,6 @@ fn run_event_loop(
                 if !sleep {
                     focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
                 }
-            }
-        }
-
-        if let Event::WindowEvent { event: Focused(true), .. } = event {
-            if let (Some(stream), false, false) = (&gameboy.mmu.apu.stream, muted, paused) {
-                stream.play().unwrap();
-            }
-        }
-
-        if let Event::WindowEvent { event: Focused(false), .. } = event {
-            if let Some(stream) = &gameboy.mmu.apu.stream {
-                stream.pause().unwrap();
             }
         }
 
