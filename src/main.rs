@@ -243,6 +243,10 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         .unwrap()
         .set_attribute("style", "display: none")
         .unwrap();
+    doc.get_element_by_id("ironboy-led")
+        .unwrap()
+        .set_attribute("style", "filter: brightness(4); transition: all 1.5s linear")
+        .unwrap();
     run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Bin);
 }
 
