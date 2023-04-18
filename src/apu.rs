@@ -14,7 +14,7 @@ mod oscillators {
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         current_settings: AtomicU8,
     }
 
@@ -73,38 +73,38 @@ mod oscillators {
 
     #[derive(Default, Serialize, Deserialize)]
     pub struct SquareWaveGenerator {
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         frequency: AtomicU16,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
         sample_rate: u32,
         sweep: bool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         position: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         duty: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         trigger: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         enabled: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         length: AtomicU8,
         length_counter: RwLock<u32>,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         length_enabled: AtomicBool,
         env: VolumeEnvelope,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sweep_period: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sweep_timer: AtomicU32,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sweep_negate: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sweep_shift: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sweep_enabled: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sweep_frequency: AtomicU16,
     }
 
@@ -459,25 +459,25 @@ mod oscillators {
     #[derive(Default, Serialize, Deserialize)]
     pub struct WaveTable {
         sample_rate: u32,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         sound_data: [AtomicU8; 32],
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         frequency: AtomicU16,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         position: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         trigger: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         enabled: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         length: AtomicU8,
         length_counter: RwLock<u32>,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         length_enabled: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         volume_code: AtomicU8,
     }
 
@@ -714,26 +714,26 @@ mod oscillators {
     pub struct NoiseGenerator {
         sample_rate: u32,
         env: VolumeEnvelope,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         divisor_code: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         divisor: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         clock_shift: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         frequency_timer: AtomicU32,
         timer_leftover: RwLock<f32>,
         lfsr: Mutex<[bool; 15]>,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         width: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         trigger: AtomicU8,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         enabled: AtomicBool,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         length: AtomicU8,
         length_counter: RwLock<u32>,
-        #[serde(skip)]
+        #[cfg_attr(target_arch="wasm32", serde(skip))]
         length_enabled: AtomicBool,
     }
 
@@ -974,15 +974,15 @@ struct AudioProcessingState {
     osc_2: oscillators::SquareWaveGenerator,
     osc_3: oscillators::WaveTable,
     osc_4: oscillators::NoiseGenerator,
-    #[serde(skip)]
+    #[cfg_attr(target_arch="wasm32", serde(skip))]
     left_osc_enable: [AtomicBool; 4],
-    #[serde(skip)]
+    #[cfg_attr(target_arch="wasm32", serde(skip))]
     right_osc_enable: [AtomicBool; 4],
-    #[serde(skip)]
+    #[cfg_attr(target_arch="wasm32", serde(skip))]
     left_master_vol: AtomicU8,
-    #[serde(skip)]
+    #[cfg_attr(target_arch="wasm32", serde(skip))]
     right_master_vol: AtomicU8,
-    #[serde(skip)]
+    #[cfg_attr(target_arch="wasm32", serde(skip))]
     power_control: AtomicBool,
 }
 
@@ -1276,7 +1276,6 @@ impl AudioProcessingState {
 #[derive(Serialize, Deserialize, Default)]
 pub struct AudioProcessingUnit {
     state: Arc<AudioProcessingState>,
-
     #[serde(skip)]
     pub(crate) stream: Option<Stream>,
 }

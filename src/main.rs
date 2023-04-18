@@ -287,6 +287,7 @@ fn run_event_loop(
 
     let mut frames = 0.0;
     let start = Instant::now();
+
     let mut slowest_frame = Duration::from_nanos(0);
 
     let mut paused = false;
