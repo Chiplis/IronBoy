@@ -1,5 +1,6 @@
 extern crate core;
 
+use std::collections::HashMap;
 use std::thread;
 
 use gameboy::Gameboy;
@@ -9,6 +10,8 @@ use instant::{Duration, Instant};
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cartridge::Cartridge;
 use crate::register::Register;
@@ -20,7 +23,7 @@ use leptos::js_sys::{Array, ArrayBuffer};
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
 use wasm_bindgen::JsValue;
-use web_sys::{Blob, HtmlDivElement, Request, RequestInit, Response, Url, window};
+use web_sys::{Blob, Element, HtmlDivElement, Request, RequestInit, Response, Url, window};
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
@@ -177,8 +180,6 @@ async fn run() {
     let run_demo = {
         Closure::<dyn FnMut()>::wrap(Box::new(move || {
             wasm_bindgen_futures::spawn_local(async move {
-                let document = web_sys::window().unwrap().document().unwrap();
-
                 let mut opts = RequestInit::new();
                 opts.method("GET");
                 // opts.mode(RequestMode::Cors);
@@ -310,7 +311,63 @@ fn run_event_loop(
     #[cfg(target_arch = "wasm32")]
         let mut wait_time = Instant::now();
 
+    #[cfg(target_arch = "wasm32")]
+        let keymap = Arc::new(Mutex::new(HashMap::new()));
+
+    #[cfg(target_arch = "wasm32")] {
+        let doc = window().unwrap().document().unwrap();
+
+        let ids = [
+            "a", "b", "up", "down", "left", "right", "start", "select"
+        ];
+
+        let elms = ids.map(|k| doc.get_element_by_id(k).unwrap());
+
+        for id in ids {
+            keymap.lock().unwrap().insert(id, AtomicBool::new(false));
+        }
+
+        elms.iter().enumerate().for_each(|(idx, elm)| {
+            let km = keymap.clone();
+            let mousedown = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                km
+                    .lock()
+                    .unwrap()
+                    .get(ids[idx])
+                    .unwrap()
+                    .store(true, Ordering::Relaxed);
+            });
+
+            let km = keymap.clone();
+
+            let mouseup = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                km
+                    .lock()
+                    .unwrap()
+                    .get(ids[idx])
+                    .unwrap()
+                    .store(false, Ordering::Relaxed);
+            });
+
+            elm.add_event_listener_with_callback(
+                "pointerdown",
+                mousedown.as_ref().unchecked_ref(),
+            ).unwrap();
+
+            elm.add_event_listener_with_callback(
+                "pointerup",
+                mouseup.as_ref().unchecked_ref(),
+            ).unwrap();
+
+            mousedown.forget();
+            mouseup.forget();
+        });
+    }
+
     event_loop.run(move |event, _target, control_flow| {
+        #[cfg(target_arch = "wasm32")]
+            let keymap = keymap.clone();
+
         let gameboy = &mut gameboy;
         input.update(&event);
         frames += 1.0;
@@ -381,12 +438,12 @@ fn run_event_loop(
         if wait_time.elapsed() < current_frame {
             return;
         } else {
-            current_frame = run_frame(gameboy, sleep, Some(&input)).1;
+            current_frame = run_frame(gameboy, sleep, Some(&input), Some(keymap)).1;
             wait_time = instant::Instant::now();
         }
 
         #[cfg(any(unix, windows))] {
-            let (current_frame, sleep_time) = run_frame(gameboy, sleep, Some(&input));
+            let (current_frame, sleep_time) = run_frame(gameboy, sleep, Some(&input), None);
             thread::sleep(sleep_time);
             if slowest_frame < current_frame {
                 slowest_frame = current_frame;
@@ -395,7 +452,7 @@ fn run_event_loop(
     });
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper>) -> (Duration, Duration) {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper>, keymap: Option<Arc<Mutex<HashMap<&str, AtomicBool>>>>) -> (Duration, Duration) {
     let mut elapsed_cycles = 0;
     let start = Instant::now();
     let pin = if let Some(pin) = gameboy.pin {
@@ -424,8 +481,34 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
             .collect()
     };
 
-    gameboy.mmu.joypad.held_action = map_held([Z, C, Back, Return]);
-    gameboy.mmu.joypad.held_direction = map_held([Up, Down, Left, Right]);
+    let action = [Z, C, Back, Return];
+    let direction = [Up, Down, Left, Right];
+
+    gameboy.mmu.joypad.held_action = map_held(action);
+    gameboy.mmu.joypad.held_direction = map_held(direction);
+
+    if let Some(keymap) = keymap {
+        for (key, value) in keymap.lock().unwrap().iter() {
+            if value.load(Ordering::Relaxed) {
+                let code = match *key {
+                    "a" => Z,
+                    "b" => C,
+                    "select" => Back,
+                    "start" => Return,
+                    "up" => Up,
+                    "left" => Left,
+                    "right" => Right,
+                    "down" => Down,
+                    _ => unreachable!()
+                };
+                if action.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
+                    gameboy.mmu.joypad.held_action.push(code);
+                } else if direction.contains(&code) && !gameboy.mmu.joypad.held_direction.contains(&code) {
+                    gameboy.mmu.joypad.held_direction.push(code);
+                }
+            }
+        }
+    }
 
     if !sleep {
         return (start.elapsed(), Duration::from_secs(0));
