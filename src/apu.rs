@@ -322,7 +322,7 @@ mod oscillators {
                 self.position = new_position;
             }
 
-            self.frequency_timer = self.frequency_timer - 1;
+            self.frequency_timer -= 1;
 
             if self.sweep {
                 if self.sweep_timer == 0 && self.sweep_enabled && self.sweep_period > 0 {
@@ -348,7 +348,7 @@ mod oscillators {
                     }
                 }
 
-                self.sweep_timer = self.sweep_timer - 1;
+                self.sweep_timer -= 1;
             }
 
             let mut wave_sample = 0;
@@ -639,7 +639,7 @@ mod oscillators {
                 current_position = new_position;
             }
 
-            self.frequency_timer = self.frequency_timer - 1;
+            self.frequency_timer -= 1;
 
             let mut wave_sample = self.sound_data[current_position as usize];
 
@@ -910,7 +910,7 @@ mod oscillators {
                         }
                     }
 
-                    self.frequency_timer = self.frequency_timer - 1;
+                    self.frequency_timer -= 1;
 
                     noise_sample = i32::from(lfsr[0]);
                 }

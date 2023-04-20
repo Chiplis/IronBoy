@@ -6,7 +6,7 @@ use {
     wasm_bindgen::{JsCast},
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
-    web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window}
+    web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window},
 };
 
 #[cfg(any(unix, windows))]
@@ -17,7 +17,7 @@ use {
     std::fs::{read, write, File},
     winit::event::Event,
     winit::event::{WindowEvent::Focused},
-    std::thread
+    std::thread,
 };
 
 use std::collections::HashMap;
@@ -359,7 +359,6 @@ fn run_event_loop(
     }
 
     event_loop.run(move |event, _target, control_flow| {
-
         let gameboy = &mut gameboy;
         input.update(&event);
 
@@ -401,11 +400,9 @@ fn run_event_loop(
             }
         }
 
-        if input.key_released(S) {
-            if last_save + Duration::from_secs(1) < Instant::now() {
-                save_state(rom_path.clone(), gameboy, format);
-                last_save = Instant::now();
-            }
+        if input.key_released(S) && last_save + Duration::from_secs(1) < Instant::now() {
+            save_state(rom_path.clone(), gameboy, format);
+            last_save = Instant::now();
         }
 
         if input.key_released(F) {
@@ -424,18 +421,16 @@ fn run_event_loop(
         }
 
         #[cfg(target_arch = "wasm32")]
-        {
-            if wait_time.elapsed() < sleep_time {
-                return;
-            } else {
-                let keymap = keymap.clone();
-                let run = run_frame(gameboy, sleep, Some(&input), Some(keymap));
-                sleep_time = run.1;
-                if slowest_frame < run.0 {
-                    slowest_frame = run.0;
-                }
-                wait_time = instant::Instant::now();
+        if wait_time.elapsed() < sleep_time {
+            return;
+        } else {
+            let keymap = keymap.clone();
+            let run = run_frame(gameboy, sleep, Some(&input), Some(keymap));
+            sleep_time = run.1;
+            if slowest_frame < run.0 {
+                slowest_frame = run.0;
             }
+            wait_time = instant::Instant::now();
         }
 
 
