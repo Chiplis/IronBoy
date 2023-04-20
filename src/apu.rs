@@ -1217,8 +1217,8 @@ impl AudioProcessingState {
             return (0.0, 0.0);
         }
 
-        let mut mixed_left_sample = 0.0;
-        let mut mixed_right_sample = 0.0;
+        let mut mixed_left_sample = self.left_master_vol as f32 / 15.0;
+        let mut mixed_right_sample = self.right_master_vol as f32 / 15.0;
 
         let osc_1_sample = self.osc_1.generate_sample();
         if self.left_osc_enable[0] {

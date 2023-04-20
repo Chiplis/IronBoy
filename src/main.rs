@@ -145,6 +145,9 @@ async fn start_wasm(file: web_sys::File) {
             use winit::platform::web::WindowExtWebSys;
             let canvas = &web_sys::Element::from(window.canvas());
             canvas.set_attribute("style", "width: 100%; height: 100%").unwrap();
+            canvas.set_attribute("tabindex", "1").unwrap();
+            canvas.set_attribute("id", "ironboy-screen").unwrap();
+            canvas.set_attribute("style", "width: 100%; height: 100%").unwrap();
             container.append_child(canvas).ok()
         });
 
@@ -329,7 +332,7 @@ fn run_event_loop(
 
         elms.iter().enumerate().for_each(|(idx, elm)| {
             let km = keymap.clone();
-            let mousedown = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            let pointer_enter = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
                 km
                     .lock()
                     .unwrap()
@@ -340,7 +343,7 @@ fn run_event_loop(
 
             let km = keymap.clone();
 
-            let mouseup = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            let pointer_leave = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
                 km
                     .lock()
                     .unwrap()
@@ -350,23 +353,21 @@ fn run_event_loop(
             });
 
             elm.add_event_listener_with_callback(
-                "pointerdown",
-                mousedown.as_ref().unchecked_ref(),
+                "pointerenter",
+                pointer_enter.as_ref().unchecked_ref(),
             ).unwrap();
 
             elm.add_event_listener_with_callback(
-                "pointerup",
-                mouseup.as_ref().unchecked_ref(),
+                "pointerleave",
+                pointer_leave.as_ref().unchecked_ref(),
             ).unwrap();
 
-            mousedown.forget();
-            mouseup.forget();
+            pointer_enter.forget();
+            pointer_leave.forget();
         });
     }
 
     event_loop.run(move |event, _target, control_flow| {
-        #[cfg(target_arch = "wasm32")]
-            let keymap = keymap.clone();
 
         let gameboy = &mut gameboy;
         input.update(&event);
@@ -438,6 +439,7 @@ fn run_event_loop(
         if wait_time.elapsed() < current_frame {
             return;
         } else {
+            let keymap = keymap.clone();
             current_frame = run_frame(gameboy, sleep, Some(&input), Some(keymap)).1;
             wait_time = instant::Instant::now();
         }
