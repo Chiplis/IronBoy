@@ -1,6 +1,7 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
     use std::sync::{Mutex, RwLock};
+    use crate::logger::Logger;
 
     #[derive(Default, Serialize, Deserialize)]
     struct VolumeEnvelopeParams {
@@ -35,10 +36,10 @@ mod oscillators {
                 params.period = period;
                 params.frequency_timer = (self.sample_rate / 64) * ((period) as u32);
             } else {
-                eprintln!("Could not obtain envelope data lock")
+                Logger::error( "Could not obtain envelope data lock");
             }
 
-            self.current_settings = (val);
+            self.current_settings = val;
         }
 
         pub(crate) fn read_settings(&self) -> u8 {
@@ -65,7 +66,7 @@ mod oscillators {
                 params.frequency_timer -= 1;
                 output_sample
             } else {
-                eprintln!("Missed vol env sample");
+                Logger::error("Missed vol env sample");
                 0
             }
         }
@@ -123,7 +124,7 @@ mod oscillators {
                 // Duty and length
                 1 => {
                     let new_duty = val >> 6;
-                    self.duty = (new_duty);
+                    self.duty = new_duty;
 
                     let length = val & 0x3F;
                     self.length = length;
@@ -137,7 +138,7 @@ mod oscillators {
                             *length_counter = length_samples;
                         }
                         Err(_error) => {
-                            println!("Could not set square wave length");
+                            Logger::info("Could not set square wave length");
                         }
                     }
                 }
@@ -184,7 +185,7 @@ mod oscillators {
                             }
                         }
                         Err(error) => {
-                            eprintln!("Could not set square wave length: {error}");
+                            Logger::error(format!("Could not set square wave length: {error}"));
                         }
                     }
 
@@ -235,14 +236,14 @@ mod oscillators {
                         Ok(mut timer_leftover) => {
                             *timer_leftover = samples_till_next - samples_till_next.floor();
                         }
-                        Err(error) => eprintln!("Square Wave: Could not write to timer leftover: {error}"),
+                        Err(error) => Logger::error(format!("Square Wave: Could not write to timer leftover: {error}")),
                     }
 
                     // Set enabled
                     self.enabled = true;
                 }
 
-                reg => println!("Square Wave Osc: Unrecognised register ({reg})"),
+                reg => Logger::error(format!("Square Wave Osc: Unrecognised register ({reg})")),
             }
         }
 
@@ -305,7 +306,7 @@ mod oscillators {
                         }
                     }
                     Err(error) => {
-                        println!("Square Wave - Could not write to timer leftover: {error}");
+                        Logger::error(format!("Square Wave - Could not write to timer leftover: {error}"));
                     }
                 }
 
@@ -490,7 +491,7 @@ mod oscillators {
                         Ok(mut length_counter) => {
                             *length_counter = length_samples;
                         }
-                        Err(error) => eprintln!("Could not set wave table length: {error}"),
+                        Err(error) => Logger::error(format!("Could not set wave table length: {error}")),
                     }
                 }
 
@@ -527,7 +528,7 @@ mod oscillators {
                                 }
                             }
                             Err(_error) => {
-                                println!("Could not set square wave length");
+                                Logger::error("Could not set square wave length");
                             }
                         }
 
@@ -542,7 +543,7 @@ mod oscillators {
                                 *timer_leftover = samples_till_next - samples_till_next.floor();
                             }
                             Err(_) => {
-                                println!("Wave table: Could not write to timer leftover")
+                                Logger::error("Wave table: Could not write to timer leftover")
                             }
                         }
 
@@ -621,7 +622,7 @@ mod oscillators {
                         }
                     }
                     Err(_) => {
-                        println!("Wave table: Could not write to timer leftover");
+                        Logger::error("Wave table: Could not write to timer leftover");
                     }
                 }
 
@@ -660,7 +661,7 @@ mod oscillators {
                 }
 
                 _ => {
-                    println!("Wave table: unexpected volume code");
+                    Logger::error("Wave table: unexpected volume code");
                     4
                 }
             };
@@ -750,7 +751,7 @@ mod oscillators {
                             *length_counter = length_samples;
                         }
                         Err(_error) => {
-                            println!("Could not set noise generator length");
+                            Logger::error("Could not set noise generator length");
                         }
                     }
                 }
@@ -797,7 +798,7 @@ mod oscillators {
                                 }
                             }
                             Err(_error) => {
-                                println!("Could not set square wave length");
+                                Logger::error("Could not set square wave length");
                             }
                         }
 
@@ -809,7 +810,7 @@ mod oscillators {
                                 }
                             }
                             Err(_error) => {
-                                println!("Could not obtain LFSR Mutex");
+                                Logger::error("Could not obtain LFSR Mutex");
                             }
                         }
 
@@ -824,7 +825,7 @@ mod oscillators {
                                 *timer_leftover = samples_till_next - samples_till_next.floor();
                             }
                             Err(_) => {
-                                println!("Noise osc: Could not write to timer leftover")
+                                Logger::error("Noise osc: Could not write to timer leftover")
                             }
                         }
 
@@ -833,7 +834,7 @@ mod oscillators {
                 }
 
                 _ => {
-                    println!("Noise Osc: Unrecognised register");
+                    Logger::error("Noise Osc: Unrecognised register");
                 }
             }
         }
@@ -892,7 +893,7 @@ mod oscillators {
                                 }
                             }
                             Err(_) => {
-                                println!("Square Wave: Could not write to timer leftover");
+                                Logger::error("Square Wave: Could not write to timer leftover");
                             }
                         }
 
@@ -915,7 +916,7 @@ mod oscillators {
                 }
                 // This should never happen
                 Err(error) => {
-                    println!("Could not obtain LFSR lock: {error}");
+                    Logger::error(format!("Could not obtain LFSR lock: {error}"));
                 }
             }
 
@@ -948,10 +949,11 @@ mod oscillators {
 }
 
 use std::cmp;
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}, Mutex};
+use std::sync::{Arc, Mutex};
 
 use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream, SupportedStreamConfig};
 use serde::{Serialize, Deserialize};
+use crate::logger::Logger;
 
 #[derive(Default, Serialize, Deserialize)]
 struct AudioProcessingState {
@@ -981,7 +983,7 @@ impl AudioProcessingState {
 
         // Display device name
         if let Ok(name) = out_dev.name() {
-            println!("Using {} at {}Hz with {} channels", name, sample_rate, config.channels())
+            Logger::info(format!("Using {} at {}Hz with {} channels", name, sample_rate, config.channels()))
         }
 
         Arc::new(Mutex::new(AudioProcessingState {
@@ -1010,7 +1012,7 @@ impl AudioProcessingState {
         };
 
         if let Err(ref error) = stream {
-            println!("Error while building stream: {error}");
+            Logger::error(format!("Error while building stream: {error}"));
         }
 
         stream.ok()
@@ -1040,7 +1042,7 @@ impl AudioProcessingState {
                 1 => self.osc_2.write_reg(reg, value),
                 2 => self.osc_3.write_reg(reg, value),
                 3 => self.osc_4.write_reg(reg, value),
-                _ => eprintln!("APU Write: Unrecognised oscillator number"),
+                _ => Logger::error("APU Write: Unrecognised oscillator number"),
             }
         } else if (0xFF30..=0xFF3F).contains(&address) {
             self.osc_3.write_sound_data(address, value);
@@ -1071,7 +1073,7 @@ impl AudioProcessingState {
                 }
 
                 _ => {
-                    eprintln!("APU Write: Unrecognised address: {}", address);
+                    Logger::error(format!("APU Write: Unrecognised address: {}", address));
                 }
             }
         }
@@ -1101,7 +1103,7 @@ impl AudioProcessingState {
                     self.osc_4.read_reg(reg)
                 }
                 _ => {
-                    println!("APU Read: Unrecognised oscillator number");
+                    Logger::info("APU Read: Unrecognised oscillator number");
                     0x00
                 }
             }
@@ -1138,7 +1140,7 @@ impl AudioProcessingState {
                     reg_val
                 }
                 _ => {
-                    eprintln!("APU Read: Unrecognised address");
+                    Logger::error("APU Read: Unrecognised address");
                     0x00
                 }
             }
@@ -1209,7 +1211,7 @@ impl AudioProcessingState {
     }
 
     fn audio_error(&self, error: StreamError) {
-        eprintln!("Audio Error: {:?}", error);
+        Logger::error(format!("Audio Error: {:?}", error));
     }
 
     fn generate_samples(&mut self) -> (f32, f32) {

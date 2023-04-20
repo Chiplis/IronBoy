@@ -1,14 +1,32 @@
 extern crate core;
 
+#[cfg(target_arch = "wasm32")]
+use {
+    leptos::js_sys::{Array, ArrayBuffer, Uint8Array},
+    wasm_bindgen::{JsCast},
+    wasm_bindgen::closure::Closure,
+    wasm_bindgen_futures::JsFuture,
+    web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window}
+};
+
+#[cfg(any(unix, windows))]
+use {
+    std::io::{Write},
+    rand::Rng,
+    rand::distributions::Uniform,
+    std::fs::{read, write, File},
+    winit::event::Event,
+    winit::event::{WindowEvent::Focused},
+    std::thread
+};
+
 use std::collections::HashMap;
-use std::thread;
 
 use gameboy::Gameboy;
 
 use crate::mmu::MemoryManagementUnit;
 use instant::{Duration, Instant};
 
-use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,12 +36,9 @@ use crate::register::Register;
 
 use clap::{Parser, ValueEnum};
 use cpal::traits::StreamTrait;
-use leptos::js_sys::{Array, ArrayBuffer};
 
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
-use wasm_bindgen::JsValue;
-use web_sys::{Blob, Element, HtmlDivElement, Request, RequestInit, Response, Url, window};
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
@@ -34,27 +49,7 @@ use winit::window::Fullscreen::Borderless;
 use winit::window::{Window, WindowBuilder};
 use winit_input_helper::WinitInputHelper;
 use crate::SaveFile::{Bin, Json};
-
-#[cfg(target_arch = "wasm32")]
-use {
-    leptos::js_sys::{Object, Reflect, Uint8Array},
-    wasm_bindgen::{JsCast, UnwrapThrowExt},
-    wasm_bindgen::closure::Closure,
-    wasm_bindgen_futures::JsFuture,
-    web_sys::{console, HtmlInputElement, HtmlAnchorElement, ReadableStreamDefaultReader, HtmlCanvasElement},
-    winit::platform::web::WindowBuilderExtWebSys,
-};
-
-#[cfg(any(unix, windows))]
-use {
-    rand::Rng,
-    rand::distributions::Uniform,
-    std::fs::{read, remove_file, write, File},
-};
-
-
-use winit::event::{Event, WindowEvent};
-use WindowEvent::Focused;
+use crate::logger::Logger;
 
 mod cartridge;
 mod gameboy;
@@ -77,6 +72,7 @@ mod apu;
 #[cfg(test)]
 mod test;
 mod mbc5;
+mod logger;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
@@ -159,8 +155,6 @@ async fn start_wasm(file: web_sys::File) {
 
 #[cfg(target_arch = "wasm32")]
 async fn run() {
-    let w = web_sys::window();
-
     let recv_file = {
         Closure::<dyn FnMut()>::wrap(Box::new(move || {
             let document = web_sys::window().unwrap().document().unwrap();
@@ -178,7 +172,6 @@ async fn run() {
             })
         }))
     };
-
 
     let run_demo = {
         Closure::<dyn FnMut()>::wrap(Box::new(move || {
@@ -252,7 +245,7 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         .unwrap()
         .set_attribute("style", "filter: brightness(1.5); transition: all 1.5s linear")
         .unwrap();
-    run_event_loop(event_loop, gameboy, true, false, false, name, SaveFile::Bin);
+    run_event_loop(event_loop, gameboy, true, false, name, SaveFile::Bin);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -280,7 +273,7 @@ fn main_desktop() {
     let rom = read(rom_path.clone()).expect("Unable to read ROM file");
     let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom, rom);
 
-    run_event_loop(event_loop, gameboy, !args.fast, false, args.save_on_exit, rom_path, args.format);
+    run_event_loop(event_loop, gameboy, !args.fast, false, rom_path, args.format);
 }
 
 fn run_event_loop(
@@ -288,7 +281,6 @@ fn run_event_loop(
     mut gameboy: Gameboy,
     mut sleep: bool,
     mut muted: bool,
-    save_on_exit: bool,
     rom_path: String,
     format: SaveFile,
 ) {
@@ -381,14 +373,12 @@ fn run_event_loop(
         }
 
         if input.key_released(Escape) {
-            #[cfg(any(unix, windows))]
-            exit_emulator(save_on_exit, rom_path.clone(), gameboy, format);
-            println!(
+            Logger::info(format!(
                 "Finished running at {} FPS average.\nSlowest frame took {:?}.\nSlowest render frame took {:?}.",
                 frames / start.elapsed().as_secs_f64(),
                 slowest_frame,
                 gameboy.mmu.renderer.slowest
-            );
+            ));
             control_flow.set_exit();
         }
 
@@ -441,7 +431,11 @@ fn run_event_loop(
                 return;
             } else {
                 let keymap = keymap.clone();
-                sleep_time = run_frame(gameboy, sleep, Some(&input), Some(keymap)).1;
+                let run = run_frame(gameboy, sleep, Some(&input), Some(keymap));
+                sleep_time = run.1;
+                if slowest_frame < run.0 {
+                    slowest_frame = run.0;
+                }
                 wait_time = instant::Instant::now();
             }
         }
@@ -532,7 +526,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
 }
 
 fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
-    println!("Saving state.");
+    Logger::info("Saving state.");
 
     let rom_path = SaveFile::FORMATS
         .iter()
@@ -544,7 +538,7 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
 
     let now = Instant::now();
     let save = format.save(gameboy);
-    println!("Serialization took {}ms", now.elapsed().as_millis());
+    Logger::info(format!("Serialization took {}ms", now.elapsed().as_millis()));
 
     #[cfg(any(unix, windows))]
     thread::spawn(move || {
@@ -553,7 +547,7 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
         let mut save_file = File::create(&rom_path).unwrap();
         save_file.write_all(save.as_slice()).unwrap();
 
-        println!("Save file {} successfully generated in {}ms.", rom_path, now.elapsed().as_millis());
+        Logger::info(format!("Save file {} successfully generated in {}ms.", rom_path, now.elapsed().as_millis()));
     });
 
     #[cfg(target_arch = "wasm32")]
@@ -574,18 +568,6 @@ fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
                 a.click();
                 Some(())
             });
-    }
-}
-
-#[cfg(any(unix, windows))]
-fn exit_emulator(save: bool, rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
-    if save {
-        save_state(rom_path.clone(), gameboy, format);
-    }
-    let tmp = rom_path + ".tmp";
-    let tmp = Path::new(&tmp);
-    if tmp.exists() {
-        remove_file(tmp).unwrap();
     }
 }
 

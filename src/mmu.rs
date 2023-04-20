@@ -21,6 +21,7 @@ use std::fs::read;
 use crate::serial::LinkCable;
 
 use crate::apu::AudioProcessingUnit;
+use crate::logger::Logger;
 use crate::mbc3::MBC3;
 use crate::mbc5::MBC5;
 use crate::mmu::Mbc::{Five, One, Three, Zero};
@@ -139,11 +140,11 @@ impl MemoryManagementUnit {
             0x0F..=0x13 => Three(MBC3::new(cartridge, rom)),
             0x19..=0x1E => Five(MBC5::new(cartridge, rom)),
             _ => {
-                println!(
+                Logger::error(format!(
                     "MBC ID {} not implemented, defaulting to MBC0 - {}",
                     cartridge.mbc,
                     rom_path.to_str().unwrap()
-                );
+                ));
                 Zero(MBC0::new(rom, vec![0; 32 * 1024]))
             }
         }

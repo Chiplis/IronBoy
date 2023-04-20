@@ -10,6 +10,7 @@ use image::RgbaImage;
 
 use crate::cartridge::Cartridge;
 use crate::{run_frame, Gameboy, MemoryManagementUnit, HEIGHT, WIDTH};
+use crate::logger::Logger;
 
 #[test]
 fn test_roms() -> Result<(), Error> {
@@ -38,7 +39,7 @@ fn test_roms() -> Result<(), Error> {
             match output {
                 Ok(path) => Some(path),
                 Err(path) => {
-                    println!("Skipping non ROM file: {}", osstr_to_str(path.file_name()));
+                    Logger::error(format!("Skipping non ROM file: {}", osstr_to_str(path.file_name())));
                     None
                 }
             }
@@ -54,7 +55,7 @@ fn test_roms() -> Result<(), Error> {
         thread::spawn(move || {
             const TEST_DURATION: usize = 1200; // in frames
 
-            println!("Testing {}", rom_filename);
+            Logger::info(format!("Testing {}", rom_filename));
             let rom_vec = read(rom.clone()).unwrap();
             let cartridge = Cartridge::new(&rom_vec);
 
@@ -62,10 +63,10 @@ fn test_roms() -> Result<(), Error> {
             let mut gameboy = Gameboy::new(mem);
 
             for _frame in 0..TEST_DURATION {
-                run_frame(&mut gameboy, false, None);
+                run_frame(&mut gameboy, false, None, None);
             }
 
-            println!("Saving screenshot for {rom_filename}");
+            Logger::info(format!("Saving screenshot for {rom_filename}"));
 
             RgbaImage::from_raw(WIDTH as u32, HEIGHT as u32, gameboy.mmu.ppu.screen.to_vec())
                 .unwrap()
@@ -80,9 +81,9 @@ fn test_roms() -> Result<(), Error> {
         match test_status_rv.recv() {
             Ok(_) => {
                 count += 1;
-                println!("Finished test {count}/{total}");
+                Logger::info(format!("Finished test {count}/{total}"));
             }
-            Err(e) => eprintln!("Error executing test: {e}"),
+            Err(e) => Logger::error(format!("Error executing test: {e}")),
         }
         if count == total {
             return Ok(());
