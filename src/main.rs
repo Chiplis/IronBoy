@@ -310,7 +310,7 @@ fn run_event_loop(
         let mut focus = (Instant::now(), true);
 
     #[cfg(target_arch = "wasm32")]
-        let mut current_frame = Duration::from_secs(0);
+        let mut sleep_time = Duration::from_secs(0);
     #[cfg(target_arch = "wasm32")]
         let mut wait_time = Instant::now();
 
@@ -436,13 +436,16 @@ fn run_event_loop(
         }
 
         #[cfg(target_arch = "wasm32")]
-        if wait_time.elapsed() < current_frame {
-            return;
-        } else {
-            let keymap = keymap.clone();
-            current_frame = run_frame(gameboy, sleep, Some(&input), Some(keymap)).1;
-            wait_time = instant::Instant::now();
+        {
+            if wait_time.elapsed() < sleep_time {
+                return;
+            } else {
+                let keymap = keymap.clone();
+                sleep_time = run_frame(gameboy, sleep, Some(&input), Some(keymap)).1;
+                wait_time = instant::Instant::now();
+            }
         }
+
 
         #[cfg(any(unix, windows))] {
             let (current_frame, sleep_time) = run_frame(gameboy, sleep, Some(&input), None);
