@@ -305,7 +305,6 @@ fn run_event_loop(
         let mut sleep_time = Duration::from_secs(0);
     #[cfg(target_arch = "wasm32")]
         let mut wait_time = Instant::now();
-
     #[cfg(target_arch = "wasm32")]
         let keymap = Arc::new(Mutex::new(HashMap::new()));
 
@@ -363,7 +362,6 @@ fn run_event_loop(
 
         let gameboy = &mut gameboy;
         input.update(&event);
-        frames += 1.0;
 
         if input.key_released(P) {
             paused = !paused;
@@ -448,6 +446,8 @@ fn run_event_loop(
                 slowest_frame = current_frame;
             }
         }
+
+        frames += 1.0;
     });
 }
 
