@@ -306,7 +306,7 @@ fn run_event_loop(
     #[cfg(target_arch = "wasm32")]
         let mut wait_time = Instant::now();
     #[cfg(target_arch = "wasm32")]
-        let keymap = Arc::new(Mutex::new(HashMap::new()));
+        let keymap: Arc<Mutex<HashMap<&str, AtomicBool>>> = Arc::new(Mutex::new(HashMap::new()));
 
     #[cfg(target_arch = "wasm32")] {
         let doc = window().unwrap().document().unwrap();
@@ -315,11 +315,26 @@ fn run_event_loop(
             "a", "b", "up", "down", "left", "right", "start", "select"
         ];
 
+        let km = keymap.clone();
+        let toggle_speaker = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            let km = &km.lock().unwrap();
+            let state = km.get("speaker").unwrap();
+            state.store(!state.load(Ordering::Relaxed), Ordering::Relaxed);
+        });
+        let speaker = doc.get_element_by_id("speaker").unwrap();
+        speaker.add_event_listener_with_callback(
+            "pointerdown",
+            toggle_speaker.as_ref().unchecked_ref(),
+        ).unwrap();
+        toggle_speaker.forget();
+
         let elms = ids.map(|k| doc.get_element_by_id(k).unwrap());
 
         for id in ids {
             keymap.lock().unwrap().insert(id, AtomicBool::new(false));
         }
+
+        keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
 
         elms.iter().enumerate().for_each(|(idx, elm)| {
             let km = keymap.clone();
@@ -333,7 +348,6 @@ fn run_event_loop(
             });
 
             let km = keymap.clone();
-
             let pointer_leave = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
                 km
                     .lock()
@@ -358,6 +372,7 @@ fn run_event_loop(
         });
     }
 
+    let mut previously_muted = false;
     event_loop.run(move |event, _target, control_flow| {
         let gameboy = &mut gameboy;
         input.update(&event);
@@ -411,9 +426,7 @@ fn run_event_loop(
 
         if input.key_released(M) {
             muted = !muted;
-            if let Some(stream) = &gameboy.mmu.apu.stream {
-                if muted { stream.pause().unwrap(); } else { stream.play().unwrap(); }
-            }
+
         }
 
         if paused {
@@ -425,7 +438,7 @@ fn run_event_loop(
             return;
         } else {
             let keymap = keymap.clone();
-            let run = run_frame(gameboy, sleep, Some(&input), Some(keymap));
+            let run = run_frame(gameboy, sleep, &mut muted, Some(&input), Some(keymap));
             sleep_time = run.1;
             if slowest_frame < run.0 {
                 slowest_frame = run.0;
@@ -435,10 +448,20 @@ fn run_event_loop(
 
 
         #[cfg(any(unix, windows))] {
-            let (current_frame, sleep_time) = run_frame(gameboy, sleep, Some(&input), None);
+            let (current_frame, sleep_time) = run_frame(gameboy, sleep, &mut false, Some(&input), None);
             thread::sleep(sleep_time);
             if slowest_frame < current_frame {
                 slowest_frame = current_frame;
+            }
+        }
+
+        if let Some(stream) = &gameboy.mmu.apu.stream {
+            if muted && !previously_muted {
+                previously_muted = true;
+                stream.pause().unwrap();
+            } else if !muted && previously_muted {
+                previously_muted = false;
+                stream.play().unwrap();
             }
         }
 
@@ -446,7 +469,7 @@ fn run_event_loop(
     });
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper>, keymap: Option<Arc<Mutex<HashMap<&str, AtomicBool>>>>) -> (Duration, Duration) {
+fn run_frame(gameboy: &mut Gameboy, sleep: bool, mute: &mut bool, input: Option<&WinitInputHelper>, keymap: Option<Arc<Mutex<HashMap<&str, AtomicBool>>>>) -> (Duration, Duration) {
     let mut elapsed_cycles = 0;
     let start = Instant::now();
     let pin = if let Some(pin) = gameboy.pin {
@@ -493,12 +516,15 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, input: Option<&WinitInputHelper
                     "left" => Left,
                     "right" => Right,
                     "down" => Down,
+                    "speaker" => M,
                     _ => unreachable!()
                 };
                 if action.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
                     gameboy.mmu.joypad.held_action.push(code);
                 } else if direction.contains(&code) && !gameboy.mmu.joypad.held_direction.contains(&code) {
                     gameboy.mmu.joypad.held_direction.push(code);
+                } else if code == M {
+                    *mute = !*mute;
                 }
             }
         }
