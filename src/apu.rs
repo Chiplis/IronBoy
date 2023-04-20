@@ -949,9 +949,10 @@ mod oscillators {
 }
 
 use std::cmp;
+use std::cmp::min;
 use std::sync::{Arc, Mutex};
 
-use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream, SupportedStreamConfig};
+use cpal::{traits::{HostTrait, DeviceTrait}, StreamConfig, StreamError, Stream, SupportedStreamConfig, SampleRate};
 use serde::{Serialize, Deserialize};
 use crate::logger::Logger;
 
@@ -1025,9 +1026,12 @@ impl AudioProcessingState {
         let mut supported_configs_range = out_dev.supported_output_configs().expect("Could not obtain device configs");
 
         supported_configs_range
-            .find(|c| c.max_sample_rate() >= cpal::SampleRate(44100))
-            .expect("Audio device does not support sample rate (44100)")
-            .with_sample_rate(cpal::SampleRate(44100))
+            .find(|c| c.max_sample_rate() >= SampleRate(44100))
+            .or(supported_configs_range.next())
+            .map(|a| {
+                let rate = a.max_sample_rate();
+                a.with_sample_rate(min(SampleRate(44100), rate))
+            }).expect("No valid audio config found.")
     }
 
     pub(crate) fn write_register(&mut self, address: usize, value: u8) {
