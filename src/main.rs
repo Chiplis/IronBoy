@@ -307,71 +307,7 @@ fn run_event_loop(
     #[cfg(target_arch = "wasm32")]
         let mut wait_time = Instant::now();
     #[cfg(target_arch = "wasm32")]
-        let keymap: Arc<Mutex<HashMap<&str, AtomicBool>>> = Arc::new(Mutex::new(HashMap::new()));
-
-    #[cfg(target_arch = "wasm32")] {
-        let doc = window().unwrap().document().unwrap();
-
-        let ids = [
-            "a", "b", "up", "down", "left", "right", "start", "select"
-        ];
-
-        let km = keymap.clone();
-        let toggle_speaker = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
-            let km = &km.lock().unwrap();
-            let state = km.get("speaker").unwrap();
-            state.store(!state.load(Ordering::Relaxed), Ordering::Relaxed);
-        });
-        let speaker = doc.get_element_by_id("speaker").unwrap();
-        speaker.add_event_listener_with_callback(
-            "pointerdown",
-            toggle_speaker.as_ref().unchecked_ref(),
-        ).unwrap();
-        toggle_speaker.forget();
-
-        let elms = ids.map(|k| doc.get_element_by_id(k).unwrap());
-
-        for id in ids {
-            keymap.lock().unwrap().insert(id, AtomicBool::new(false));
-        }
-
-        keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
-
-        elms.iter().enumerate().for_each(|(idx, elm)| {
-            let km = keymap.clone();
-            let pointer_enter = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
-                km
-                    .lock()
-                    .unwrap()
-                    .get(ids[idx])
-                    .unwrap()
-                    .store(true, Ordering::Relaxed);
-            });
-
-            let km = keymap.clone();
-            let pointer_leave = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
-                km
-                    .lock()
-                    .unwrap()
-                    .get(ids[idx])
-                    .unwrap()
-                    .store(false, Ordering::Relaxed);
-            });
-
-            elm.add_event_listener_with_callback(
-                "pointerenter",
-                pointer_enter.as_ref().unchecked_ref(),
-            ).unwrap();
-
-            elm.add_event_listener_with_callback(
-                "pointerleave",
-                pointer_leave.as_ref().unchecked_ref(),
-            ).unwrap();
-
-            pointer_enter.forget();
-            pointer_leave.forget();
-        });
-    }
+        let keymap = setup_virtual_pad();
 
     let mut previously_muted = false;
     event_loop.run(move |event, _target, control_flow| {
@@ -397,6 +333,11 @@ fn run_event_loop(
 
         if let (Some(size), Some(p)) = (input.window_resized(), gameboy.mmu.renderer.pixels().as_mut()) {
             p.resize_surface(size.width, size.height).unwrap();
+        }
+
+        #[cfg(target_os = "wasm32")]
+        if let Event::WindowEvent { event: Focused(false), .. } = event {
+            paused = true;
         }
 
         #[cfg(target_os = "macos")]
@@ -427,7 +368,6 @@ fn run_event_loop(
 
         if input.key_released(M) {
             muted = !muted;
-
         }
 
         if paused {
@@ -446,7 +386,6 @@ fn run_event_loop(
             }
             wait_time = instant::Instant::now();
         }
-
 
         #[cfg(any(unix, windows))] {
             let (current_frame, sleep_time) = run_frame(gameboy, sleep, &mut false, Some(&input), None);
@@ -507,7 +446,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, mute: &mut bool, input: Option<
 
     if let Some(keymap) = keymap {
         for (key, value) in keymap.lock().unwrap().iter() {
-            if value.load(Ordering::Relaxed) {
+            if value.load(Relaxed) {
                 let code = match *key {
                     "a" => Z,
                     "b" => C,
@@ -546,6 +485,74 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, mute: &mut bool, input: Option<
     };
 
     (start.elapsed(), if now < expected { expected - now } else { Duration::from_secs(0) })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
+    let keymap: Arc<Mutex<HashMap<&str, AtomicBool>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    let doc = window().unwrap().document().unwrap();
+
+    let ids = [
+        "a", "b", "up", "down", "left", "right", "start", "select"
+    ];
+
+    let km = keymap.clone();
+    let toggle_speaker = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+        let km = &km.lock().unwrap();
+        let state = km.get("speaker").unwrap();
+        state.store(!state.load(Ordering::Relaxed), Ordering::Relaxed);
+    });
+    let speaker = doc.get_element_by_id("speaker").unwrap();
+    speaker.add_event_listener_with_callback(
+        "pointerdown",
+        toggle_speaker.as_ref().unchecked_ref(),
+    ).unwrap();
+    toggle_speaker.forget();
+
+    let elms = ids.map(|k| doc.get_element_by_id(k).unwrap());
+
+    for id in ids {
+        keymap.lock().unwrap().insert(id, AtomicBool::new(false));
+    }
+
+    keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
+
+    elms.iter().enumerate().for_each(|(idx, elm)| {
+        let km = keymap.clone();
+        let pointer_enter = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            km
+                .lock()
+                .unwrap()
+                .get(ids[idx])
+                .unwrap()
+                .store(true, Ordering::Relaxed);
+        });
+
+        let km = keymap.clone();
+        let pointer_leave = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            km
+                .lock()
+                .unwrap()
+                .get(ids[idx])
+                .unwrap()
+                .store(false, Ordering::Relaxed);
+        });
+
+        elm.add_event_listener_with_callback(
+            "pointerenter",
+            pointer_enter.as_ref().unchecked_ref(),
+        ).unwrap();
+
+        elm.add_event_listener_with_callback(
+            "pointerleave",
+            pointer_leave.as_ref().unchecked_ref(),
+        ).unwrap();
+
+        pointer_enter.forget();
+        pointer_leave.forget();
+    });
+    keymap
 }
 
 fn save_state(rom_path: String, gameboy: &mut Gameboy, format: SaveFile) {
