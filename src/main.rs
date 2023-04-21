@@ -30,6 +30,7 @@ use instant::{Duration, Instant};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering::Relaxed;
 
 use crate::cartridge::Cartridge;
 use crate::register::Register;
@@ -525,6 +526,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, mute: &mut bool, input: Option<
                     gameboy.mmu.joypad.held_direction.push(code);
                 } else if code == M {
                     *mute = !*mute;
+                    value.store(false, Relaxed);
                 }
             }
         }
