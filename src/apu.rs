@@ -1,6 +1,8 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
     use std::sync::{Mutex, RwLock};
+    use std::sync::atomic::{AtomicU8, Ordering};
+    use Ordering::Relaxed;
     use crate::logger::Logger;
 
     #[derive(Default, Serialize, Deserialize)]
@@ -15,7 +17,8 @@ mod oscillators {
     struct VolumeEnvelope {
         sample_rate: u32,
         params: Mutex<VolumeEnvelopeParams>,
-
+        #[serde(skip)]
+        last_val: AtomicU8,
         current_settings: u8,
     }
 
@@ -48,6 +51,7 @@ mod oscillators {
 
         pub(crate) fn generate_sample(&self) -> u8 {
             if let Ok(mut params) = self.params.lock() {
+                self.last_val.store(params.current_level, Relaxed);
                 let output_sample = params.current_level;
                 if params.period == 0 {
                     return output_sample;
@@ -67,7 +71,7 @@ mod oscillators {
                 output_sample
             } else {
                 Logger::error("Missed vol env sample");
-                0
+                self.last_val.load(Relaxed) as u8
             }
         }
     }
