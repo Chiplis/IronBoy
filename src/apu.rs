@@ -1,8 +1,6 @@
 mod oscillators {
     use serde::{Serialize, Deserialize};
-    use std::sync::{Mutex, RwLock};
-    use std::sync::atomic::{AtomicU8, Ordering};
-    use Ordering::Relaxed;
+    use std::sync::{RwLock};
     use crate::logger::Logger;
 
     #[derive(Default, Serialize, Deserialize)]
@@ -16,9 +14,8 @@ mod oscillators {
     #[derive(Default, Serialize, Deserialize)]
     struct VolumeEnvelope {
         sample_rate: u32,
-        params: Mutex<VolumeEnvelopeParams>,
-        #[serde(skip)]
-        last_val: AtomicU8,
+        params: VolumeEnvelopeParams,
+        last_val: u8,
         current_settings: u8,
     }
 
@@ -33,14 +30,10 @@ mod oscillators {
             let period = val & 0x07;
 
             // Get the lock for all items
-            if let Ok(mut params) = self.params.lock() {
-                params.current_level = starting_vol;
-                params.add_mode = add_mode;
-                params.period = period;
-                params.frequency_timer = (self.sample_rate / 64) * ((period) as u32);
-            } else {
-                Logger::error( "Could not obtain envelope data lock");
-            }
+            self.params.current_level = starting_vol;
+            self.params.add_mode = add_mode;
+            self.params.period = period;
+            self.params.frequency_timer = (self.sample_rate / 64) * ((period) as u32);
 
             self.current_settings = val;
         }
@@ -49,30 +42,25 @@ mod oscillators {
             self.current_settings
         }
 
-        pub(crate) fn generate_sample(&self) -> u8 {
-            if let Ok(mut params) = self.params.lock() {
-                self.last_val.store(params.current_level, Relaxed);
-                let output_sample = params.current_level;
-                if params.period == 0 {
-                    return output_sample;
-                }
-                // Apply envelope
-                // Check if level change is needed
-                if params.frequency_timer == 0 {
-                    params.frequency_timer = (self.sample_rate / 64) * ((params.period) as u32);
-
-                    if params.add_mode && params.current_level < 15 {
-                        params.current_level += 1;
-                    } else if !params.add_mode && params.current_level > 0 {
-                        params.current_level -= 1;
-                    }
-                }
-                params.frequency_timer -= 1;
-                output_sample
-            } else {
-                Logger::error("Missed vol env sample");
-                self.last_val.load(Relaxed) as u8
+        pub(crate) fn generate_sample(&mut self) -> u8 {
+            self.last_val = self.params.current_level;
+            let output_sample = self.params.current_level;
+            if self.params.period == 0 {
+                return output_sample;
             }
+            // Apply envelope
+            // Check if level change is needed
+            if self.params.frequency_timer == 0 {
+                self.params.frequency_timer = (self.sample_rate / 64) * ((self.params.period) as u32);
+
+                if self.params.add_mode && self.params.current_level < 15 {
+                    self.params.current_level += 1;
+                } else if !self.params.add_mode && self.params.current_level > 0 {
+                    self.params.current_level -= 1;
+                }
+            }
+            self.params.frequency_timer -= 1;
+            output_sample
         }
     }
 
@@ -715,7 +703,7 @@ mod oscillators {
 
         frequency_timer: u32,
         timer_leftover: RwLock<f32>,
-        lfsr: Mutex<[bool; 15]>,
+        lfsr: [bool; 15],
 
         width: bool,
 
@@ -734,7 +722,7 @@ mod oscillators {
             NoiseGenerator {
                 sample_rate,
                 env: VolumeEnvelope::new(sample_rate),
-                lfsr: Mutex::new([true; 15]),
+                lfsr: [true; 15],
                 ..Default::default()
             }
         }
@@ -807,15 +795,8 @@ mod oscillators {
                         }
 
                         // Fill LFSR with 1s
-                        match self.lfsr.lock() {
-                            Ok(mut lfsr) => {
-                                for bit in lfsr.iter_mut() {
-                                    *bit = true;
-                                }
-                            }
-                            Err(_error) => {
-                                Logger::error("Could not obtain LFSR Mutex");
-                            }
+                        for bit in self.lfsr.iter_mut() {
+                            *bit = true;
                         }
 
                         // Set frequency timer
@@ -877,52 +858,42 @@ mod oscillators {
             }
 
             let env_sample = self.env.generate_sample();
-            let mut noise_sample = 0;
+            if self.frequency_timer == 0 {
+                // Reset frequency timer
+                let frequency = (self.divisor as u32) << (self.clock_shift as u32);
+                let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
 
-            match self.lfsr.lock() {
-                Ok(mut lfsr) => {
-                    if self.frequency_timer == 0 {
-                        // Reset frequency timer
-                        let frequency = (self.divisor as u32) << (self.clock_shift as u32);
-                        let mut samples_till_next = (self.sample_rate as f32 / 4194304.0) * frequency as f32;
+                // See square wave for explanation on timer leftover
+                match self.timer_leftover.write() {
+                    Ok(mut timer_leftover) => {
+                        *timer_leftover += samples_till_next - samples_till_next.floor();
 
-                        // See square wave for explanation on timer leftover
-                        match self.timer_leftover.write() {
-                            Ok(mut timer_leftover) => {
-                                *timer_leftover += samples_till_next - samples_till_next.floor();
-
-                                if *timer_leftover > 1.0 {
-                                    *timer_leftover -= 1.0;
-                                    samples_till_next += 1.0;
-                                }
-                            }
-                            Err(_) => {
-                                Logger::error("Square Wave: Could not write to timer leftover");
-                            }
-                        }
-
-                        self.frequency_timer = samples_till_next.ceil() as u32;
-
-                        // Move LFSR on
-                        let new_val = lfsr[0] != lfsr[1];
-                        lfsr.rotate_left(1);
-
-                        lfsr[14] = new_val;
-
-                        if self.width {
-                            lfsr[6] = new_val;
+                        if *timer_leftover > 1.0 {
+                            *timer_leftover -= 1.0;
+                            samples_till_next += 1.0;
                         }
                     }
-
-                    self.frequency_timer -= 1;
-
-                    noise_sample = i32::from(lfsr[0]);
+                    Err(_) => {
+                        Logger::error("Square Wave: Could not write to timer leftover");
+                    }
                 }
-                // This should never happen
-                Err(error) => {
-                    Logger::error(format!("Could not obtain LFSR lock: {error}"));
+
+                self.frequency_timer = samples_till_next.ceil() as u32;
+
+                // Move self.lfsr on
+                let new_val = self.lfsr[0] != self.lfsr[1];
+                self.lfsr.rotate_left(1);
+
+                self.lfsr[14] = new_val;
+
+                if self.width {
+                    self.lfsr[6] = new_val;
                 }
             }
+
+            self.frequency_timer -= 1;
+
+            let noise_sample = i32::from(self.lfsr[0]);
 
             if self.length_enabled {
 
