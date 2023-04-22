@@ -77,7 +77,7 @@ mod oscillators {
         trigger: u8,
         enabled: bool,
         length: u8,
-        length_counter: RwLock<u32>,
+        length_counter: u32,
         length_enabled: bool,
         env: VolumeEnvelope,
         sweep_period: u8,
@@ -125,14 +125,7 @@ mod oscillators {
                     let length_samples = ((self.sample_rate as f32 / 256.0) * length_256hz as f32).ceil() as u32;
 
                     // Here we set the length counter making sure nothing can use it while it is set
-                    match self.length_counter.write() {
-                        Ok(mut length_counter) => {
-                            *length_counter = length_samples;
-                        }
-                        Err(_error) => {
-                            Logger::info("Could not set square wave length");
-                        }
-                    }
+                    self.length_counter = length_samples;
                 }
 
                 // Volume envelope
@@ -170,15 +163,8 @@ mod oscillators {
                     }
 
                     // If length == 0 reset it to 64
-                    match self.length_counter.write() {
-                        Ok(mut length_counter) => {
-                            if *length_counter == 0 {
-                                *length_counter = ((self.sample_rate as f32 / 256.0) * 64.0).ceil() as u32;
-                            }
-                        }
-                        Err(error) => {
-                            Logger::error(format!("Could not set square wave length: {error}"));
-                        }
+                    if self.length_counter == 0 {
+                        self.length_counter = ((self.sample_rate as f32 / 256.0) * 64.0).ceil() as u32;
                     }
 
                     // Sweep data
@@ -380,27 +366,9 @@ mod oscillators {
 
             if self.length_enabled {
                 // Try and decrement the length counter, if we can't get access to it that means it's being reset and we don't want to decrement it anyway
-                match self.length_counter.try_write() {
-                    Ok(mut length_counter) => {
-
-                        // Just in case there's an underflow
-                        let new_length = match length_counter.checked_sub(1) {
-                            Some(val) => {
-                                val
-                            }
-                            None => {
-                                0
-                            }
-                        };
-
-                        *length_counter = new_length;
-
-                        // If we've reached the end of the current length disable the channel
-                        if *length_counter == 0 {
-                            self.enabled = false;
-                        }
-                    }
-                    Err(_error) => {}
+                self.length_counter = if let Some(val) = self.length_counter.checked_sub(1) { val } else { 0 };
+                if self.length_counter == 0 {
+                    self.enabled = false;
                 }
             }
 
@@ -984,7 +952,7 @@ impl AudioProcessingState {
             cpal::SampleFormat::F32 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.lock().unwrap().audio_block_f32(audio), move |stream_error| audio_error_ref.lock().unwrap().audio_error(stream_error), None),
             cpal::SampleFormat::I16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.lock().unwrap().audio_block_i16(audio), move |stream_error| audio_error_ref.lock().unwrap().audio_error(stream_error), None),
             cpal::SampleFormat::U16 => out_dev.build_output_stream(&StreamConfig::from(config), move |audio, _| audio_callback_ref.lock().unwrap().audio_block_u16(audio), move |stream_error| audio_error_ref.lock().unwrap().audio_error(stream_error), None),
-            unsupported => panic!("Unsupported stream format: {unsupported}")
+            _unsupported => panic!("Unsupported stream format: {_unsupported}")
         };
 
         if let Err(ref error) = stream {
