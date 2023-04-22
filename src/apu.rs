@@ -1265,6 +1265,9 @@ impl AudioProcessingState {
         mixed_left_sample /= 4.0;
         mixed_right_sample /= 4.0;
 
+        mixed_left_sample *= self.left_master_vol as f32 / 15.0;
+        mixed_right_sample *= self.right_master_vol as f32 / 15.0;
+
         (mixed_left_sample, mixed_right_sample)
     }
 }
