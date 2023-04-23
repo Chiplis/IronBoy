@@ -1,79 +1,708 @@
 <!DOCTYPE html>
 <html lang="en">
+
+<body>
+	<html>
+
+
+
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+
+    body {
+
+      max-width: unset;
+
+    }
+
+    #ironboy-screen {
+
+      outline: none;
+
+    }
+
+  </style>
+
+  <link rel="stylesheet" type="text/css" href="./iron_boy.css">
+
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.css">
+
+  <link href="./iron_boy_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
+
+  <link rel="modulepreload" href="./iron_boy.js" type="text/javascript">
+
+  <script>
+
+    let screen = () => document.getElementById('ironboy-screen'); 
+
+	  setInterval(() => screen() ? screen().focus() : undefined, 500)
+
+  </script>
+
 </head>
-<main>
 
-    <div id="ironboy-container" style="display: flex; justify-content: space-around">
 
-        <div id="controls" style="display: flex; flex-direction: column">
 
-            <div>
+<body>
 
-                Z -&gt; A
+  <main>
+
+    <div id="ironboy-container"
+
+      style="display: flex; flex-direction: column; align-items: center; margin-bottom: 2rem; justify-content: space-around">
+
+
+
+
+
+      <div class="gameboy" id="GameBoy">
+
+
+
+
+
+
+
+        <div class="screen-area">
+
+
+
+
+
+
+
+          <div class="power">
+
+
+
+            <div class="indicator">
+
+
+
+              <div class="led" id="ironboy-led"></div>
+
+
+
+              <span class="arc" style="z-index:2"></span>
+
+
+
+              <span class="arc" style="z-index:1"></span>
+
+
+
+              <span class="arc" style="z-index:0"></span>
+
+
 
             </div>
 
-            <div>
 
-                C -&gt; B
+
+            POWER
+
+
+
+          </div>
+
+
+
+
+
+
+
+          <div id="ironboy-canvas">
+
+
+
+          </div>
+
+
+
+
+
+          <div class="label">
+
+
+
+            <div class="title">IRON BOY</div>
+
+
+
+            <div class="subtitle" style="display: none">
+
+
+
+              <span class="c">C</span><!--
+
+
+
+             --><span class="o1">O</span><!--
+
+
+
+             --><span class="l">L</span><!--
+
+
+
+             --><span class="o2">O</span><!--
+
+
+
+             --><span class="r">R</span>
+
+
 
             </div>
 
-            <div>
 
-                Enter -&gt; Start
 
-            </div>
+          </div>
 
-            <div>
 
-                Backspace -&gt; Select
 
-            </div>
 
-            <div>
 
-                S -&gt; Save
 
-            </div>
-
-            <div>
-
-                P -&gt; Pause
-
-            </div>
-
-            <div>
-
-                M -&gt; Toggle sound
-
-            </div>
-
-            <div>
-
-                Esc -&gt; Close
-
-            </div>
 
         </div>
 
-        <canvas id="ironboy-canvas">
 
 
-        </canvas>
 
-        <div style="flex-basis: 20%">
 
-            <label for="ironboy-input">Choose your ROM file</label>
 
-            <input id="ironboy-input" type="file" accept=".gb">
+
+        <div onclick="window.open('https://codepen.io/brundolf/pen/beagbQ', '_blank')" style="cursor:pointer"
+
+          class="nintendo">Nintendo</div>
+
+
+
+
+
+
+
+        <div class="controls">
+
+
+
+          <div class="dpad">
+
+
+
+            <div class="up" id="up"><i class="fa fa-caret-up"></i></div>
+
+
+
+            <div class="right" id="right"><i class="fa fa-caret-right"></i></div>
+
+
+
+            <div class="down" id="down"><i class="fa fa-caret-down"></i></div>
+
+
+
+            <div class="left" id="left"><i class="fa fa-caret-left"></i></div>
+
+
+
+            <div class="middle"></div>
+
+
+
+          </div>
+
+
+
+          <div class="a-b">
+
+
+
+            <div class="b" id="b">B</div>
+
+
+
+            <div class="a" id="a">A</div>
+
+
+
+          </div>
+
+
 
         </div>
+
+
+
+
+
+
+
+        <div class="start-select">
+
+
+
+          <div class="select" id="select">SELECT</div>
+
+
+
+          <div class="start" id="start">START</div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+	<div class="speaker" style="cursor: pointer" id="speaker">
+
+
+
+          <div class="dot placeholder"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot placeholder"></div>
+
+
+
+
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+
+
+
+
+          <div class="dot placeholder"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot closed"></div>
+
+
+
+          <div class="dot open"></div>
+
+
+
+          <div class="dot placeholder"></div>
+
+
+
+        </div>
+
+
+
+
+
+
+
+      </div>
+
+
 
     </div>
 
-</main>
+
+
+    <div id="rom-selector">
+
+
+
+      <label for="ironboy-input">Choose your ROM/save file</label>
+
+
+
+      <input id="ironboy-input" type="file" accept=".gbc,.gb,.bin">
+
+
+
+    </div>
+
+
+
+    <div id="ironboy-demo" onclick="(() => document.getElementById('ironboy-demo').style.display='none')()"
+
+      style="cursor: pointer">
+
+      ▶️ Play 'Is that a demo in your pocket?'
+
+    </div>
+
+
+
+    <div id="controls" style="display: flex; flex-direction: column">
+
+
+
+      <div>
+
+
+
+        Z -&gt; A
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        C -&gt; B
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        Enter -&gt; Start
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        Backspace -&gt; Select
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        P -&gt; Pause
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        S -&gt; Save game
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        F -&gt; Limit framerate
+
+
+
+      </div>
+
+
+
+      <div>
+
+
+
+        M / Touch Speaker -&gt; Toggle sound
+
+
+
+      </div>
+
+    </div>
+
+    </div>
+
+
+
+  </main>
+
+  <script type="module">import init from './iron_boy.js'; init('./iron_boy_bg.wasm');</script>
+
+</body>
+
+
+
+</html>
+
+</body>
 </html>
