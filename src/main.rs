@@ -415,10 +415,10 @@ fn run_event_loop(
             let keymap = keymap.clone();
             check_buttons(gameboy, muted.clone(), &mut paused, keymap);
             if paused != previously_paused {
-                let class = "title fa fa-".to_owned() + if paused { "play" } else { "pause" };
+                let class = "title fa fa-".to_owned() + if paused { "pause" } else { "pause" };
                 window()
                     .and_then(|w| w.document())
-                    .and_then(|d| d.get_element_by_id("play"))
+                    .and_then(|d| d.get_element_by_id("pause"))
                     .and_then(|p| Some(p.set_attribute("class", &class)));
             }
         }
@@ -475,7 +475,7 @@ fn check_buttons(gameboy: &mut Gameboy, muted: Arc<AtomicBool>, paused: &mut boo
             "down" => Down,
             "speaker" => M,
             "power" => R,
-            "play" => P,
+            "pause" => P,
             _ => unreachable!()
         };
         if ACTION.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
@@ -571,7 +571,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
     ];
 
 
-    for button in ["speaker", "power", "play"] {
+    for button in ["speaker", "power", "pause"] {
         let km = keymap.clone();
         let toggle_button = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
             let km = &km.lock().unwrap();
@@ -594,7 +594,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
 
     keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
     keymap.lock().unwrap().insert("power", AtomicBool::new(false));
-    keymap.lock().unwrap().insert("play", AtomicBool::new(false));
+    keymap.lock().unwrap().insert("pause", AtomicBool::new(false));
 
     elms.iter().enumerate().for_each(|(idx, elm)| {
         let km = keymap.clone();
