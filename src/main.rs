@@ -7,6 +7,7 @@ use {
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
     web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window},
+    std::sync::atomic::Ordering
 };
 
 #[cfg(any(unix, windows))]
@@ -29,7 +30,7 @@ use instant::{Duration, Instant};
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool};
 use std::sync::atomic::Ordering::Relaxed;
 
 use crate::cartridge::Cartridge;
@@ -171,7 +172,7 @@ async fn run() {
                 .unwrap();
             Logger::info(format!("{}", file.name()));
             wasm_bindgen_futures::spawn_local(async move {
-                if received.load(Relaxed) { return }
+                if received.load(Relaxed) { return; }
                 received.store(true, Relaxed);
                 Logger::info(format!("Receiving file: {:?}", file));
                 start_wasm(file).await;
@@ -247,7 +248,17 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         .unwrap()
         .set_attribute("style", "filter: brightness(1.5); transition: all 1.5s linear")
         .unwrap();
-    run_event_loop(event_loop, gameboy, true, false, name, SaveFile::Bin);
+
+    let mute = Arc::new(AtomicBool::new(false));
+
+    run_event_loop(
+        event_loop,
+        gameboy,
+        Arc::new(AtomicBool::new(true)),
+        mute,
+        name,
+        SaveFile::Bin,
+    );
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -275,14 +286,15 @@ fn main_desktop() {
     let rom = read(rom_path.clone()).expect("Unable to read ROM file");
     let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom, rom);
 
-    run_event_loop(event_loop, gameboy, !args.fast, false, rom_path, args.format);
+    run_event_loop(event_loop, gameboy, Arc::new(AtomicBool::new(!args.fast)), Arc::new(AtomicBool::new(false)), rom_path, args.format);
 }
+
 
 fn run_event_loop(
     event_loop: EventLoop<()>,
     mut gameboy: Gameboy,
-    mut sleep: bool,
-    mut muted: bool,
+    sleep: Arc<AtomicBool>,
+    muted: Arc<AtomicBool>,
     rom_path: String,
     format: SaveFile,
 ) {
@@ -310,15 +322,42 @@ fn run_event_loop(
     #[cfg(target_arch = "wasm32")]
         let keymap = setup_virtual_pad();
 
+    #[cfg(target_arch = "wasm32")] {
+        let mut previously_muted = muted.load(Relaxed);
+        let muted = muted.clone();
+        let doc = web_sys::window().unwrap().document().unwrap();
+        let mute_on_unfocus = Closure::<dyn FnMut()>::wrap(Box::new(move || {
+            if let web_sys::VisibilityState::Hidden = web_sys::window().unwrap().document().unwrap().visibility_state() {
+                previously_muted = muted.load(Relaxed);
+                muted.store(true, Relaxed);
+            } else {
+                muted.store(previously_muted, Relaxed);
+            }
+        }));
+
+        doc.add_event_listener_with_callback("visibilitychange", mute_on_unfocus.as_ref().dyn_ref().unwrap()).ok();
+        mute_on_unfocus.forget();
+    }
+
     let mut previously_muted = false;
     event_loop.run(move |event, _target, control_flow| {
         let gameboy = &mut gameboy;
         input.update(&event);
 
+        if let Some(stream) = &gameboy.mmu.apu.stream {
+            if muted.load(Relaxed) && !previously_muted {
+                previously_muted = true;
+                stream.pause().unwrap();
+            } else if !muted.load(Relaxed) && previously_muted {
+                previously_muted = false;
+                stream.play().unwrap();
+            }
+        }
+
         if input.key_released(P) {
             paused = !paused;
             if let Some(stream) = &gameboy.mmu.apu.stream {
-                if paused { stream.pause().unwrap(); } else if !muted { stream.play().unwrap(); }
+                if paused { stream.pause().unwrap(); } else if !muted.load(Relaxed) { stream.play().unwrap(); }
             }
         }
 
@@ -336,11 +375,6 @@ fn run_event_loop(
             p.resize_surface(size.width, size.height).unwrap();
         }
 
-        #[cfg(target_os = "wasm32")]
-        if let Event::WindowEvent { event: Focused(false), .. } = event {
-            paused = true;
-        }
-
         #[cfg(target_os = "macos")]
         {
             if !paused && focus.1 && Instant::now() > focus.0 {
@@ -352,7 +386,7 @@ fn run_event_loop(
             }
 
             if let Event::WindowEvent { event: Focused(true), .. } = event {
-                if !sleep {
+                if !sleep.load(Relaxed) {
                     focus = (Instant::now() + Duration::from_secs_f64(0.5), true);
                 }
             }
@@ -364,14 +398,17 @@ fn run_event_loop(
         }
 
         if input.key_released(F) {
-            sleep = !sleep;
+            sleep.store(!sleep.load(Relaxed), Relaxed);
         }
 
         if input.key_released(M) {
-            muted = !muted;
+            muted.store(!muted.load(Relaxed), Relaxed);
         }
 
         if paused {
+            if let Some(stream) = &gameboy.mmu.apu.stream {
+                stream.pause().unwrap();
+            }
             return;
         }
 
@@ -380,7 +417,7 @@ fn run_event_loop(
             return;
         } else {
             let keymap = keymap.clone();
-            let run = run_frame(gameboy, sleep, &mut muted, Some(&input), Some(keymap));
+            let run = run_frame(gameboy, sleep.clone(), muted.clone(), Some(&input), Some(keymap));
             sleep_time = run.1;
             if slowest_frame < run.0 {
                 slowest_frame = run.0;
@@ -389,20 +426,16 @@ fn run_event_loop(
         }
 
         #[cfg(any(unix, windows))] {
-            let (current_frame, sleep_time) = run_frame(gameboy, sleep, &mut false, Some(&input), None);
+            let (current_frame, sleep_time) = run_frame(
+                gameboy,
+                sleep.clone(),
+                muted.clone(),
+                Some(&input),
+                None
+            );
             thread::sleep(sleep_time);
             if slowest_frame < current_frame {
                 slowest_frame = current_frame;
-            }
-        }
-
-        if let Some(stream) = &gameboy.mmu.apu.stream {
-            if muted && !previously_muted {
-                previously_muted = true;
-                stream.pause().unwrap();
-            } else if !muted && previously_muted {
-                previously_muted = false;
-                stream.play().unwrap();
             }
         }
 
@@ -410,7 +443,7 @@ fn run_event_loop(
     });
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: bool, mute: &mut bool, input: Option<&WinitInputHelper>, keymap: Option<Arc<Mutex<HashMap<&str, AtomicBool>>>>) -> (Duration, Duration) {
+fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, mute: Arc<AtomicBool>, input: Option<&WinitInputHelper>, keymap: Option<Arc<Mutex<HashMap<&str, AtomicBool>>>>) -> (Duration, Duration) {
     let mut elapsed_cycles = 0;
     let start = Instant::now();
     let pin = if let Some(pin) = gameboy.pin {
@@ -465,14 +498,14 @@ fn run_frame(gameboy: &mut Gameboy, sleep: bool, mute: &mut bool, input: Option<
                 } else if direction.contains(&code) && !gameboy.mmu.joypad.held_direction.contains(&code) {
                     gameboy.mmu.joypad.held_direction.push(code);
                 } else if code == M {
-                    *mute = !*mute;
+                    mute.store(!mute.load(Relaxed), Relaxed);
                     value.store(false, Relaxed);
                 }
             }
         }
     }
 
-    if !sleep {
+    if !sleep.load(Relaxed) {
         return (start.elapsed(), Duration::from_secs(0));
     }
 
