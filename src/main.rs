@@ -156,8 +156,10 @@ async fn start_wasm(file: web_sys::File) {
 
 #[cfg(target_arch = "wasm32")]
 async fn run() {
+    let received = Arc::new(AtomicBool::new(false));
     let recv_file = {
         Closure::<dyn FnMut()>::wrap(Box::new(move || {
+            let received = received.clone();
             let document = web_sys::window().unwrap().document().unwrap();
             let file = document.get_element_by_id("ironboy-input")
                 .unwrap()
@@ -169,49 +171,48 @@ async fn run() {
                 .unwrap();
             web_sys::console::log_1(&format!("{}", file.name()).into());
             wasm_bindgen_futures::spawn_local(async move {
+                if received.load(Relaxed) { return }
+                received.store(true, Relaxed);
+                Logger::info(format!("Receiving file: {:?}", file));
                 start_wasm(file).await;
             })
         }))
     };
-
-    let run_demo = {
-        Closure::<dyn FnMut()>::wrap(Box::new(move || {
-            wasm_bindgen_futures::spawn_local(async move {
-                let mut opts = RequestInit::new();
-                opts.method("GET");
-                // opts.mode(RequestMode::Cors);
-                let url = format!("pocket.gb");
-                let request = Request::new_with_str_and_init(&url, &opts).unwrap();
-                let resp_value = JsFuture::from(web_sys::window().unwrap().fetch_with_request(&request)).await.unwrap();
-                let resp: Response = resp_value.dyn_into().unwrap();
-
-                // Convert this other `Promise` into a rust `Future`.
-                let array_buffer: ArrayBuffer = JsFuture::from(resp.array_buffer().unwrap()).await.unwrap().dyn_into::<>().unwrap();
-                let arr = Array::new();
-                arr.push(&array_buffer);
-                let file = web_sys::File::new_with_buffer_source_sequence(&arr, "demo.gb").unwrap();
-
-                start_wasm(file).await;
-            })
-        }))
-    };
-
     web_sys::window()
         .and_then(|w| w.document())
         .and_then(|d| d.get_element_by_id("ironboy-input"))
         .and_then(|i| i.dyn_into::<HtmlInputElement>().ok())
-        .and_then(|i| i.add_event_listener_with_callback("change", recv_file.as_ref().dyn_ref().unwrap()).ok())
-        .expect("Failed to add setup emulator callback to input.");
+        .and_then(|i| i.add_event_listener_with_callback("change", recv_file.as_ref().dyn_ref().unwrap()).ok());
+    recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
 
-    web_sys::window()
+    if let Some(demo) = web_sys::window()
         .and_then(|w| w.document())
         .and_then(|d| d.get_element_by_id("ironboy-demo"))
-        .and_then(|i| i.dyn_into::<HtmlDivElement>().ok())
-        .and_then(|i| i.add_event_listener_with_callback("click", run_demo.as_ref().dyn_ref().unwrap()).ok())
-        .or(Some(Logger::error("Could not find demo.")));
+        .and_then(|i| i.dyn_into::<HtmlDivElement>().ok()) {
+        let run_demo = {
+            Closure::<dyn FnMut()>::wrap(Box::new(move || {
+                wasm_bindgen_futures::spawn_local(async move {
+                    let mut opts = RequestInit::new();
+                    opts.method("GET");
+                    // opts.mode(RequestMode::Cors);
+                    let url = format!("pocket.gb");
+                    let request = Request::new_with_str_and_init(&url, &opts).unwrap();
+                    let resp_value = JsFuture::from(web_sys::window().unwrap().fetch_with_request(&request)).await.unwrap();
+                    let resp: Response = resp_value.dyn_into().unwrap();
 
-    run_demo.forget();
-    recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
+                    // Convert this other `Promise` into a rust `Future`.
+                    let array_buffer: ArrayBuffer = JsFuture::from(resp.array_buffer().unwrap()).await.unwrap().dyn_into::<>().unwrap();
+                    let arr = Array::new();
+                    arr.push(&array_buffer);
+                    let file = web_sys::File::new_with_buffer_source_sequence(&arr, "demo.gb").unwrap();
+
+                    start_wasm(file).await;
+                })
+            }))
+        };
+        demo.add_event_listener_with_callback("click", run_demo.as_ref().dyn_ref().unwrap()).ok();
+        run_demo.forget();
+    }
     web_sys::console::log_1(&"Loading IronBoy.".into());
 }
 
@@ -239,9 +240,9 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         .set_attribute("style", "display: none")
         .unwrap();
     doc.get_element_by_id("ironboy-demo")
-        .unwrap()
-        .set_attribute("style", "display: none")
-        .unwrap();
+        .map(|d| d.set_attribute("style", "display: none"))
+        .or(Some(Ok(Logger::error("#ironboy-demo not found"))));
+
     doc.get_element_by_id("ironboy-led")
         .unwrap()
         .set_attribute("style", "filter: brightness(1.5); transition: all 1.5s linear")
