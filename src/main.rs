@@ -413,9 +413,9 @@ fn run_event_loop(
 
         #[cfg(target_arch = "wasm32")] {
             let keymap = keymap.clone();
-            check_buttons(gameboy, muted.clone(), &mut paused, keymap);
+            check_buttons(gameboy, muted.clone(), sleep.clone(), &mut paused, keymap);
             if paused != previously_paused {
-                let class = "title fa fa-".to_owned() + if paused { "pause" } else { "pause" };
+                let class = "title fa fa-".to_owned() + if paused { "play" } else { "pause" };
                 window()
                     .and_then(|w| w.document())
                     .and_then(|d| d.get_element_by_id("pause"))
@@ -458,7 +458,7 @@ fn run_event_loop(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn check_buttons(gameboy: &mut Gameboy, muted: Arc<AtomicBool>, paused: &mut bool, keymap: Arc<Mutex<HashMap<&str, AtomicBool>>>) {
+fn check_buttons(gameboy: &mut Gameboy, muted: Arc<AtomicBool>, sleep: Arc<AtomicBool>, paused: &mut bool, keymap: Arc<Mutex<HashMap<&str, AtomicBool>>>) {
     let previously_paused = *paused;
     for (key, value) in keymap.lock().unwrap().iter() {
         if !value.load(Relaxed) {
@@ -476,6 +476,7 @@ fn check_buttons(gameboy: &mut Gameboy, muted: Arc<AtomicBool>, paused: &mut boo
             "speaker" => M,
             "power" => R,
             "pause" => P,
+            "sleep" => F,
             _ => unreachable!()
         };
         if ACTION.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
@@ -493,6 +494,9 @@ fn check_buttons(gameboy: &mut Gameboy, muted: Arc<AtomicBool>, paused: &mut boo
             *paused = !*paused;
             value.store(false, Relaxed);
             break;
+        } else if code == F {
+            sleep.store(!sleep.load(Relaxed), Relaxed);
+            value.store(false, Relaxed);
         }
     }
 
@@ -571,7 +575,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
     ];
 
 
-    for button in ["speaker", "power", "pause"] {
+    for button in ["speaker", "power", "pause", "sleep"] {
         let km = keymap.clone();
         let toggle_button = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
             let km = &km.lock().unwrap();
@@ -595,6 +599,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
     keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
     keymap.lock().unwrap().insert("power", AtomicBool::new(false));
     keymap.lock().unwrap().insert("pause", AtomicBool::new(false));
+    keymap.lock().unwrap().insert("sleep", AtomicBool::new(false));
 
     elms.iter().enumerate().for_each(|(idx, elm)| {
         let km = keymap.clone();
