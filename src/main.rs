@@ -208,7 +208,7 @@ async fn run() {
         .and_then(|d| d.get_element_by_id("ironboy-demo"))
         .and_then(|i| i.dyn_into::<HtmlDivElement>().ok())
         .and_then(|i| i.add_event_listener_with_callback("click", run_demo.as_ref().dyn_ref().unwrap()).ok())
-        .expect("Failed to setup demo.");
+        .or(Some(Logger::error("Could not find demo.")));
 
     run_demo.forget();
     recv_file.forget(); // TODO: this leaks. I forgot how to get around that.
