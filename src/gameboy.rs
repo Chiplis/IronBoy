@@ -32,6 +32,17 @@ pub struct Gameboy {
 }
 
 impl Gameboy {
+    pub fn reset(&mut self) {
+        self.pin = Some((0, Instant::now()));
+        self.halt_bug = false;
+        self.reg = Register::new(self.mmu.boot_rom.is_some());
+        self.ei_counter = -1;
+        self.ime = false;
+        self.halted = false;
+        self.counter = 0;
+        self.mmu.reset();
+    }
+
     pub fn new(mem: MemoryManagementUnit) -> Self {
         Self {
             pin: Some((0, Instant::now())),

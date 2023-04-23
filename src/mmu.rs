@@ -17,6 +17,7 @@ use crate::mbc1::MBC1;
 
 use crate::renderer::Renderer;
 use std::fs::read;
+use cpal::traits::StreamTrait;
 
 use crate::serial::LinkCable;
 
@@ -56,6 +57,24 @@ pub struct MemoryManagementUnit {
 }
 
 impl MemoryManagementUnit {
+
+    pub(crate) fn reset(&mut self) {
+        self.interrupt_handler = InterruptHandler::new();
+        self.ppu = PixelProcessingUnit::new();
+        let size = self.renderer.pixels().as_ref().unwrap().get_frame().len();
+        self.renderer.render(&vec![0; size]);
+        self.serial = LinkCable::new();
+        self.timer = Timer::new(self.boot_rom.is_some());
+        self.joypad = Joypad::new();
+        self.cycles = 0;
+        self.dma = 0xFF;
+        self.apu = AudioProcessingUnit::new();
+        if let Some(stream) = &self.apu.stream {
+            stream.play().unwrap();
+        }
+        MemoryManagementUnit::init_memory(self);
+    }
+
     pub(crate) fn save(&mut self) {
         if let Some(mbc) = &mut self.mbc0 {
             mbc.save()
@@ -107,7 +126,7 @@ impl MemoryManagementUnit {
             Five(mbc) => (None, None, None, Some(mbc))
         };
 
-        let mem = MemoryManagementUnit {
+        let mut mem = MemoryManagementUnit {
             renderer: Renderer::new(),
             high_ram: vec![0; 0x10000 - 0xFEA0],
             dma: 0xFF,
@@ -126,7 +145,8 @@ impl MemoryManagementUnit {
             mbc5
         };
 
-        MemoryManagementUnit::init_memory(mem)
+        MemoryManagementUnit::init_memory(&mut mem);
+        mem
     }
 
     fn load_mbc(
@@ -365,9 +385,9 @@ impl MemoryManagementUnit {
         }
     }
 
-    fn init_memory(mut mem: MemoryManagementUnit) -> MemoryManagementUnit {
+    fn init_memory(mem: &mut MemoryManagementUnit) {
         if mem.boot_rom.is_some() {
-            return mem;
+            return;
         }
 
         macro_rules! set_memory {
@@ -409,7 +429,5 @@ impl MemoryManagementUnit {
             0xFF4B: 0x0,
             0xFF00: 0xFF,
         }
-
-        mem
     }
 }

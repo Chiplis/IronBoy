@@ -51,6 +51,7 @@ S -> Save
 P -> Pause
 F -> Toggle frame limiter
 M -> Toggle sound
+R -> Reset
 Esc -> Close
 ```
 

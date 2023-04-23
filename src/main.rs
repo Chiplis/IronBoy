@@ -43,7 +43,7 @@ use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
 
 use winit::dpi::LogicalSize;
-use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M};
+use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M, R};
 use winit::event::{VirtualKeyCode};
 
 use winit::event_loop::EventLoop;
@@ -244,7 +244,7 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
         .map(|d| d.set_attribute("style", "display: none"))
         .or(Some(Ok(Logger::error("#ironboy-demo not found"))));
 
-    doc.get_element_by_id("ironboy-led")
+    doc.get_element_by_id("power")
         .unwrap()
         .set_attribute("style", "filter: brightness(1.5); transition: all 1.5s linear")
         .unwrap();
@@ -405,6 +405,10 @@ fn run_event_loop(
             muted.store(!muted.load(Relaxed), Relaxed);
         }
 
+        if input.key_released(R) {
+            gameboy.reset();
+        }
+
         if paused {
             if let Some(stream) = &gameboy.mmu.apu.stream {
                 stream.pause().unwrap();
@@ -491,6 +495,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, mute: Arc<AtomicBool
                     "right" => Right,
                     "down" => Down,
                     "speaker" => M,
+                    "power" => R,
                     _ => unreachable!()
                 };
                 if action.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
@@ -500,6 +505,10 @@ fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, mute: Arc<AtomicBool
                 } else if code == M {
                     mute.store(!mute.load(Relaxed), Relaxed);
                     value.store(false, Relaxed);
+                } else if code == R {
+                    gameboy.reset();
+                    value.store(false, Relaxed);
+                    break;
                 }
             }
         }
@@ -531,18 +540,21 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
         "a", "b", "up", "down", "left", "right", "start", "select"
     ];
 
-    let km = keymap.clone();
-    let toggle_speaker = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
-        let km = &km.lock().unwrap();
-        let state = km.get("speaker").unwrap();
-        state.store(!state.load(Ordering::Relaxed), Ordering::Relaxed);
-    });
-    let speaker = doc.get_element_by_id("speaker").unwrap();
-    speaker.add_event_listener_with_callback(
-        "pointerdown",
-        toggle_speaker.as_ref().unchecked_ref(),
-    ).unwrap();
-    toggle_speaker.forget();
+
+    for button in ["speaker", "power"] {
+        let km = keymap.clone();
+        let toggle_button = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+            let km = &km.lock().unwrap();
+            let state = km.get(button).unwrap();
+            state.store(!state.load(Ordering::Relaxed), Ordering::Relaxed);
+        });
+        let speaker = doc.get_element_by_id(button).unwrap();
+        speaker.add_event_listener_with_callback(
+            "pointerdown",
+            toggle_button.as_ref().unchecked_ref(),
+        ).unwrap();
+        toggle_button.forget();
+    }
 
     let elms = ids.map(|k| doc.get_element_by_id(k).unwrap());
 
@@ -551,6 +563,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
     }
 
     keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
+    keymap.lock().unwrap().insert("power", AtomicBool::new(false));
 
     elms.iter().enumerate().for_each(|(idx, elm)| {
         let km = keymap.clone();
