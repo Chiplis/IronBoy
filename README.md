@@ -15,7 +15,7 @@ The emulator has been built and executed without issues on Windows, Linux and ma
 ---
 ## Testing
 ```cargo test --release```
-```trunk build --release --filehash=false && cp iron_boy.css dist```
+```trunk build --release --filehash=false```
 
 Install
 This should execute all available test ROMs and save the rendered output for each of them in the ```test_output``` folder.
