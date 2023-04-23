@@ -416,7 +416,10 @@ fn run_event_loop(
             check_buttons(gameboy, muted.clone(), &mut paused, keymap);
             if paused != previously_paused {
                 let class = "title fa fa-".to_owned() + if paused { "play" } else { "pause" };
-                window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("play").map(|p|p.set_attribute("class", &class))?.ok());
+                window()
+                    .and_then(|w| w.document())
+                    .and_then(|d| d.get_element_by_id("play"))
+                    .and_then(|p| Some(p.set_attribute("class", &class)));
             }
         }
 
