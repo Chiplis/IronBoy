@@ -169,7 +169,7 @@ async fn run() {
                 .unwrap()
                 .item(0)
                 .unwrap();
-            web_sys::console::log_1(&format!("{}", file.name()).into());
+            Logger::info(format!("{}", file.name()));
             wasm_bindgen_futures::spawn_local(async move {
                 if received.load(Relaxed) { return }
                 received.store(true, Relaxed);
@@ -213,7 +213,7 @@ async fn run() {
         demo.add_event_listener_with_callback("click", run_demo.as_ref().dyn_ref().unwrap()).ok();
         run_demo.forget();
     }
-    web_sys::console::log_1(&"Loading IronBoy.".into());
+    Logger::info("Loading IronBoy.");
 }
 
 #[cfg(target_arch = "wasm32")]
