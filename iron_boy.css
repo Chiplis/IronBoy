@@ -1,3 +1,7 @@
+#power {
+	cursor: pointer;
+}
+
 #ironboy-canvas {
   height: calc(144px * 3/2);
   width: calc(160px * 3/2)
