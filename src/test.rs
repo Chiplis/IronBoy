@@ -3,6 +3,8 @@ use std::fs::{read, read_dir};
 use std::io::Error;
 use std::panic;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::channel;
 use std::thread;
 
@@ -61,9 +63,9 @@ fn test_roms() -> Result<(), Error> {
 
             let mem = MemoryManagementUnit::new(rom_vec, cartridge, None, Path::new(&rom));
             let mut gameboy = Gameboy::new(mem);
-
+            gameboy.mmu.apu.stream = None;
             for _frame in 0..TEST_DURATION {
-                run_frame(&mut gameboy, false, None, None);
+                run_frame(&mut gameboy, Arc::new(AtomicBool::new(false)), None);
             }
 
             Logger::info(format!("Saving screenshot for {rom_filename}"));

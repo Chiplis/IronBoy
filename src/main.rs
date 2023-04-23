@@ -7,7 +7,7 @@ use {
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
     web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window},
-    std::sync::atomic::Ordering
+    std::sync::atomic::Ordering,
 };
 
 #[cfg(any(unix, windows))]
@@ -306,7 +306,7 @@ fn run_event_loop(
     let mut slowest_frame = Duration::from_nanos(0);
 
     let mut paused = false;
-    if let Some(stream) = &gameboy.mmu.apu.stream {
+    if let (Some(stream), false) = (&gameboy.mmu.apu.stream, muted.load(Relaxed)) {
         stream.play().unwrap();
     }
 
@@ -353,6 +353,8 @@ fn run_event_loop(
                 stream.play().unwrap();
             }
         }
+
+        let previously_paused = paused;
 
         if input.key_released(P) {
             paused = !paused;
@@ -409,6 +411,15 @@ fn run_event_loop(
             gameboy.reset();
         }
 
+        #[cfg(target_arch = "wasm32")] {
+            let keymap = keymap.clone();
+            check_buttons(gameboy, muted.clone(), &mut paused, keymap);
+            if paused != previously_paused {
+                let class = "title fa fa-".to_owned() + if paused { "play" } else { "pause" };
+                window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("play").map(|p|p.set_attribute("class", &class))?.ok());
+            }
+        }
+
         if paused {
             if let Some(stream) = &gameboy.mmu.apu.stream {
                 stream.pause().unwrap();
@@ -420,8 +431,7 @@ fn run_event_loop(
         if wait_time.elapsed() < sleep_time {
             return;
         } else {
-            let keymap = keymap.clone();
-            let run = run_frame(gameboy, sleep.clone(), muted.clone(), Some(&input), Some(keymap));
+            let run = run_frame(gameboy, sleep.clone(), Some(&input));
             sleep_time = run.1;
             if slowest_frame < run.0 {
                 slowest_frame = run.0;
@@ -433,10 +443,7 @@ fn run_event_loop(
             let (current_frame, sleep_time) = run_frame(
                 gameboy,
                 sleep.clone(),
-                muted.clone(),
-                Some(&input),
-                None
-            );
+                Some(&input));
             thread::sleep(sleep_time);
             if slowest_frame < current_frame {
                 slowest_frame = current_frame;
@@ -447,7 +454,62 @@ fn run_event_loop(
     });
 }
 
-fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, mute: Arc<AtomicBool>, input: Option<&WinitInputHelper>, keymap: Option<Arc<Mutex<HashMap<&str, AtomicBool>>>>) -> (Duration, Duration) {
+#[cfg(target_arch = "wasm32")]
+fn check_buttons(gameboy: &mut Gameboy, muted: Arc<AtomicBool>, paused: &mut bool, keymap: Arc<Mutex<HashMap<&str, AtomicBool>>>) {
+    let previously_paused = *paused;
+    for (key, value) in keymap.lock().unwrap().iter() {
+        if !value.load(Relaxed) {
+            continue;
+        }
+        let code = match *key {
+            "a" => Z,
+            "b" => C,
+            "select" => Back,
+            "start" => Return,
+            "up" => Up,
+            "left" => Left,
+            "right" => Right,
+            "down" => Down,
+            "speaker" => M,
+            "power" => R,
+            "play" => P,
+            _ => unreachable!()
+        };
+        if ACTION.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
+            gameboy.mmu.joypad.held_action.push(code);
+        } else if DIRECTION.contains(&code) && !gameboy.mmu.joypad.held_direction.contains(&code) {
+            gameboy.mmu.joypad.held_direction.push(code);
+        } else if code == M {
+            muted.store(!muted.load(Relaxed), Relaxed);
+            value.store(false, Relaxed);
+        } else if code == R {
+            gameboy.reset();
+            value.store(false, Relaxed);
+            break;
+        } else if code == P {
+            *paused = !*paused;
+            value.store(false, Relaxed);
+            break;
+        }
+    }
+
+    if (*paused && !previously_paused) || (!*paused && previously_paused) {
+        if let Some(stream) = &gameboy.mmu.apu.stream {
+            if muted.load(Relaxed) {
+                stream.pause().ok();
+            } else if *paused {
+                stream.pause().ok();
+            } else {
+                stream.play().ok();
+            }
+        }
+    }
+}
+
+const ACTION: [VirtualKeyCode; 4] = [Z, C, Back, Return];
+const DIRECTION: [VirtualKeyCode; 4] = [Up, Down, Left, Right];
+
+fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, input: Option<&WinitInputHelper>) -> (Duration, Duration) {
     let mut elapsed_cycles = 0;
     let start = Instant::now();
     let pin = if let Some(pin) = gameboy.pin {
@@ -476,43 +538,8 @@ fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, mute: Arc<AtomicBool
             .collect()
     };
 
-    let action = [Z, C, Back, Return];
-    let direction = [Up, Down, Left, Right];
-
-    gameboy.mmu.joypad.held_action = map_held(action);
-    gameboy.mmu.joypad.held_direction = map_held(direction);
-
-    if let Some(keymap) = keymap {
-        for (key, value) in keymap.lock().unwrap().iter() {
-            if value.load(Relaxed) {
-                let code = match *key {
-                    "a" => Z,
-                    "b" => C,
-                    "select" => Back,
-                    "start" => Return,
-                    "up" => Up,
-                    "left" => Left,
-                    "right" => Right,
-                    "down" => Down,
-                    "speaker" => M,
-                    "power" => R,
-                    _ => unreachable!()
-                };
-                if action.contains(&code) && !gameboy.mmu.joypad.held_action.contains(&code) {
-                    gameboy.mmu.joypad.held_action.push(code);
-                } else if direction.contains(&code) && !gameboy.mmu.joypad.held_direction.contains(&code) {
-                    gameboy.mmu.joypad.held_direction.push(code);
-                } else if code == M {
-                    mute.store(!mute.load(Relaxed), Relaxed);
-                    value.store(false, Relaxed);
-                } else if code == R {
-                    gameboy.reset();
-                    value.store(false, Relaxed);
-                    break;
-                }
-            }
-        }
-    }
+    gameboy.mmu.joypad.held_action = map_held(ACTION);
+    gameboy.mmu.joypad.held_direction = map_held(DIRECTION);
 
     if !sleep.load(Relaxed) {
         return (start.elapsed(), Duration::from_secs(0));
@@ -541,7 +568,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
     ];
 
 
-    for button in ["speaker", "power"] {
+    for button in ["speaker", "power", "play"] {
         let km = keymap.clone();
         let toggle_button = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
             let km = &km.lock().unwrap();
@@ -564,6 +591,7 @@ fn setup_virtual_pad() -> Arc<Mutex<HashMap<&'static str, AtomicBool>>> {
 
     keymap.lock().unwrap().insert("speaker", AtomicBool::new(false));
     keymap.lock().unwrap().insert("power", AtomicBool::new(false));
+    keymap.lock().unwrap().insert("play", AtomicBool::new(false));
 
     elms.iter().enumerate().for_each(|(idx, elm)| {
         let km = keymap.clone();
