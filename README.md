@@ -8,6 +8,7 @@ I decided to focus only on the original Game Boy (DMG) to achieve the highest de
 ---
 ## Building
 ```cargo build --release```
+
 ```trunk build --release --filehash=false```
 Download `trunk` from https://trunkrs.dev/ and run a local webserver in the generated /dist folder if you want to run the WASM version. 
 The emulator has been built and executed without issues on Windows, Linux and macOS.
