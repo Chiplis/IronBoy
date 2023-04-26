@@ -61,4 +61,6 @@ Esc -> Close
 
 * ~Sound~ - Credits to [@maxwalley](https://github.com/maxwalley)
 
-* Full MBC support (as of now only MBC0, MBC1 and MBC3 have been implemented)
+* ~MBC 0/1/2/3/5 support~ - If you find any games that don't seem to start, please open an issue! 
+
+* GameBoy Color support
