@@ -275,6 +275,8 @@ impl MemoryManagementUnit {
             mbc.write(translated_address, value)
         } else if let Some(mbc) = &mut self.mbc3 {
             mbc.write(translated_address, value)
+        } else if let Some(mbc) = &mut self.mbc5 {
+            mbc.write(translated_address, value)
         } else {
             false
         }
