@@ -1,7 +1,6 @@
 use crate::cartridge::Cartridge;
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
-use std::cmp::max;
 
 use serde::{Deserialize, Serialize};
 
