@@ -75,6 +75,7 @@ mod apu;
 mod test;
 mod mbc5;
 mod logger;
+mod mbc2;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
