@@ -8,20 +8,17 @@ use {
     wasm_bindgen_futures::JsFuture,
     web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window},
     std::sync::atomic::Ordering,
+    std::sync::Mutex,
+    std::collections::HashMap
 };
 
 #[cfg(any(unix, windows))]
 use {
     std::io::{Write},
-    rand::Rng,
-    rand::distributions::Uniform,
     std::fs::{read, write, File},
     winit::event::Event,
-    winit::event::{WindowEvent::Focused},
     std::thread,
 };
-
-use std::collections::HashMap;
 
 use gameboy::Gameboy;
 
@@ -29,7 +26,7 @@ use crate::mmu::MemoryManagementUnit;
 use instant::{Duration, Instant};
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::sync::atomic::{AtomicBool};
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -313,7 +310,7 @@ fn run_event_loop(
 
     let mut last_save = Instant::now();
 
-    #[cfg(target_os = "macos")]
+    #[cfg(target_arch = "aarch64")]
         let mut focus = (Instant::now(), true);
 
     #[cfg(target_arch = "wasm32")]
@@ -355,7 +352,8 @@ fn run_event_loop(
             }
         }
 
-        let previously_paused = paused;
+        #[cfg(target_arch = "wasm32")]
+            let previously_paused = paused;
 
         if input.key_released(P) {
             paused = !paused;
@@ -378,8 +376,13 @@ fn run_event_loop(
             p.resize_surface(size.width, size.height).unwrap();
         }
 
-        #[cfg(target_os = "macos")]
+        #[cfg(target_arch = "aarch64")]
         {
+            use {
+                winit::event::{WindowEvent::Focused},
+                rand::Rng,
+                rand::distributions::Uniform
+            };
             if !paused && focus.1 && Instant::now() > focus.0 {
                 // Save temporary dummy file to prevent throttling on Apple Silicon after focus change
                 let dummy_data: Vec<u8> = rand::thread_rng().sample_iter(&Uniform::from(0..255)).take(0xFFFFFF).collect();
