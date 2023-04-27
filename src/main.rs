@@ -3,7 +3,7 @@ extern crate core;
 #[cfg(target_arch = "wasm32")]
 use {
     leptos::js_sys::{Array, ArrayBuffer, Uint8Array},
-    wasm_bindgen::{JsCast},
+    wasm_bindgen::{JsCast, JsValue},
     wasm_bindgen::closure::Closure,
     wasm_bindgen_futures::JsFuture,
     web_sys::{console, HtmlInputElement, HtmlAnchorElement, HtmlDivElement, Blob, Request, RequestInit, Response, Url, window},
@@ -38,7 +38,6 @@ use cpal::traits::StreamTrait;
 
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
-use wasm_bindgen::JsValue;
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M, R};
