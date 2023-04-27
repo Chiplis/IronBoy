@@ -38,6 +38,7 @@ use cpal::traits::StreamTrait;
 
 use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
+use wasm_bindgen::JsValue;
 
 use winit::dpi::LogicalSize;
 use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M, R};
@@ -191,21 +192,17 @@ async fn run() {
         let run_demo = {
             Closure::<dyn FnMut()>::wrap(Box::new(move || {
                 wasm_bindgen_futures::spawn_local(async move {
-                    let mut opts = RequestInit::new();
-                    opts.method("GET");
-                    // opts.mode(RequestMode::Cors);
-                    let url = format!("pocket.gb");
-                    let request = Request::new_with_str_and_init(&url, &opts).unwrap();
-                    let resp_value = JsFuture::from(web_sys::window().unwrap().fetch_with_request(&request)).await.unwrap();
-                    let resp: Response = resp_value.dyn_into().unwrap();
+                    let array_buffer = download_file("pocket.gb").await;
+                    if let Ok(array_buffer) = array_buffer {
+                        Logger::info(format!("Found pocket.gb demo with {}", array_buffer.byte_length()));
+                        let arr = Array::new();
+                        arr.push(&array_buffer);
+                        let file = web_sys::File::new_with_buffer_source_sequence(&arr, "pocket.gb").unwrap();
+                        start_wasm(file).await;
+                    } else if let Err(e) = array_buffer {
+                        Logger::error(format!("Failed to download pocket.gb: {:?}", e));
+                    }
 
-                    // Convert this other `Promise` into a rust `Future`.
-                    let array_buffer: ArrayBuffer = JsFuture::from(resp.array_buffer().unwrap()).await.unwrap().dyn_into::<>().unwrap();
-                    let arr = Array::new();
-                    arr.push(&array_buffer);
-                    let file = web_sys::File::new_with_buffer_source_sequence(&arr, "demo.gb").unwrap();
-
-                    start_wasm(file).await;
                 })
             }))
         };
@@ -213,6 +210,21 @@ async fn run() {
         run_demo.forget();
     }
     Logger::info("Loading IronBoy.");
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn download_file(url: &str) -> Result<ArrayBuffer, JsValue> {
+    let mut opts = RequestInit::new();
+    opts.method("GET");
+    // opts.mode(RequestMode::Cors);
+    let request = Request::new_with_str_and_init(&url, &opts).unwrap();
+    let resp_value = JsFuture::from(web_sys::window().unwrap().fetch_with_request(&request)).await.unwrap();
+    let resp: Response = resp_value.dyn_into()?;
+    if resp.status() >= 400 {
+        return Err(JsValue::from(format!("Invalid response status: {}", resp.status())))
+    }
+    // Convert this other `Promise` into a rust `Future`.
+    JsFuture::from(resp.array_buffer()?).await?.dyn_into::<>()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -231,7 +243,11 @@ async fn file_callback(pixels: Pixels, event_loop: EventLoop<()>, file: Option<w
     );
 
     let name = file.name().replace(".sav.bin", "").replace(".sav.json", "");
-    let gameboy = load_gameboy(pixels, file.name(), false, None, data);
+    let boot_rom = download_file("dmg_boot.gb")
+        .await
+        .ok()
+        .map(|b| Uint8Array::new(&b).to_vec());
+    let gameboy = load_gameboy(pixels, file.name(), false, boot_rom, data);
 
     let doc = web_sys::window().unwrap().document().unwrap();
     doc.get_element_by_id("rom-selector")
@@ -282,7 +298,8 @@ fn main_desktop() {
     let window = setup_window(rom_path.clone()).build(&event_loop).unwrap();
     let pixels = setup_pixels(&window);
     let rom = read(rom_path.clone()).expect("Unable to read ROM file");
-    let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, args.boot_rom, rom);
+    let boot_rom = args.boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
+    let gameboy = load_gameboy(pixels, rom_path.clone(), args.cold_boot, boot_rom, rom);
 
     run_event_loop(event_loop, gameboy, Arc::new(AtomicBool::new(!args.fast)), Arc::new(AtomicBool::new(false)), rom_path, args.format);
 }
@@ -697,7 +714,7 @@ fn load_gameboy(
     pixels: Pixels,
     rom_path: String,
     cold_boot: bool,
-    boot_rom: Option<String>,
+    boot_rom: Option<Vec<u8>>,
     mut data: Vec<u8>,
 ) -> Gameboy {
     let mut gameboy = if rom_path.ends_with(".gb") || rom_path.ends_with(".gbc") {

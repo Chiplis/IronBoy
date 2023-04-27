@@ -16,7 +16,6 @@ use crate::mbc0::MBC0;
 use crate::mbc1::MBC1;
 
 use crate::renderer::Renderer;
-use std::fs::read;
 use cpal::traits::StreamTrait;
 
 use crate::serial::LinkCable;
@@ -117,11 +116,9 @@ impl MemoryManagementUnit {
     pub fn new(
         rom: Vec<u8>,
         cartridge: Cartridge,
-        boot_rom: Option<String>,
+        boot_rom: Option<Vec<u8>>,
         rom_path: &Path,
     ) -> MemoryManagementUnit {
-        let boot = boot_rom.map(read).map(|f| f.expect("Boot ROM not found"));
-
         let (mbc0, mbc1, mbc2, mbc3, mbc5) = match Self::load_mbc(cartridge, rom, rom_path) {
             Zero(mbc) => (Some(mbc), None, None, None, None),
             One(mbc) => (None, Some(mbc), None, None, None),
@@ -137,11 +134,11 @@ impl MemoryManagementUnit {
             joypad: Joypad::new(),
             ppu: PixelProcessingUnit::new(),
             interrupt_handler: InterruptHandler::new(),
-            timer: Timer::new(boot.is_some()),
+            timer: Timer::new(boot_rom.is_some()),
             work_ram: vec![0; 0xE000 - 0xC000],
             cycles: 0,
             serial: LinkCable::new(),
-            boot_rom: boot,
+            boot_rom,
             apu: AudioProcessingUnit::new(),
             mbc0,
             mbc1,
