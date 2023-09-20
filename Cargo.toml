@@ -21,7 +21,7 @@ bincode = "1.3.3"
 wasm-timer = "0.2.5"
 rand = { version = "*" }
 getrandom = { version = "*", features = ["js"] }
-cpal = { version = "0.15.2", features = ["wasm-bindgen"] }
+cpal = { git = "https://github.com/DouglasDwyer/cpal.git", features = ["wasm-bindgen"] }
 wasm-rs-async-executor = "0.9.0"
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3.61", features = [ "VisibilityState", "Window", "Navigator", "console", "Document", "HtmlAnchorElement","HtmlCanvasElement", "HtmlInputElement", "Event", "EventTarget", "FileList", "File", "Blob", "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult" ] }
