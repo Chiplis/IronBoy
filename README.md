@@ -1,7 +1,7 @@
 ![image psd(11)](https://user-images.githubusercontent.com/25803723/230508071-c5738223-f67d-46e5-8121-12f1ef99ae60.png)
 
 # IronBoy
-A Gameboy emulator written in Rust as both a learning exercise and a love letter to the console that got me into gaming.
+A Gameboy emulator written in Rust as both a learning exercise and a love letter to the console that got me into gaming. If you just want to test it out, try the web version at https://chiplis.com/ironboy
 
 I decided to focus only on the original Game Boy (DMG) to achieve the highest degree of accuracy that I possibly can. The repository also contains more than 100 different test ROMs to verify correctness and detect any regressions.
 
