@@ -21,6 +21,7 @@ bincode = "1.3.3"
 wasm-timer = "0.2.5"
 rand = { version = "*" }
 getrandom = { version = "*", features = ["js"] }
+coreaudio-sys = "0.2.15"
 cpal = { git = "https://github.com/DouglasDwyer/cpal.git", features = ["wasm-bindgen"] }
 wasm-rs-async-executor = "0.9.0"
 console_error_panic_hook = "0.1.7"
