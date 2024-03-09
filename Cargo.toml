@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-leptos = { version = "*", features = ["stable"] }
+leptos = { version = "0.6.9" }
 wasm-bindgen = "*"
 wasm-bindgen-futures = "0.4.34"
 winit = "0.28.2"
