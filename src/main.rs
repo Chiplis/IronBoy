@@ -40,10 +40,10 @@ use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 use pixels::wgpu::PresentMode;
 
 use winit::dpi::LogicalSize;
-use winit::event::VirtualKeyCode::{Back, Down, Escape, Left, Return, Right, Up, C, F, S, Z, P, M, R};
-use winit::event::{VirtualKeyCode};
+use winit::keyboard::KeyCode::{Backspace, Escape, ArrowLeft, ArrowDown, Enter, ArrowRight, ArrowUp, KeyC, KeyF, KeyS, KeyZ, KeyP, KeyM, KeyR};
 
 use winit::event_loop::EventLoop;
+use winit::keyboard::KeyCode;
 use winit::window::Fullscreen::Borderless;
 use winit::window::{Window, WindowBuilder};
 use winit_input_helper::WinitInputHelper;
@@ -293,7 +293,7 @@ fn main_desktop() {
     let args = Args::parse();
     let rom_path = args.rom_file;
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let window = setup_window(rom_path.clone()).build(&event_loop).unwrap();
     let pixels = setup_pixels(&window);
     let rom = read(rom_path.clone()).expect("Unable to read ROM file");
@@ -354,7 +354,7 @@ fn run_event_loop(
     }
 
     let mut previously_muted = false;
-    event_loop.run(move |event, _target, control_flow| {
+    let _ = event_loop.run(move |event, control_flow| {
         let gameboy = &mut gameboy;
         input.update(&event);
 
@@ -371,7 +371,7 @@ fn run_event_loop(
         #[cfg(target_arch = "wasm32")]
             let previously_paused = paused;
 
-        if input.key_released(P) {
+        if input.key_released(KeyP) {
             paused = !paused;
             if let Some(stream) = &gameboy.mmu.apu.stream {
                 if paused { stream.pause().unwrap(); } else if !muted.load(Relaxed) { stream.play().unwrap(); }
@@ -385,7 +385,7 @@ fn run_event_loop(
                 slowest_frame,
                 gameboy.mmu.renderer.slowest
             ));
-            control_flow.set_exit();
+            control_flow.exit();
         }
 
         if let (Some(size), Some(p)) = (input.window_resized(), gameboy.mmu.renderer.pixels().as_mut()) {
@@ -414,20 +414,20 @@ fn run_event_loop(
             }
         }
 
-        if input.key_released(S) && last_save + Duration::from_secs(1) < Instant::now() {
+        if input.key_released(KeyS) && last_save + Duration::from_secs(1) < Instant::now() {
             save_state(rom_path.clone(), gameboy, format);
             last_save = Instant::now();
         }
 
-        if input.key_released(F) {
+        if input.key_released(KeyF) {
             sleep.store(!sleep.load(Relaxed), Relaxed);
         }
 
-        if input.key_released(M) {
+        if input.key_released(KeyM) {
             muted.store(!muted.load(Relaxed), Relaxed);
         }
 
-        if input.key_released(R) {
+        if input.key_released(KeyR) {
             gameboy.reset();
         }
 
@@ -537,8 +537,8 @@ fn check_buttons(rom_path: String, format: SaveFile, gameboy: &mut Gameboy, mute
     }
 }
 
-const ACTION: [VirtualKeyCode; 4] = [Z, C, Back, Return];
-const DIRECTION: [VirtualKeyCode; 4] = [Up, Down, Left, Right];
+const ACTION: [KeyCode; 4] = [KeyZ, KeyC, Backspace, Enter];
+const DIRECTION: [KeyCode; 4] = [ArrowUp, ArrowDown, ArrowLeft, ArrowRight];
 
 fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, input: Option<&WinitInputHelper>) -> (Duration, Duration) {
     let mut elapsed_cycles = 0;
@@ -561,7 +561,7 @@ fn run_frame(gameboy: &mut Gameboy, sleep: Arc<AtomicBool>, input: Option<&Winit
         gameboy.mmu.cycles = 0;
     }
 
-    let map_held = |buttons: [VirtualKeyCode; 4]| -> Vec<VirtualKeyCode> {
+    let map_held = |buttons: [KeyCode; 4]| -> Vec<KeyCode> {
         buttons
             .iter()
             .filter(|&&b| input.map_or(false, |input| input.key_held(b)))

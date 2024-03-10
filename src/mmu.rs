@@ -62,7 +62,7 @@ impl MemoryManagementUnit {
     pub(crate) fn reset(&mut self) {
         self.interrupt_handler = InterruptHandler::new();
         self.ppu = PixelProcessingUnit::new();
-        let size = self.renderer.pixels().as_ref().unwrap().get_frame().len();
+        let size = self.renderer.pixels().as_ref().unwrap().frame().len();
         self.renderer.render(&vec![0; size]);
         self.serial = LinkCable::new();
         self.timer = Timer::new(self.boot_rom.is_some());

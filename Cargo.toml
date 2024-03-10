@@ -8,12 +8,12 @@ edition = "2021"
 
 [dependencies]
 leptos = { version = "0.6.9" }
-wasm-bindgen = "*"
+wasm-bindgen = "0.2.92"
 wasm-bindgen-futures = "0.4.34"
-winit = "0.28.2"
-winit_input_helper = "0.14.0"
-pixels = "0.11.0"
-clap = { version = "4.0.18", features = ["derive"] }
+winit = { version = "0.29.14", features = ["rwh_05"] }
+winit_input_helper = "0.16.0"
+pixels = "0.13.0"
+clap = { version = "4.5.2", features = ["derive"] }
 pausable_clock = { git = "https://github.com/nicolas-siplis/pausable_clock.git" }
 serde = { version = "1.0.147", features = ["derive", "rc", "std"] }
 serde_json = { version = "1.0.96", default-features = false, features = ["alloc"] }
@@ -22,7 +22,7 @@ wasm-timer = "0.2.5"
 rand = { version = "*" }
 getrandom = { version = "*", features = ["js"] }
 coreaudio-sys = "0.2.15"
-cpal = { git = "https://github.com/DouglasDwyer/cpal.git", features = ["wasm-bindgen"] }
+cpal = { version = "0.15.3", features = ["wasm-bindgen"] }
 wasm-rs-async-executor = "0.9.0"
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3.61", features = [ "VisibilityState", "Window", "Navigator", "console", "Document", "HtmlAnchorElement","HtmlCanvasElement", "HtmlInputElement", "Event", "EventTarget", "FileList", "File", "Blob", "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult" ] }

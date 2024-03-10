@@ -2,8 +2,8 @@ use crate::joypad::SelectedButtons::{Action, Direction};
 use crate::mmu::MemoryArea;
 
 use serde::{Deserialize, Serialize};
-use winit::event::VirtualKeyCode;
-use winit::event::VirtualKeyCode::*;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyCode::{ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backspace, Enter, KeyC, KeyZ};
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum SelectedButtons {
@@ -17,9 +17,9 @@ pub struct Joypad {
     action_buttons: u8,
     direction_buttons: u8,
     #[serde(skip)]
-    pub(crate) held_action: Vec<VirtualKeyCode>,
+    pub(crate) held_action: Vec<KeyCode>,
     #[serde(skip)]
-    pub(crate) held_direction: Vec<VirtualKeyCode>,
+    pub(crate) held_direction: Vec<KeyCode>,
 }
 
 impl MemoryArea for Joypad {
@@ -60,13 +60,13 @@ impl Joypad {
     pub fn machine_cycle(&mut self) -> bool {
         let previous_buttons = self.buttons();
 
-        self.action_buttons = Self::map_buttons([Z, C, Back, Return], &self.held_action);
-        self.direction_buttons = Self::map_buttons([Right, Left, Up, Down], &self.held_direction);
+        self.action_buttons = Self::map_buttons([KeyZ, KeyC, Backspace, Enter], &self.held_action);
+        self.direction_buttons = Self::map_buttons([ArrowRight, ArrowLeft, ArrowUp, ArrowDown], &self.held_direction);
 
         self.buttons() != previous_buttons
     }
 
-    fn map_buttons(buttons: [VirtualKeyCode; 4], held: &[VirtualKeyCode]) -> u8 {
+    fn map_buttons(buttons: [KeyCode; 4], held: &[KeyCode]) -> u8 {
         !buttons
             .iter()
             .enumerate()
