@@ -114,6 +114,8 @@ pub struct PixelProcessingUnit {
 
     /// Sprites at 0 cause a extra delay in the sprite fetching.
     sprite_at_0_penalty: u8,
+    #[serde(default)]
+    first_sprite_fetch: bool,
 
     /// The x position of the next screen pixel to be draw in the current scanline
     pub screen_x: u8,
@@ -178,6 +180,7 @@ pub enum VerticalBlankPhase {
     StartVBlank,
     IncreaseVBlankLine,
     FirstLineCheck,
+    VBlankInterrupt,
     LycUpdate,
     InterruptCheck,
     StartLineReset,
@@ -349,6 +352,18 @@ impl MemoryArea for PixelProcessingUnit {
 }
 
 impl PixelProcessingUnit {
+    pub(crate) fn post_boot(&mut self) {
+        self.stat = 0x80;
+        self.ly = 0x0A;
+        self.ticks = 0;
+        self.next_ticks = 23_440_377;
+        self.line_start_ticks = 23_435_361;
+        self.ly_for_compare = 0xFF;
+        self.ly_compare_signal = false;
+        self.stat_signal = false;
+        self.stat_mode_for_interrupt = 0xFF;
+    }
+
     pub fn new() -> Self {
         Self {
             oam_start_clock_count: 0,
@@ -405,6 +420,7 @@ impl PixelProcessingUnit {
             stat_mode_for_interrupt: 1,
 
             sprite_at_0_penalty: 0,
+            first_sprite_fetch: true,
 
             screen_x: 0xa0,
             scanline_x: 0x00,
@@ -582,7 +598,15 @@ impl PixelProcessingUnit {
                 self.vram_read_block = true;
                 self.vram_write_block = false;
 
-                (4, PixelTransfer(StartTransfer))
+                // On DMG, the first object fetch overlaps the final four dots
+                // of mode-2-to-mode-3 startup. With objects disabled (or no
+                // selected objects), those four dots remain an explicit wait.
+                (
+                    4 * usize::from(
+                        self.sprite_buffer_len == 0 || self.lcdc & 0x02 == 0,
+                    ),
+                    PixelTransfer(StartTransfer),
+                )
             }
             // 84
             PixelTransfer(StartTransfer) => {
@@ -614,8 +638,12 @@ impl PixelProcessingUnit {
                 self.is_in_window = false;
                 self.scanline_x = -((self.scx % 8 + 8) as i8) as u8;
                 self.sprite_at_0_penalty = (self.scx % 8).min(5);
+                self.first_sprite_fetch = true;
 
-                (0, PixelTransfer(WindowActivationCheck))
+                (
+                    2 * usize::from(self.scx % 8 != 0),
+                    PixelTransfer(WindowActivationCheck),
+                )
             }
             // Loop for every line from 0 to 144
             PixelTransfer(WindowActivationCheck) => {
@@ -701,7 +729,6 @@ impl PixelProcessingUnit {
                 }
             }
             PixelTransfer(FirstSpritePenalty) => {
-                // TODO: handle extra penalty sprite at 0
                 let mut penalty = 0;
                 if self.sprite_at_0_penalty != 0
                     && self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx == 0
@@ -709,7 +736,17 @@ impl PixelProcessingUnit {
                     penalty = self.sprite_at_0_penalty as usize;
                     self.sprite_at_0_penalty = 0;
                 }
-
+                if self.first_sprite_fetch
+                    && matches!(
+                        self.sprite_buffer[self.sprite_buffer_len as usize - 1].sx % 8,
+                        1 | 5 | 6 | 7
+                    )
+                {
+                    // Align the first object fetch with the two-dot BG fetcher
+                    // phases. Later objects inherit the running fetcher phase.
+                    penalty += 1;
+                }
+                self.first_sprite_fetch = false;
                 (penalty, PixelTransfer(FirstPixelFetching))
             }
             PixelTransfer(FirstPixelFetching) => {
@@ -817,13 +854,7 @@ impl PixelProcessingUnit {
                 (2, VerticalBlank(InterruptCheck))
             }
             // 2
-            VerticalBlank(InterruptCheck) => {
-                if self.ly == HEIGHT as u8 && !self.stat_signal && self.stat & 0x20 != 0 {
-                    *stat_interrupt = true;
-                }
-
-                (2, VerticalBlank(LycUpdate))
-            }
+            VerticalBlank(InterruptCheck) => (2, VerticalBlank(LycUpdate)),
             // 4
             VerticalBlank(LycUpdate) => {
                 self.ly_for_compare = self.ly;
@@ -832,6 +863,13 @@ impl PixelProcessingUnit {
                 (0, VerticalBlank(FirstLineCheck))
             }
             VerticalBlank(FirstLineCheck) => {
+                if self.ly == HEIGHT as u8 {
+                    return (2, VerticalBlank(VBlankInterrupt));
+                }
+
+                (452, VerticalBlank(IncreaseVBlankLine))
+            }
+            VerticalBlank(VBlankInterrupt) => {
                 if self.ly == HEIGHT as u8 {
                     self.set_stat_mode(1);
                     *vblank_interrupt = true;
@@ -842,7 +880,7 @@ impl PixelProcessingUnit {
                     self.update_stat(stat_interrupt);
                 }
 
-                (452, VerticalBlank(IncreaseVBlankLine))
+                (450, VerticalBlank(IncreaseVBlankLine))
             }
             VerticalBlank(IncreaseVBlankLine) => {
                 self.ly += 1;

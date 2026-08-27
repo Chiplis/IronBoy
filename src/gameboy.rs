@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use crate::instruction::Operand::{OpByte, OpHL, OpRegister};
 use crate::instruction::{Command, Operand};
 use crate::interrupt::InterruptId;
-use crate::interrupt::InterruptId::{Input, Serial, Stat, Timing, VBlank};
 
 #[derive(Serialize, Deserialize)]
 pub struct Gameboy {
@@ -66,20 +65,20 @@ impl Gameboy {
     pub fn cycle(&mut self) -> u8 {
         let interrupt_cycles = if self.handle_interrupts() { 5 } else { 0 };
 
+        if interrupt_cycles != 0 {
+            self.halted = false;
+            return interrupt_cycles;
+        }
+
         if self.halted {
-            self.halted = interrupt_cycles == 0;
-            if self.halted
-                && !self.ime
+            if !self.ime
                 && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F
                     != 0
             {
                 self.halted = false;
+            } else {
+                return 1;
             }
-            return 1 + interrupt_cycles;
-        }
-
-        if interrupt_cycles != 0 {
-            return interrupt_cycles;
         }
 
         let instruction =
@@ -101,6 +100,7 @@ impl Gameboy {
             && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F != 0
         {
             self.halt_bug = true;
+            self.halted = false;
         }
         if command != Halt {
             command_cycles
@@ -126,15 +126,14 @@ impl Gameboy {
         if !self.ime {
             return false;
         }
-        self.trigger_interrupt(VBlank)
-            || self.trigger_interrupt(Stat)
-            || self.trigger_interrupt(Timing)
-            || self.trigger_interrupt(Serial)
-            || self.trigger_interrupt(Input)
+        match self.mmu.interrupt_handler.highest_pending() {
+            Some(interrupt) => self.trigger_interrupt(interrupt),
+            None => false,
+        }
     }
 
     fn trigger_interrupt(&mut self, interrupt_id: InterruptId) -> bool {
-        if self.mmu.interrupt_handler.triggered(interrupt_id) {
+        if self.mmu.interrupt_handler.highest_pending() == Some(interrupt_id) {
             self.machine_cycle();
             self.machine_cycle();
             self.ime = false;
@@ -142,6 +141,16 @@ impl Gameboy {
             let [lo, hi] = self.reg.pc.value().to_le_bytes();
             self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
             self.mmu.write(self.reg.sp, hi);
+            self.mmu.interrupt_handler.set(interrupt_id);
+
+            // A high-byte push to IE can cancel dispatch or change priority.
+            let Some(interrupt_id) = self.mmu.interrupt_handler.highest_pending() else {
+                self.machine_cycle();
+                self.set_pc(0, true);
+                return true;
+            };
+            self.mmu.interrupt_handler.unset(interrupt_id);
+
             self.reg.sp = StackPointer(self.reg.sp.value().wrapping_sub(1));
             self.mmu.write(self.reg.sp, lo);
             self.set_pc(interrupt_id as u16, true);
@@ -395,7 +404,11 @@ impl Gameboy {
             LdhAU16(n) => self[A].value = self.mmu.read(n),
             LdhAU8(n) => {
                 self.counter += 1;
-                let x = self.mmu.read(n);
+                let x = if n == 0x04 {
+                    self.mmu.read_div()
+                } else {
+                    self.mmu.read(n)
+                };
                 self[A].value = x;
             }
             LdhU8A(n) => {
@@ -460,7 +473,7 @@ impl Gameboy {
                 let hi = self.mmu.read(self.reg.sp.value().wrapping_add(1));
                 self.set_pc(u16::from_le_bytes([lo, hi]), true);
                 self.set_word_register(self.reg.sp.value().wrapping_add(2), self.reg.sp);
-                self.ei_counter = 1;
+                self.ei_counter = -1;
                 self.ime = true;
             }
             Rst(rst_vec) => {
@@ -568,8 +581,15 @@ impl Gameboy {
                 self.reg.flags.z = self[A].value == 0;
                 self.reg.flags.h = false;
             }
-            DisableInterrupt => self.ime = false,
-            EnableInterrupt => self.ei_counter = 2,
+            DisableInterrupt => {
+                self.ime = false;
+                self.ei_counter = -1;
+            }
+            EnableInterrupt => {
+                if !self.ime && self.ei_counter < 0 {
+                    self.ei_counter = 2;
+                }
+            }
             Halt => self.halted = true,
             Scf => {
                 self.reg.flags.n = false;

@@ -1,19 +1,12 @@
-use crate::joypad::SelectedButtons::{Action, Direction};
 use crate::mmu::MemoryArea;
 
 use serde::{Deserialize, Serialize};
 use winit::keyboard::KeyCode;
 use winit::keyboard::KeyCode::{ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Backspace, Enter, KeyC, KeyZ};
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
-pub enum SelectedButtons {
-    Action = 0x10,
-    Direction = 0x20,
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Joypad {
-    selected_buttons: SelectedButtons,
+    select: u8,
     action_buttons: u8,
     direction_buttons: u8,
     #[serde(skip)]
@@ -24,9 +17,8 @@ pub struct Joypad {
 
 impl MemoryArea for Joypad {
     fn read(&self, address: usize) -> Option<u8> {
-        let value = self.selected_buttons as u8 | self.buttons();
         match address {
-            0xFF00 => Some(value),
+            0xFF00 => Some(0xC0 | self.select | self.buttons()),
             _ => None,
         }
     }
@@ -34,11 +26,7 @@ impl MemoryArea for Joypad {
     fn write(&mut self, address: usize, value: u8) -> bool {
         match address {
             0xFF00 => {
-                self.selected_buttons = match value & 0x30 {
-                    0x20 | 0x30 => Direction,
-                    0x10 => Action,
-                    _ => self.selected_buttons,
-                }
+                self.select = value & 0x30;
             }
             _ => return false,
         };
@@ -51,7 +39,7 @@ impl Joypad {
         Self {
             action_buttons: 0x0F,
             direction_buttons: 0x0F,
-            selected_buttons: Action,
+            select: 0x30,
             held_direction: vec![],
             held_action: vec![],
         }
@@ -76,10 +64,11 @@ impl Joypad {
     }
 
     fn buttons(&self) -> u8 {
-        if self.selected_buttons == Action {
-            self.action_buttons
-        } else {
-            self.direction_buttons
+        match self.select {
+            0x10 => self.action_buttons,
+            0x20 => self.direction_buttons,
+            0x00 => self.action_buttons & self.direction_buttons,
+            _ => 0x0F,
         }
     }
 }

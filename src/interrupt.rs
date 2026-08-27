@@ -33,7 +33,7 @@ impl MemoryArea for InterruptHandler {
     fn write(&mut self, address: usize, value: u8) -> bool {
         match address {
             IE_ADDRESS => {
-                self.enable = value | 0xE0;
+                self.enable = value;
                 true
             }
             IF_ADDRESS => {
@@ -52,20 +52,15 @@ impl InterruptHandler {
         InterruptHandler { flag, enable }
     }
 
-    fn is_active(&self, mask: u8) -> bool {
-        (self.enable & self.flag & mask) != 0
-    }
-
-    pub fn triggered(&self, interrupt: InterruptId) -> bool {
-        // Lower priority interrupts are ORed with higher priority ones
-        let mask = match interrupt {
-            VBlank => 0x01,
-            Stat => 0x03,
-            Timing => 0x07,
-            Serial => 0x0F,
-            Input => 0x1F,
-        };
-        self.is_active(mask)
+    pub fn highest_pending(&self) -> Option<InterruptId> {
+        match self.enable & self.flag & 0x1F {
+            pending if pending & 0x01 != 0 => Some(VBlank),
+            pending if pending & 0x02 != 0 => Some(Stat),
+            pending if pending & 0x04 != 0 => Some(Timing),
+            pending if pending & 0x08 != 0 => Some(Serial),
+            pending if pending & 0x10 != 0 => Some(Input),
+            _ => None,
+        }
     }
 
     fn mask(interrupt: InterruptId) -> u8 {

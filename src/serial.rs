@@ -20,7 +20,7 @@ impl MemoryArea for LinkCable {
     fn read(&self, address: usize) -> Option<u8> {
         match address {
             0xFF01 => Some(self.data),
-            0xFF02 => Some(self.control),
+            0xFF02 => Some(self.control | 0x7E),
             _ => None,
         }
     }
@@ -45,7 +45,7 @@ impl LinkCable {
     }
 
     fn set_control(&mut self, control: u8) {
-        self.control = control;
+        self.control = control & 0x81;
         self.transfer = Transfer(0);
         if self.control & 1 == 1 {
             self.data = 0xFF;

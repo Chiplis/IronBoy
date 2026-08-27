@@ -920,6 +920,18 @@ struct AudioProcessingState {
 }
 
 impl AudioProcessingState {
+    fn with_format(sample_rate: u32, num_channels: u16) -> Arc<Mutex<AudioProcessingState>> {
+        Arc::new(Mutex::new(AudioProcessingState {
+            sample_rate,
+            num_channels,
+            osc_1: oscillators::SquareWaveGenerator::new(sample_rate, true),
+            osc_2: oscillators::SquareWaveGenerator::new(sample_rate, false),
+            osc_3: oscillators::WaveTable::new(sample_rate),
+            osc_4: oscillators::NoiseGenerator::new(sample_rate),
+            ..Default::default()
+        }))
+    }
+
     pub(crate) fn new() -> Arc<Mutex<AudioProcessingState>> {
         let config = Self::load_config();
         let sample_rate = config.sample_rate().0;
@@ -930,15 +942,7 @@ impl AudioProcessingState {
             Logger::info(format!("Using {} at {}Hz with {} channels", name, sample_rate, config.channels()))
         }
 
-        Arc::new(Mutex::new(AudioProcessingState {
-            sample_rate,
-            num_channels: config.channels(),
-            osc_1: oscillators::SquareWaveGenerator::new(sample_rate, true),
-            osc_2: oscillators::SquareWaveGenerator::new(sample_rate, false),
-            osc_3: oscillators::WaveTable::new(sample_rate),
-            osc_4: oscillators::NoiseGenerator::new(sample_rate),
-            ..Default::default()
-        }))
+        Self::with_format(sample_rate, config.channels())
     }
 
     pub(crate) fn load_stream(processor: &Arc<Mutex<AudioProcessingState>>) -> Option<Stream> {
@@ -1027,6 +1031,42 @@ impl AudioProcessingState {
     }
 
     pub(crate) fn read_register(&self, address: usize) -> u8 {
+        let readable = match address {
+            0xFF10 => self.osc_1.read_reg(0) | 0x80,
+            0xFF11 => self.osc_1.read_reg(1) | 0x3F,
+            0xFF12 => self.osc_1.read_reg(2),
+            0xFF13 => 0xFF,
+            0xFF14 => self.osc_1.read_reg(4) | 0xBF,
+            0xFF15 => 0xFF,
+            0xFF16 => self.osc_2.read_reg(1) | 0x3F,
+            0xFF17 => self.osc_2.read_reg(2),
+            0xFF18 => 0xFF,
+            0xFF19 => self.osc_2.read_reg(4) | 0xBF,
+            0xFF1A => self.osc_3.read_reg(0) | 0x7F,
+            0xFF1B => 0xFF,
+            0xFF1C => self.osc_3.read_reg(2) | 0x9F,
+            0xFF1D => 0xFF,
+            0xFF1E => self.osc_3.read_reg(4) | 0xBF,
+            0xFF1F => 0xFF,
+            0xFF20 => self.osc_4.read_reg(1) | 0xC0,
+            0xFF21 => self.osc_4.read_reg(2),
+            0xFF22 => self.osc_4.read_reg(3),
+            0xFF23 => self.osc_4.read_reg(4) | 0xBF,
+            0xFF26 => {
+                let mut reg_val = (self.power_control as u8) << 7;
+                reg_val |= (self.osc_4.is_enabled() as u8) << 3;
+                reg_val |= (self.osc_3.is_enabled() as u8) << 2;
+                reg_val |= (self.osc_2.is_enabled() as u8) << 1;
+                reg_val |= self.osc_1.is_enabled() as u8;
+                reg_val | 0x70
+            }
+            0xFF27..=0xFF2F => 0xFF,
+            _ => 0,
+        };
+        if address <= 0xFF23 || address == 0xFF26 || (0xFF27..=0xFF2F).contains(&address) {
+            return readable;
+        }
+
         if address < 0xFF24 {
             let rel_address = address - 0xFF10;
 
@@ -1078,14 +1118,7 @@ impl AudioProcessingState {
 
                     reg_val
                 }
-                0xFF26 => {
-                    let mut reg_val = (self.power_control as u8) << 7;
-                    reg_val |= (self.osc_4.is_enabled() as u8) << 3;
-                    reg_val |= (self.osc_3.is_enabled() as u8) << 2;
-                    reg_val |= (self.osc_2.is_enabled() as u8) << 1;
-                    reg_val |= self.osc_1.is_enabled() as u8;
-                    reg_val
-                }
+                0xFF26 => unreachable!(),
                 _ => {
                     Logger::error("APU Read: Unrecognised address");
                     0x00
@@ -1224,6 +1257,14 @@ impl AudioProcessingUnit {
         let state = AudioProcessingState::new();
         let stream = AudioProcessingState::load_stream(&state);
         AudioProcessingUnit { state, stream }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_without_stream() -> AudioProcessingUnit {
+        AudioProcessingUnit {
+            state: AudioProcessingState::with_format(44_100, 2),
+            stream: None,
+        }
     }
 
     pub(crate) fn init(&mut self) {

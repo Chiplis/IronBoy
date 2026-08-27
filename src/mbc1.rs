@@ -1,7 +1,6 @@
 use crate::cartridge::Cartridge;
 use crate::mbc::MemoryBankController;
 use crate::mmu::MemoryArea;
-use std::cmp::max;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,22 +9,69 @@ pub struct MBC1 {
     cartridge: Cartridge,
     rom: Vec<u8>,
     ram: Vec<u8>,
-    rom_bank: u8,
-    ram_bank: u8,
-    rom_offset: usize,
-    ram_offset: usize,
+    rom_bank_low: u8,
+    bank_high: u8,
     ram_enabled: bool,
-    expansion_mode: u8,
+    banking_mode: u8,
+    multicart: bool,
 }
 
 impl MBC1 {
     pub fn new(cartridge: Cartridge, rom: Vec<u8>) -> Self {
+        let ram_size = cartridge.ram_bank_count as usize * 0x2000;
+        let multicart = Self::is_multicart(&rom);
         Self {
             cartridge,
             rom,
-            ram: vec![0; 1024 * 1024 * 2],
-            rom_offset: 0x4000,
-            ..Default::default()
+            ram: vec![0; ram_size],
+            rom_bank_low: 1,
+            bank_high: 0,
+            ram_enabled: false,
+            banking_mode: 0,
+            multicart,
+        }
+    }
+
+    fn is_multicart(rom: &[u8]) -> bool {
+        // MBC1M multicarts have a second valid cartridge header at bank $10.
+        // A repeated Nintendo logo is the conventional emulator heuristic,
+        // since the primary cartridge header cannot distinguish MBC1M.
+        const SUB_HEADER: usize = 0x10 * 0x4000;
+        if rom.len() < SUB_HEADER + 0x150 {
+            return false;
+        }
+
+        rom[0x104..=0x133] == rom[SUB_HEADER + 0x104..=SUB_HEADER + 0x133]
+    }
+
+    fn rom_bank_count(&self) -> usize {
+        usize::from(self.cartridge.rom_bank_count).max(1)
+    }
+
+    fn selected_upper_rom_bank(&self) -> usize {
+        let low_mask = if self.multicart { 0x0F } else { 0x1F };
+        let high_shift = if self.multicart { 4 } else { 5 };
+        let low = if self.rom_bank_low == 0 {
+            1
+        } else {
+            usize::from(self.rom_bank_low & low_mask)
+        };
+        ((usize::from(self.bank_high) << high_shift) | low) % self.rom_bank_count()
+    }
+
+    fn selected_lower_rom_bank(&self) -> usize {
+        if self.banking_mode == 0 {
+            return 0;
+        }
+        let high_shift = if self.multicart { 4 } else { 5 };
+        (usize::from(self.bank_high) << high_shift) % self.rom_bank_count()
+    }
+
+    fn selected_ram_bank(&self) -> usize {
+        if self.banking_mode == 0 || self.cartridge.ram_bank_count == 0 {
+            0
+        } else {
+            usize::from(self.bank_high) % usize::from(self.cartridge.ram_bank_count)
         }
     }
 }
@@ -35,9 +81,18 @@ impl MemoryBankController for MBC1 {}
 impl MemoryArea for MBC1 {
     fn read(&self, address: usize) -> Option<u8> {
         Some(match address {
-            0x0000..=0x3FFF => self.rom[address],
-            0x4000..=0x7FFF => self.rom[self.rom_offset + (address & 0x3FFF)],
-            0xA000..=0xBFFF if self.ram_enabled => self.ram[self.ram_offset + (address & 0x1FFF)],
+            0x0000..=0x3FFF => {
+                let offset = self.selected_lower_rom_bank() * 0x4000 + address;
+                self.rom.get(offset).copied().unwrap_or(0xFF)
+            }
+            0x4000..=0x7FFF => {
+                let offset = self.selected_upper_rom_bank() * 0x4000 + (address & 0x3FFF);
+                self.rom.get(offset).copied().unwrap_or(0xFF)
+            }
+            0xA000..=0xBFFF if self.ram_enabled && !self.ram.is_empty() => {
+                let offset = self.selected_ram_bank() * 0x2000 + (address & 0x1FFF);
+                self.ram.get(offset).copied().unwrap_or(0xFF)
+            }
             0xA000..=0xBFFF => 0xFF,
             _ => return None,
         })
@@ -45,34 +100,15 @@ impl MemoryArea for MBC1 {
 
     fn write(&mut self, address: usize, value: u8) -> bool {
         match address {
-            0x0000..=0x1FFF => match self.cartridge.mbc {
-                2 | 3 => self.ram_enabled = value & 0x0F == 0x0A,
-                _ => (),
-            },
-            0x2000..=0x3FFF => match self.cartridge.mbc {
-                1 | 2 | 3 => {
-                    self.rom_bank = (self.rom_bank & 0x60) + max(1, value & 0x1F);
-                    self.rom_offset = self.rom_bank as usize * 0x4000;
+            0x0000..=0x1FFF => self.ram_enabled = value & 0x0F == 0x0A,
+            0x2000..=0x3FFF => self.rom_bank_low = value & 0x1F,
+            0x4000..=0x5FFF => self.bank_high = value & 0x03,
+            0x6000..=0x7FFF => self.banking_mode = value & 0x01,
+            0xA000..=0xBFFF if self.ram_enabled && !self.ram.is_empty() => {
+                let offset = self.selected_ram_bank() * 0x2000 + (address & 0x1FFF);
+                if let Some(byte) = self.ram.get_mut(offset) {
+                    *byte = value;
                 }
-                _ => (),
-            },
-            0x4000..=0x5FFF => match self.cartridge.mbc {
-                1 | 2 | 3 if self.expansion_mode != 0 => {
-                    self.ram_bank = value & 3;
-                    self.ram_offset = self.ram_bank as usize * 0x2000;
-                }
-                1 | 2 | 3 => {
-                    self.rom_bank = (self.rom_bank & 0x1F) + ((value & 3) << 5);
-                    self.rom_offset = self.rom_bank as usize * 0x4000;
-                }
-                _ => (),
-            },
-            0x6000..=0x7FFF => match self.cartridge.mbc {
-                2 | 3 => self.expansion_mode = value & 1,
-                _ => (),
-            },
-            0xA000..=0xBFFF if self.ram_enabled => {
-                self.ram[self.ram_offset + (address & 0x1FFF)] = value
             }
             0xA000..=0xBFFF => (),
             _ => return false,

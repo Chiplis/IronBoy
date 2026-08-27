@@ -59,6 +59,17 @@ pub struct MemoryManagementUnit {
 
 impl MemoryManagementUnit {
 
+    fn new_apu() -> AudioProcessingUnit {
+        #[cfg(test)]
+        {
+            AudioProcessingUnit::new_without_stream()
+        }
+        #[cfg(not(test))]
+        {
+            AudioProcessingUnit::new()
+        }
+    }
+
     pub(crate) fn reset(&mut self) {
         self.interrupt_handler = InterruptHandler::new();
         self.ppu = PixelProcessingUnit::new();
@@ -69,7 +80,7 @@ impl MemoryManagementUnit {
         self.joypad = Joypad::new();
         self.cycles = 0;
         self.dma = 0xFF;
-        self.apu = AudioProcessingUnit::new();
+        self.apu = Self::new_apu();
         if let Some(stream) = &self.apu.stream {
             stream.play().unwrap();
         }
@@ -139,7 +150,7 @@ impl MemoryManagementUnit {
             cycles: 0,
             serial: LinkCable::new(),
             boot_rom,
-            apu: AudioProcessingUnit::new(),
+            apu: Self::new_apu(),
             mbc0,
             mbc1,
             mbc2,
@@ -210,10 +221,25 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        let value = self.internal_read(translated_address);
+        if (0xFF04..=0xFF07).contains(&translated_address) {
+            self.cycle(4);
+            self.internal_read(translated_address)
+        } else {
+            let value = self.internal_read(translated_address);
+            self.cycle(4);
+            value
+        }
+    }
 
-        self.cycle(4);
-        value
+    pub fn read_div(&mut self) -> u8 {
+        if self.timer.divider_written() {
+            self.cycle(4);
+            self.internal_read(0xFF04)
+        } else {
+            let value = self.internal_read(0xFF04);
+            self.cycle(4);
+            value
+        }
     }
 
     pub fn write<Address: 'static + Into<usize> + Copy, Value: Into<u8> + Copy>(
@@ -243,16 +269,23 @@ impl MemoryManagementUnit {
             _ => None,
         };
 
-        self.internal_write(translated_address, value.into());
-
-        self.cycle(4);
+        if (0xFF04..=0xFF06).contains(&translated_address)
+            || translated_address == 0xFF0F
+        {
+            self.cycle(4);
+            self.internal_write(translated_address, value.into());
+        } else {
+            self.internal_write(translated_address, value.into());
+            self.cycle(4);
+        }
     }
 
     fn internal_ram_read(&self, address: usize) -> u8 {
         match address as u16 {
             0xC000..=0xDFFF => self.work_ram[address - 0xC000],
             0xE000..=0xFDFF => self.work_ram[address - 0x2000 - 0xC000],
-            0xFEA0..=0xFFFF => self.high_ram[address - 0xFEA0],
+            0xFEA0..=0xFF7F => 0xFF,
+            0xFF80..=0xFFFE => self.high_ram[address - 0xFEA0],
             _ => panic!("Unhandled address for read: {}", address),
         }
     }
@@ -293,7 +326,8 @@ impl MemoryManagementUnit {
         match address as u16 {
             0xC000..=0xDFFF => self.work_ram[address - 0xC000] = value,
             0xE000..=0xFDFF => self.work_ram[address - 0x2000 - 0xC000] = value,
-            0xFEA0..=0xFFFF => self.high_ram[address - 0xFEA0] = value,
+            0xFEA0..=0xFF7F => (),
+            0xFF80..=0xFFFE => self.high_ram[address - 0xFEA0] = value,
             _ => panic!("Unhandled address for write: {}", address),
         }
     }
@@ -399,6 +433,8 @@ impl MemoryManagementUnit {
             return;
         }
 
+        mem.ppu.post_boot();
+
         macro_rules! set_memory {
             { $($addr:literal: $val:literal,)* } =>
             { $(mem.internal_write($addr, $val);)* }
@@ -408,6 +444,7 @@ impl MemoryManagementUnit {
             0xFF05: 0x0,
             0xFF06: 0x0,
             0xFF07: 0x0,
+            0xFF0F: 0xE1,
             0xFF10: 0x80,
             0xFF11: 0xBF,
             0xFF12: 0xF3,
@@ -415,15 +452,15 @@ impl MemoryManagementUnit {
             0xFF16: 0x3F,
             0xFF16: 0x3F,
             0xFF17: 0x0,
-            0xFF19: 0xBF,
+            0xFF19: 0x00,
             0xFF1A: 0x7F,
             0xFF1B: 0xFF,
             0xFF1C: 0x9F,
-            0xFF1E: 0xFF,
+            0xFF1E: 0x00,
             0xFF20: 0xFF,
             0xFF21: 0x0,
             0xFF22: 0x0,
-            0xFF23: 0xBF,
+            0xFF23: 0x00,
             0xFF24: 0x77,
             0xFF25: 0xF3,
             0xFF26: 0xF1,
@@ -436,7 +473,7 @@ impl MemoryManagementUnit {
             0xFF49: 0xFF,
             0xFF4A: 0x0,
             0xFF4B: 0x0,
-            0xFF00: 0xFF,
+            0xFF00: 0x00,
         }
     }
 }
