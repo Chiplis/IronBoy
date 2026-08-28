@@ -35,6 +35,21 @@ pub enum OamCorruptionCause {
     ReadWrite,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::MemoryManagementUnit;
+
+    #[test]
+    fn dmg_oam_corruption_range_includes_the_unusable_memory_area() {
+        assert!(MemoryManagementUnit::triggers_oam_corruption(0xFE00));
+        assert!(MemoryManagementUnit::triggers_oam_corruption(0xFE9F));
+        assert!(MemoryManagementUnit::triggers_oam_corruption(0xFEA0));
+        assert!(MemoryManagementUnit::triggers_oam_corruption(0xFEFF));
+        assert!(!MemoryManagementUnit::triggers_oam_corruption(0xFDFF));
+        assert!(!MemoryManagementUnit::triggers_oam_corruption(0xFF00));
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct MemoryManagementUnit {
     #[serde(skip)]
@@ -184,12 +199,14 @@ impl MemoryManagementUnit {
         }
     }
 
-    fn in_oam(&self, address: usize) -> bool {
+    fn triggers_oam_corruption(address: usize) -> bool {
+        // DMG's OAM corruption circuitry also partially decodes the unusable
+        // 0xFEA0..=0xFEFF area, even though sprite storage ends at 0xFE9F.
         (0xFE00_usize..=0xFEFF_usize).contains(&address)
     }
 
     pub fn corrupt_oam<T: 'static + Into<usize> + Copy>(&mut self, address: T) -> bool {
-        if !self.in_oam(address.into()) {
+        if !Self::triggers_oam_corruption(address.into()) {
             false
         } else {
             self.ppu.oam_corruption = Some(IncDec);
@@ -211,7 +228,7 @@ impl MemoryManagementUnit {
         }
 
         self.ppu.oam_corruption = match (
-            self.in_oam(translated_address),
+            Self::triggers_oam_corruption(translated_address),
             self.ppu.oam_read_block,
             self.ppu.oam_corruption,
         ) {
@@ -260,7 +277,7 @@ impl MemoryManagementUnit {
         }
 
         self.ppu.oam_corruption = match (
-            self.in_oam(translated_address),
+            Self::triggers_oam_corruption(translated_address),
             self.ppu.oam_read_block,
             self.ppu.oam_corruption,
         ) {

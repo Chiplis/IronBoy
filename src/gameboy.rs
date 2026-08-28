@@ -95,6 +95,13 @@ impl Gameboy {
 
         self.halt_bug = false;
 
+        // EI takes effect after the instruction following it. In particular,
+        // IME must be visible to HALT before deciding whether to arm the HALT bug.
+        if self.ei_counter == 1 {
+            self.ime = true;
+            self.ei_counter = -1;
+        }
+
         if !self.ime
             && self.halted
             && self.mmu.internal_read(IE_ADDRESS) & self.mmu.internal_read(IF_ADDRESS) & 0x1F != 0
@@ -706,4 +713,44 @@ fn half_carry_8_sub(a: u8, b: u8, c: u8) -> bool {
 
 fn half_carry_16_add(a: u16, b: u16, c: u16) -> bool {
     (a & 0x07FF) + (b & 0x07FF) + c > 0x07FF
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Gameboy;
+    use crate::cartridge::Cartridge;
+    use crate::interrupt::{InterruptId, IE_ADDRESS};
+    use crate::mmu::{MemoryArea, MemoryManagementUnit};
+    use std::path::Path;
+
+    #[test]
+    fn ei_halt_with_pending_interrupt_does_not_corrupt_handler_fetch() {
+        let mut rom = vec![0; 0x8000];
+        rom[0x100..=0x102].copy_from_slice(&[0xFB, 0x76, 0x00]); // EI; HALT; NOP
+        rom[0x48..=0x4A].copy_from_slice(&[0xC3, 0x34, 0x12]); // JP $1234
+
+        let cartridge = Cartridge::new(&rom);
+        let mmu = MemoryManagementUnit::new(
+            rom,
+            cartridge,
+            None,
+            Path::new("ei-halt-pending.gb"),
+        );
+        let mut gameboy = Gameboy::new(mmu);
+        assert!(gameboy.mmu.interrupt_handler.write(IE_ADDRESS, 0x02));
+        gameboy.mmu.interrupt_handler.set(InterruptId::Stat);
+
+        gameboy.cycle(); // EI
+        gameboy.cycle(); // HALT; delayed EI takes effect
+        assert!(gameboy.ime);
+        assert!(gameboy.halted);
+        assert!(!gameboy.halt_bug);
+
+        gameboy.cycle(); // Dispatch STAT interrupt to $0048
+        assert_eq!(gameboy.reg.pc.value(), 0x0048);
+        assert!(!gameboy.halt_bug);
+
+        gameboy.cycle(); // JP $1234, with an ordinary opcode fetch
+        assert_eq!(gameboy.reg.pc.value(), 0x1234);
+    }
 }

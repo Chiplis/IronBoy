@@ -325,6 +325,11 @@ impl MemoryArea for PixelProcessingUnit {
                         // set to mode 0
                         self.stat &= !0b11;
                         self.state = HorizontalBlank(TurnOnHBlank);
+                        self.oam_read_block = false;
+                        self.oam_write_block = false;
+                        self.vram_read_block = false;
+                        self.vram_write_block = false;
+                        self.oam_corruption = None;
                     } else {
                         // enable ppu
                         debug_assert_eq!(self.ly, 0);
@@ -478,6 +483,7 @@ impl PixelProcessingUnit {
         if self.lcdc & 0x80 == 0 {
             // ppu is disabled
             self.next_ticks = self.ticks;
+            self.oam_corruption = None;
             return (false, false);
         }
 
@@ -1209,3 +1215,38 @@ const BLACK: Color = Color {
     b: 32,
     a: 255,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::PixelProcessingUnit;
+    use crate::mmu::{MemoryArea, OamCorruptionCause};
+
+    #[test]
+    fn disabling_lcd_releases_memory_and_clears_oam_corruption() {
+        let mut ppu = PixelProcessingUnit::new();
+        ppu.oam_read_block = true;
+        ppu.oam_write_block = true;
+        ppu.vram_read_block = true;
+        ppu.vram_write_block = true;
+        ppu.oam_corruption = Some(OamCorruptionCause::Write);
+
+        assert!(ppu.write(0xFF40, 0));
+
+        assert!(!ppu.oam_read_block);
+        assert!(!ppu.oam_write_block);
+        assert!(!ppu.vram_read_block);
+        assert!(!ppu.vram_write_block);
+        assert_eq!(ppu.oam_corruption, None);
+    }
+
+    #[test]
+    fn disabled_lcd_cycle_discards_pending_oam_corruption() {
+        let mut ppu = PixelProcessingUnit::new();
+        ppu.lcdc = 0;
+        ppu.oam_corruption = Some(OamCorruptionCause::Write);
+
+        assert_eq!(ppu.machine_cycle(4), (false, false));
+        assert_eq!(ppu.oam_corruption, None);
+        assert_eq!(ppu.next_ticks, ppu.ticks);
+    }
+}
